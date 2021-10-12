@@ -102,7 +102,7 @@ fragment Letter
     ;
 
 compilation_unit
-    : package top_level* EOF
+    : package import_stmt* top_level* EOF
     ;
 
 package
@@ -110,18 +110,19 @@ package
     ;
 
 qualified_name
-    : qualified_name_part (DCOLON qualified_name_part)*
+    : qualified_name_part #relative_qualified_name
+    | DCOLON qualified_name_part #absolute_qualified_name
     ;
 
 qualified_name_part
     : IDENTIFIER
+    | qualified_name_part DCOLON IDENTIFIER 
     ;
 
 top_level
-    : import_stmt
-    | struct_def
-    | impl_stmt
-    | fn_def
+    : struct_def #struct_top_level
+    | impl_stmt #impl_top_level
+    | fn_def #fn_top_level
     ;
 
 import_stmt
@@ -134,7 +135,7 @@ struct_def
 
 generic_def
     : LARROW name (COMMA name)* RARROW
-    ;    
+    ;
 
 field_def
     : visibility? name COLON type COMMA
@@ -312,7 +313,11 @@ name
     ;
 
 type
-    : type_flags name generic_def?
+    : type_flags qualified_name type_generic_params?
+    ;
+
+type_generic_params
+    : LARROW type (COMMA type)* RARROW
     ;
 
 type_flags
@@ -320,15 +325,15 @@ type_flags
     ;
 
 visibility
-    : PUB
+    : PUB #pub_visibility
     ;
 
 literal
-    : boolean_literal
-    | INT_NUMBER
-    | HEX_NUMBER
-    | BINARY_NUMBER
-    | STRING_LITERAL
+    : boolean_literal #outer_bool_literal
+    | INT_NUMBER #int_literal
+    | HEX_NUMBER #hex_literal
+    | BINARY_NUMBER #binary_literal
+    | STRING_LITERAL #string_literal
     ;
 
 boolean_literal
