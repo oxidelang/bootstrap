@@ -11,6 +11,7 @@ namespace Oxide.Compiler.Frontend
     {
         private QualifiedName _package;
         private List<Import> _imports;
+        private Dictionary<QualifiedName, StructDef> _structs;
 
         public void Parse(OxideParser.Compilation_unitContext cu)
         {
@@ -26,6 +27,7 @@ namespace Oxide.Compiler.Frontend
                 ));
             }
 
+            // Split file
             var structDefs = new List<OxideParser.Struct_defContext>();
             var fnDefs = new List<OxideParser.Fn_defContext>();
             var implBlocks = new List<OxideParser.Impl_stmtContext>();
@@ -47,6 +49,8 @@ namespace Oxide.Compiler.Frontend
                 }
             }
 
+            // Parse structs
+            _structs = new Dictionary<QualifiedName, StructDef>();
             foreach (var ctx in structDefs)
             {
                 ParseStruct(ctx);
@@ -56,15 +60,28 @@ namespace Oxide.Compiler.Frontend
         private void ParseStruct(OxideParser.Struct_defContext ctx)
         {
             var vis = ctx.visibility().Parse();
-            var name = ctx.name().GetText();
+            var structName = new QualifiedName(true, _package.Parts.Add(ctx.name().GetText()));
             var genericParams = ctx.generic_def()?.Parse() ?? new List<string>();
+            var fields = new List<FieldDef>();
 
             foreach (var fieldDef in ctx.field_def())
             {
+                var type = ParseType(fieldDef.type(), genericParams.ToImmutableList());
+                fields.Add(new FieldDef
+                {
+                    Name = fieldDef.name().GetText(),
+                    Visibility = fieldDef.visibility().Parse(),
+                    Type = type,
+                });
             }
+
+            _structs.Add(
+                structName,
+                new StructDef(structName, vis, genericParams.ToImmutableList(), fields.ToImmutableList())
+            );
         }
 
-        private TypeDef ParseType(OxideParser.TypeContext ctx, List<string> genericTypes)
+        private TypeDef ParseType(OxideParser.TypeContext ctx, ImmutableList<string> genericTypes)
         {
             var flags = ctx.type_flags();
 
