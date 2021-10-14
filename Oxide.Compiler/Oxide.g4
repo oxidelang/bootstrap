@@ -6,10 +6,13 @@ LINE_COMMENT:       '//' ~[\r\n]*    -> channel(HIDDEN);
 
 PACKAGE:    'package';
 IMPORT:     'import';
-PUB:        'pub';
+PUBLIC:     'public';
+PRIVATE:    'private';
 MUT:        'mut';
 STRUCT:     'struct';
+ENUM:       'enum';
 IMPL:       'impl';
+IFACE:      'interface';
 WHERE:      'where';
 FOR:        'for';
 LET:        'let';
@@ -121,8 +124,10 @@ qualified_name_part
 
 top_level
     : struct_def #struct_top_level
+    | enum_def #enum_top_level
     | impl_stmt #impl_top_level
     | fn_def #fn_top_level
+    | iface_def #iface_top_level
     ;
 
 import_stmt
@@ -141,6 +146,14 @@ field_def
     : visibility? name COLON type COMMA
     ;
 
+enum_def
+    : visibility? ENUM name generic_def? LBRACE variant_def* RBRACE
+    ;
+
+variant_def
+    : visibility? name (LBRACE field_def* RBRACE)? COMMA
+    ;
+
 impl_stmt
     : IMPL (qualified_name FOR)? type where? (SEMI | impl_body)
     ;
@@ -155,6 +168,10 @@ where
 
 where_clause
     : name COLON type (PLUS type)*
+    ;
+
+iface_def
+    : visibility? IFACE name generic_def? LBRACE fn_def* RBRACE
     ;
 
 fn_def
@@ -190,6 +207,7 @@ statement
 expression
     : or_expression
     | RETURN or_expression
+    | base_expression EQUAL or_expression
     ;
 
 or_expression
@@ -225,7 +243,7 @@ equal_expression
 
 comparison_expression
 	: cast_expression
-	| comparison_expression LARROW 
+	| comparison_expression LARROW cast_expression
 	| comparison_expression RARROW cast_expression
 	| comparison_expression LEQ_OP cast_expression
 	| comparison_expression GEQ_OP cast_expression
@@ -296,7 +314,7 @@ label
     ;
 
 struct_initialiser
-    : name LBRACE field_initialiser* RBRACE
+    : name type_generic_params LBRACE field_initialiser* RBRACE
     ;
 
 field_initialiser
@@ -321,11 +339,12 @@ type_generic_params
     ;
 
 type_flags
-    : (REF | DERIVED | WEAK)? MUT?
+    : UNSAFE? MUT? (REF | DERIVED | WEAK)? 
     ;
 
 visibility
-    : PUB #pub_visibility
+    : PUBLIC #public_visibility
+    | PRIVATE #private_visibility
     ;
 
 literal
