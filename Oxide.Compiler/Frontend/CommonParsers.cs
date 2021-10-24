@@ -8,7 +8,7 @@ namespace Oxide.Compiler.Frontend
 {
     public static class CommonParsers
     {
-        public static QualifiedName Parse(this OxideParser.Qualified_nameContext ctx)
+        public static QualifiedName Parse(this OxideParser.Qualified_nameContext ctx, bool forceAbsolute = false)
         {
             var (isAbs, firstPart) = ctx switch
             {
@@ -16,6 +16,11 @@ namespace Oxide.Compiler.Frontend
                 OxideParser.Relative_qualified_nameContext rel => (false, rel.qualified_name_part()),
                 _ => throw new ArgumentOutOfRangeException(nameof(ctx))
             };
+
+            if (forceAbsolute)
+            {
+                isAbs = true;
+            }
 
             var parts = new List<string>();
             firstPart.Parse(parts);
@@ -38,7 +43,8 @@ namespace Oxide.Compiler.Frontend
             return ctx switch
             {
                 null => @default,
-                OxideParser.Pub_visibilityContext => Visibility.Public,
+                OxideParser.Public_visibilityContext => Visibility.Public,
+                OxideParser.Private_visibilityContext => Visibility.Private,
                 _ => throw new ArgumentOutOfRangeException(nameof(ctx))
             };
         }

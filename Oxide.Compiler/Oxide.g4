@@ -154,9 +154,17 @@ variant_def
     ;
 
 variant_item_def
-    : visibility? name COMMA
-    | visibility? name LBRACE field_def* RBRACE COMMA
-    | visibility? name LBRACK type (COMMA type)* RBRACK COMMA
+    : visibility? name COMMA #simple_variant_item_def
+    | visibility? name LBRACE field_def* RBRACE COMMA #struct_variant_item_def
+    | visibility? name tuple_def COMMA #tuple_variant_item_def
+    ;
+
+tuple_def
+    : LBRACK tuple_item_def (COMMA tuple_item_def)* RBRACK
+    ;
+
+tuple_item_def
+    : MUT? type
     ;
 
 impl_stmt

@@ -7,5 +7,7 @@ namespace Oxide.Compiler.IR
         public Visibility Visibility { get; init; }
 
         public TypeDef Type { get; init; }
+
+        public bool Mutable { get; set; }
     }
 }
