@@ -11,20 +11,22 @@ PRIVATE:    'private';
 MUT:        'mut';
 STRUCT:     'struct';
 ENUM:       'enum';
+VARIANT:    'variant';
 IMPL:       'impl';
 IFACE:      'interface';
 WHERE:      'where';
 FOR:        'for';
-LET:        'let';
-FN:         'fn';
+VAR:        'var';
+FUNC:       'func';
 UNSAFE:     'unsafe';
+BOX:        'box';
+ALIAS:      'alias';
 
 REF:        'ref';
 WEAK:       'weak';
 DERIVED:    '~';
 
-//SELF_TYPE: 'Self';
-SELF_FIELD: 'self';
+THIS_FIELD: 'this';
 
 RETURN: 'return';
 IF:     'if';
@@ -124,10 +126,11 @@ qualified_name_part
 
 top_level
     : struct_def #struct_top_level
-    | enum_def #enum_top_level
+    | variant_def #variant_top_level
     | impl_stmt #impl_top_level
-    | fn_def #fn_top_level
+    | func_def #func_top_level
     | iface_def #iface_top_level
+    | alias_def #alias_top_level
     ;
 
 import_stmt
@@ -143,15 +146,17 @@ generic_def
     ;
 
 field_def
-    : visibility? name COLON type COMMA
-    ;
-
-enum_def
-    : visibility? ENUM name generic_def? LBRACE variant_def* RBRACE
+    : visibility? MUT? name COLON type COMMA
     ;
 
 variant_def
-    : visibility? name (LBRACE field_def* RBRACE)? COMMA
+    : visibility? VARIANT name generic_def? LBRACE variant_item_def* RBRACE
+    ;
+
+variant_item_def
+    : visibility? name COMMA
+    | visibility? name LBRACE field_def* RBRACE COMMA
+    | visibility? name LBRACK type (COMMA type)* RBRACK COMMA
     ;
 
 impl_stmt
@@ -159,7 +164,7 @@ impl_stmt
     ;
 
 impl_body
-    : LBRACE fn_def* RBRACE
+    : LBRACE func_def* RBRACE
     ;
 
 where
@@ -171,19 +176,23 @@ where_clause
     ;
 
 iface_def
-    : visibility? IFACE name generic_def? LBRACE fn_def* RBRACE
+    : visibility? IFACE name generic_def? LBRACE func_def* RBRACE
     ;
 
-fn_def
-    : visibility? FN name LBRACK (parameter (COMMA parameter)*)? RBRACK (ARROW type)? fn_body
+alias_def
+    : visibility? ALIAS name generic_def? EQUAL type SEMI
+    ;
+
+func_def
+    : visibility? FUNC name LBRACK (parameter (COMMA parameter)*)? RBRACK (COLON type)? func_body
     ;
 
 parameter
     : name COLON type
-    | type_flags SELF_FIELD
+    | type_flags THIS_FIELD
     ;
 
-fn_body
+func_body
     : block
     | SEMI
     ;
@@ -279,17 +288,18 @@ unary_expression
 	| NOT unary_expression
 	| AMP unary_expression
 	| LBRACK type RBRACK unary_expression
+	| BOX unary_expression
 	;
 
 base_expression
-    : DERIVED? LBRACK expression RBRACK
-    | literal
-    | DERIVED? SELF_FIELD
-    | DERIVED? qualified_name
-    | struct_initialiser
-    | block_expression
-    | base_expression PERIOD name
-    | base_expression LBRACK arguments? RBRACK
+    : DERIVED? LBRACK expression RBRACK #bracket_base_expression
+    | literal #literal_base_expression
+    | DERIVED? THIS_FIELD #this_base_expression
+    | DERIVED? qualified_name (type_generic_params DCOLON qualified_name)? #qualified_base_expression
+    | struct_initialiser #struct_base_expression
+    | block_expression #block_base_expression
+    | base_expression PERIOD name #access_base_expression
+    | base_expression type_generic_params? LBRACK arguments? RBRACK #invoke_base_expression
     ;
 
 block_expression
@@ -299,6 +309,7 @@ block_expression
 
 if_expression
     : IF expression block (ELSE (block | if_expression))?
+    | IF VAR expression block (ELSE (block | if_expression))?
     ;
 
 arguments
@@ -314,7 +325,7 @@ label
     ;
 
 struct_initialiser
-    : name type_generic_params LBRACE field_initialiser* RBRACE
+    : name type_generic_params? LBRACE field_initialiser* RBRACE
     ;
 
 field_initialiser
@@ -323,7 +334,7 @@ field_initialiser
     ;
 
 variable_statement
-    : LET MUT? name (COLON type)? EQUAL expression SEMI
+    : VAR MUT? name (COLON type)? EQUAL expression SEMI
     ;
 
 name
@@ -339,7 +350,10 @@ type_generic_params
     ;
 
 type_flags
-    : UNSAFE? MUT? (REF | DERIVED | WEAK)? 
+    : UNSAFE? (REF | DERIVED | WEAK) #ref_type_flags
+    | UNSAFE? AMP MUT? #local_type_flags
+    | UNSAFE? STAR MUT? #ptr_type_flags
+    | UNSAFE? #direct_type_flags
     ;
 
 visibility
