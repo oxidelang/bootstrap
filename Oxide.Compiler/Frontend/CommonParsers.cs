@@ -51,7 +51,50 @@ namespace Oxide.Compiler.Frontend
 
         public static List<string> Parse(this OxideParser.Generic_defContext ctx)
         {
-            return ctx.name().Select(x => x.GetText()).ToList();
+            return ctx == null ? new List<string>() : ctx.name().Select(x => x.GetText()).ToList();
+        }
+
+        public static (TypeCategory category, bool mutable) Parse(this OxideParser.Type_flagsContext ctx)
+        {
+            TypeCategory category;
+            var mutable = false;
+            switch (ctx)
+            {
+                case OxideParser.Direct_type_flagsContext:
+                    category = TypeCategory.Direct;
+                    break;
+                case OxideParser.Local_type_flagsContext local:
+                    category = TypeCategory.Reference;
+                    mutable = local.MUT() != null;
+                    break;
+                case OxideParser.Ptr_type_flagsContext ptr:
+                    category = TypeCategory.Pointer;
+                    mutable = ptr.MUT() != null;
+                    break;
+                case OxideParser.Ref_type_flagsContext refType:
+                    if (refType.REF() != null)
+                    {
+                        category = TypeCategory.StrongReference;
+                    }
+                    else if (refType.DERIVED() != null)
+                    {
+                        throw new NotImplementedException("DERIVED not implemented");
+                    }
+                    else if (refType.WEAK() != null)
+                    {
+                        category = TypeCategory.WeakReference;
+                    }
+                    else
+                    {
+                        throw new Exception("Unknown ref type");
+                    }
+
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+
+            return (category, mutable);
         }
     }
 }

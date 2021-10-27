@@ -6,7 +6,7 @@ namespace Oxide.Compiler.IR
     {
         public TypeCategory Category { get; init; }
 
-        public bool Mutable { get; init; }
+        public bool MutableRef { get; init; }
 
         public QualifiedName Name { get; init; }
 

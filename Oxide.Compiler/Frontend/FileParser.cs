@@ -63,6 +63,12 @@ namespace Oxide.Compiler.Frontend
                 }
             }
 
+            // Parse alias
+            foreach (var ctx in aliasDefs)
+            {
+                throw new NotImplementedException("Aliases are not implemented");
+            }
+
             // Parse structs
             _structs = new Dictionary<QualifiedName, StructDef>();
             foreach (var ctx in structDefs)
@@ -83,6 +89,99 @@ namespace Oxide.Compiler.Frontend
             {
                 throw new NotImplementedException("Interfaces");
             }
+
+            // Parse impls
+            foreach (var ctx in implBlocks)
+            {
+                throw new NotImplementedException("Impl block");
+            }
+
+            // Parse top level funcs
+            foreach (var ctx in funcsDefs)
+            {
+                ParseFunc(ctx);
+            }
+        }
+
+        private void ParseFunc(OxideParser.Func_defContext ctx)
+        {
+            var vis = ctx.visibility().Parse();
+            var funcName = ctx.name().GetText();
+            var genericParams = ctx.generic_def().Parse().ToImmutableList();
+            var parameters = ParseParameters(ctx.parameter(), false, genericParams);
+            var returnType = ctx.type() != null ? ParseType(ctx.type(), genericParams) : null;
+
+            switch (ctx.func_body())
+            {
+                case OxideParser.Block_func_bodyContext blockFuncBodyContext:
+                {
+                    var bodyParser = new BodyParser(this, genericParams);
+                    bodyParser.ParseBody(blockFuncBodyContext.block());
+
+                    break;
+                }
+                case OxideParser.Empty_func_bodyContext emptyFuncBodyContext:
+                    throw new NotImplementedException("Empty function bodies not implemented");
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+
+            Console.WriteLine("c");
+        }
+
+        private List<ParameterDef> ParseParameters(OxideParser.ParameterContext[] paramCtxs, bool allowThis,
+            ImmutableList<string> genericTypes)
+        {
+            var parameters = new List<ParameterDef>();
+
+            for (var i = 0; i < paramCtxs.Length; i++)
+            {
+                var ctx = paramCtxs[i];
+                switch (ctx)
+                {
+                    case OxideParser.Standard_parameterContext standardParameterContext:
+                    {
+                        parameters.Add(new ParameterDef
+                        {
+                            Name = standardParameterContext.name().GetText(),
+                            IsThis = false,
+                            Type = ParseType(standardParameterContext.type(), genericTypes)
+                        });
+                        break;
+                    }
+                    case OxideParser.This_parameterContext thisParameterContext:
+                    {
+                        if (!allowThis)
+                        {
+                            throw new Exception("This parameters are not allowed in this context");
+                        }
+
+                        if (i != 0)
+                        {
+                            throw new Exception("This parameters can only occupy the first parameter slot");
+                        }
+
+                        var (category, mutable) = thisParameterContext.type_flags().Parse();
+
+                        parameters.Add(new ParameterDef
+                        {
+                            Name = "this",
+                            IsThis = true,
+                            Type = new TypeDef
+                            {
+                                Category = category,
+                                MutableRef = mutable,
+                            },
+                        });
+                        break;
+                    }
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(ctx));
+                }
+            }
+
+            return parameters;
         }
 
         private void ParseStruct(OxideParser.Struct_defContext ctx)
@@ -214,45 +313,9 @@ namespace Oxide.Compiler.Frontend
             var genericParams = ctx.generic_def()?.Parse() ?? new List<string>();
         }
 
-        private TypeDef ParseType(OxideParser.TypeContext ctx, ImmutableList<string> genericTypes)
+        public TypeDef ParseType(OxideParser.TypeContext ctx, ImmutableList<string> genericTypes)
         {
-            TypeCategory category;
-            var mutable = false;
-            switch (ctx.type_flags())
-            {
-                case OxideParser.Direct_type_flagsContext direct:
-                    category = TypeCategory.Direct;
-                    break;
-                case OxideParser.Local_type_flagsContext local:
-                    category = TypeCategory.Reference;
-                    mutable = local.MUT() != null;
-                    break;
-                case OxideParser.Ptr_type_flagsContext ptr:
-                    category = TypeCategory.Pointer;
-                    mutable = ptr.MUT() != null;
-                    break;
-                case OxideParser.Ref_type_flagsContext refType:
-                    if (refType.REF() != null)
-                    {
-                        category = TypeCategory.StrongReference;
-                    }
-                    else if (refType.DERIVED() != null)
-                    {
-                        throw new NotImplementedException("DERIVED not implemented");
-                    }
-                    else if (refType.WEAK() != null)
-                    {
-                        category = TypeCategory.WeakReference;
-                    }
-                    else
-                    {
-                        throw new Exception("Unknown ref type");
-                    }
-
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
+            var (category, mutable) = ctx.type_flags().Parse();
 
             var genericParams = new List<TypeDef>();
             if (ctx.type_generic_params() != null)
@@ -278,7 +341,7 @@ namespace Oxide.Compiler.Frontend
             return new TypeDef
             {
                 Category = category,
-                Mutable = mutable,
+                MutableRef = mutable,
                 GenericParams = genericParams.ToImmutableList(),
                 Source = source,
                 Name = qn

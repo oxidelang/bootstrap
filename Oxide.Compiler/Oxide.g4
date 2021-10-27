@@ -65,7 +65,7 @@ LEQ_OP:     '<=';
 GEQ_OP:     '>=';
 
 IDENTIFIER:     Letter LetterOrDigit*;
-INT_NUMBER:     Digits;
+INT_NUMBER:     '-'? Digits;
 HEX_NUMBER:     '0' [xX] HexDigit ((HexDigit | '_')* HexDigit)? [lL]?;
 BINARY_NUMBER:  '0' [bB] BinaryDigit ((BinaryDigit | '_')* BinaryDigit)? [lL]?;
 CHAR_LITERAL:   '\'' (~['\\\r\n] | EscapeSequence) '\'';
@@ -192,111 +192,106 @@ alias_def
     ;
 
 func_def
-    : visibility? FUNC name LBRACK (parameter (COMMA parameter)*)? RBRACK (COLON type)? func_body
+    : visibility? FUNC name generic_def? LBRACK (parameter (COMMA parameter)*)? RBRACK (COLON type)? func_body
     ;
 
 parameter
-    : name COLON type
-    | type_flags THIS_FIELD
+    : name COLON type #standard_parameter
+    | type_flags THIS_FIELD #this_parameter
     ;
 
 func_body
-    : block
-    | SEMI
+    : block #block_func_body
+    | SEMI #empty_func_body
     ;
 
 block
-    : LBRACE statements?  RBRACE
+    : LBRACE statement* expression?  RBRACE
     ;
 
-statements
-   : statement+ expression?
-   | expression
-   ;
-
 statement
-    : SEMI
-    | expression SEMI
-    | block_expression
-    | variable_statement
+    : SEMI #empty_statement
+    | expression SEMI #expression_statement
+    | block_expression #block_expression_statement
+    | variable_statement #variable_statement_top
     ;
 
 expression
-    : or_expression
-    | RETURN or_expression
-    | base_expression EQUAL or_expression
+    : or_expression #pass_expression
+    | RETURN or_expression #return_expression
+    | base_expression EQUAL or_expression #assign_expression_top
     ;
 
 or_expression
-	: and_expression
-	| or_expression OR_OP and_expression
+	: and_expression #pass_or_expression
+	| or_expression OR_OP and_expression #op_or_expression
 	;
 
 and_expression
-	: inc_or_expression
-	| and_expression AND_OP inc_or_expression 
+	: inc_or_expression #pass_and_expression
+	| and_expression AND_OP inc_or_expression #op_and_expression
 	;
 
 inc_or_expression
-	: ex_or_expression
-	| inc_or_expression INC_OR_OP ex_or_expression 
+	: ex_or_expression #pass_inc_or_expression
+	| inc_or_expression INC_OR_OP ex_or_expression #op_inc_or_expression 
 	;
 
 ex_or_expression
-	: bit_and_expression
-	| ex_or_expression EX_OR_OP bit_and_expression 
+	: bit_and_expression #pass_ex_or_expression
+	| ex_or_expression EX_OR_OP bit_and_expression #op_ex_or_expression 
 	;
 
 bit_and_expression
-	: equal_expression
-	| bit_and_expression AMP equal_expression 
+	: equal_expression #pass_bit_and_expression
+	| bit_and_expression AMP equal_expression #op_bit_and_expression
 	;
 
 equal_expression
-	: comparison_expression
-	| equal_expression EQUALTO comparison_expression
-	| equal_expression NOTEQ comparison_expression
+	: comparison_expression #pass_equal_expression
+	| equal_expression EQUALTO comparison_expression #eq_equal_expression
+	| equal_expression NOTEQ comparison_expression #ne_equal_expression
 	;
 
 comparison_expression
-	: cast_expression
-	| comparison_expression LARROW cast_expression
-	| comparison_expression RARROW cast_expression
-	| comparison_expression LEQ_OP cast_expression
-	| comparison_expression GEQ_OP cast_expression
+	: cast_expression #pass_comparison_expression
+	| comparison_expression LARROW cast_expression #lt_comparison_expression
+	| comparison_expression RARROW cast_expression #gt_comparison_expression
+	| comparison_expression LEQ_OP cast_expression #leq_comparison_expression
+	| comparison_expression GEQ_OP cast_expression #geq_comparison_expression
 	;
 
 cast_expression
-    : shift_expression
-    | cast_expression AS type
+    : shift_expression #pass_cast_expression
+    | cast_expression AS type #op_cast_expression
     ;
 
 shift_expression
-	: add_expression
-	| shift_expression left_shift add_expression
-	| shift_expression right_shift add_expression
+	: add_expression #pass_shift_expression
+	| shift_expression left_shift add_expression #left_shift_expression
+	| shift_expression right_shift add_expression #right_shift_expression
 	;
 
 add_expression
-	: multiply_expression
-	| add_expression PLUS multiply_expression 
-	| add_expression MINUS multiply_expression
+	: multiply_expression #pass_add_expression
+	| add_expression PLUS multiply_expression #plus_add_expression
+	| add_expression MINUS multiply_expression #minus_add_expression
 	;
 
 multiply_expression
-	: unary_expression
-	| multiply_expression STAR unary_expression
-	| multiply_expression DIV unary_expression
-	| multiply_expression MOD unary_expression
+	: unary_expression #pass_multiply_expression
+	| multiply_expression STAR unary_expression #mul_multiply_expression
+	| multiply_expression DIV unary_expression #div_multiply_expression
+	| multiply_expression MOD unary_expression #mod_multiply_expression
 	;
 
 unary_expression
-	: base_expression
-	| MINUS unary_expression
-	| NOT unary_expression
-	| AMP unary_expression
-	| LBRACK type RBRACK unary_expression
-	| BOX unary_expression
+	: base_expression #pass_unary_expression
+	| MINUS unary_expression #minus_unary_expression
+	| NOT unary_expression #not_unary_expression
+	| AMP unary_expression #ref_unary_expression
+//	| LBRACK type RBRACK unary_expression #cast_unary_expression
+	| BOX unary_expression #box_unary_expression
 	;
 
 base_expression
@@ -311,13 +306,13 @@ base_expression
     ;
 
 block_expression
-    : UNSAFE? block
-    | if_expression
+    : UNSAFE? block #block_block_expression
+    | if_expression #if_block_expression
     ;
 
 if_expression
-    : IF expression block (ELSE (block | if_expression))?
-    | IF VAR expression block (ELSE (block | if_expression))?
+    : IF expression block (ELSE (block | if_expression))? #simple_if_expression
+    | IF VAR expression block (ELSE (block | if_expression))? #let_if_expression
     ;
 
 arguments
@@ -342,7 +337,7 @@ field_initialiser
     ;
 
 variable_statement
-    : VAR MUT? name (COLON type)? EQUAL expression SEMI
+    : VAR MUT? name (COLON type)? (EQUAL expression)? SEMI
     ;
 
 name
@@ -378,8 +373,8 @@ literal
     ;
 
 boolean_literal
-	: TRUE
-	| FALSE
+	: TRUE #true_boolean_literal
+	| FALSE #false_boolean_literal
 	;
 
 // Ensure we don't conflict with generics
