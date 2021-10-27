@@ -79,7 +79,6 @@ namespace Oxide.Compiler.Frontend
                 case OxideParser.Variable_statement_topContext variableStatementTopContext:
                 {
                     ParseVariableStatement(variableStatementTopContext.variable_statement());
-                    throw new NotImplementedException("Variable statement");
                     break;
                 }
                 default:
@@ -92,10 +91,27 @@ namespace Oxide.Compiler.Frontend
             var name = ctx.name().GetText();
             var type = ctx.type() != null ? ParseType(ctx.type()) : null;
             var mutable = ctx.MUT() != null;
+            int? valueId = null;
 
             if (ctx.expression() != null)
             {
-                ParseExpression(ctx.expression());
+                var inst = ParseExpression(ctx.expression());
+
+                if (!inst.HasValue)
+                {
+                    throw new Exception($"No value returned by {inst.Id}");
+                }
+
+                if (type == null)
+                {
+                    type = inst.ValueType;
+                }
+                else
+                {
+                    throw new NotImplementedException("Type compatability checking not implemented");
+                }
+
+                valueId = inst.Id;
             }
             else if (ctx.type() == null)
             {
@@ -107,22 +123,31 @@ namespace Oxide.Compiler.Frontend
                 throw new Exception($"Unable to resolve type for variable {name}");
             }
 
-            CurrentScope.DefineVariable(new VariableDeclaration
+            var varDec = CurrentScope.DefineVariable(new VariableDeclaration
             {
                 Id = ++_lastVariableId,
                 Name = name,
                 Type = type,
                 Mutable = mutable
             });
+
+            if (valueId.HasValue)
+            {
+                CurrentBlock.AddInstruction(new StoreLocal
+                {
+                    Id = ++_lastInstId,
+                    TargetId = varDec.Id,
+                    ValueId = valueId.Value
+                });
+            }
         }
 
-        private void ParseExpression(OxideParser.ExpressionContext ctx)
+        private Instruction ParseExpression(OxideParser.ExpressionContext ctx)
         {
             switch (ctx)
             {
                 case OxideParser.Pass_expressionContext passExpressionContext:
-                    ParseOrExpression(passExpressionContext.or_expression());
-                    break;
+                    return ParseOrExpression(passExpressionContext.or_expression());
                 case OxideParser.Assign_expression_topContext assignExpressionTopContext:
                     throw new NotImplementedException("Assign expression");
                     break;
@@ -134,13 +159,12 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        private void ParseOrExpression(OxideParser.Or_expressionContext ctx)
+        private Instruction ParseOrExpression(OxideParser.Or_expressionContext ctx)
         {
             switch (ctx)
             {
                 case OxideParser.Pass_or_expressionContext passOrExpressionContext:
-                    ParseAndExpression(passOrExpressionContext.and_expression());
-                    break;
+                    return ParseAndExpression(passOrExpressionContext.and_expression());
                 case OxideParser.Op_or_expressionContext opOrExpressionContext:
                     throw new NotImplementedException("Or expression");
                     break;
@@ -149,13 +173,12 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        private void ParseAndExpression(OxideParser.And_expressionContext ctx)
+        private Instruction ParseAndExpression(OxideParser.And_expressionContext ctx)
         {
             switch (ctx)
             {
                 case OxideParser.Pass_and_expressionContext passAndExpressionContext:
-                    ParseIncOrExpression(passAndExpressionContext.inc_or_expression());
-                    break;
+                    return ParseIncOrExpression(passAndExpressionContext.inc_or_expression());
                 case OxideParser.Op_and_expressionContext opAndExpressionContext:
                     throw new NotImplementedException("And expression");
                     break;
@@ -164,13 +187,12 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        private void ParseIncOrExpression(OxideParser.Inc_or_expressionContext ctx)
+        private Instruction ParseIncOrExpression(OxideParser.Inc_or_expressionContext ctx)
         {
             switch (ctx)
             {
                 case OxideParser.Pass_inc_or_expressionContext passIncOrExpressionContext:
-                    ParseExOrExpression(passIncOrExpressionContext.ex_or_expression());
-                    break;
+                    return ParseExOrExpression(passIncOrExpressionContext.ex_or_expression());
                 case OxideParser.Op_inc_or_expressionContext opIncOrExpressionContext:
                     throw new NotImplementedException("Inc or expression");
                     break;
@@ -179,13 +201,12 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        private void ParseExOrExpression(OxideParser.Ex_or_expressionContext ctx)
+        private Instruction ParseExOrExpression(OxideParser.Ex_or_expressionContext ctx)
         {
             switch (ctx)
             {
                 case OxideParser.Pass_ex_or_expressionContext passExOrExpressionContext:
-                    ParseBitAndExpression(passExOrExpressionContext.bit_and_expression());
-                    break;
+                    return ParseBitAndExpression(passExOrExpressionContext.bit_and_expression());
                 case OxideParser.Op_ex_or_expressionContext opExOrExpressionContext:
                     throw new NotImplementedException("Ex or expression");
                     break;
@@ -194,13 +215,12 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        private void ParseBitAndExpression(OxideParser.Bit_and_expressionContext ctx)
+        private Instruction ParseBitAndExpression(OxideParser.Bit_and_expressionContext ctx)
         {
             switch (ctx)
             {
                 case OxideParser.Pass_bit_and_expressionContext passBitAndExpressionContext:
-                    ParseEqualExpression(passBitAndExpressionContext.equal_expression());
-                    break;
+                    return ParseEqualExpression(passBitAndExpressionContext.equal_expression());
                 case OxideParser.Op_bit_and_expressionContext opBitAndExpressionContext:
                     throw new NotImplementedException("Bit and expression");
                     break;
@@ -209,13 +229,12 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        private void ParseEqualExpression(OxideParser.Equal_expressionContext ctx)
+        private Instruction ParseEqualExpression(OxideParser.Equal_expressionContext ctx)
         {
             switch (ctx)
             {
                 case OxideParser.Pass_equal_expressionContext passEqualExpressionContext:
-                    ParseComparisonExpression(passEqualExpressionContext.comparison_expression());
-                    break;
+                    return ParseComparisonExpression(passEqualExpressionContext.comparison_expression());
                 case OxideParser.Eq_equal_expressionContext eqEqualExpressionContext:
                     throw new NotImplementedException("Equal expression");
                     break;
@@ -227,13 +246,12 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        private void ParseComparisonExpression(OxideParser.Comparison_expressionContext ctx)
+        private Instruction ParseComparisonExpression(OxideParser.Comparison_expressionContext ctx)
         {
             switch (ctx)
             {
                 case OxideParser.Pass_comparison_expressionContext passComparisonExpressionContext:
-                    ParseCastExpression(passComparisonExpressionContext.cast_expression());
-                    break;
+                    return ParseCastExpression(passComparisonExpressionContext.cast_expression());
                 case OxideParser.Geq_comparison_expressionContext geqComparisonExpressionContext:
                     throw new NotImplementedException("GEQ expression");
                     break;
@@ -251,13 +269,12 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        private void ParseCastExpression(OxideParser.Cast_expressionContext ctx)
+        private Instruction ParseCastExpression(OxideParser.Cast_expressionContext ctx)
         {
             switch (ctx)
             {
                 case OxideParser.Pass_cast_expressionContext passCastExpressionContext:
-                    ParseShiftExpression(passCastExpressionContext.shift_expression());
-                    break;
+                    return ParseShiftExpression(passCastExpressionContext.shift_expression());
                 case OxideParser.Op_cast_expressionContext opCastExpressionContext:
                     throw new NotImplementedException("cast expression");
                     break;
@@ -266,13 +283,12 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        private void ParseShiftExpression(OxideParser.Shift_expressionContext ctx)
+        private Instruction ParseShiftExpression(OxideParser.Shift_expressionContext ctx)
         {
             switch (ctx)
             {
                 case OxideParser.Pass_shift_expressionContext passShiftExpressionContext:
-                    ParseAddExpression(passShiftExpressionContext.add_expression());
-                    break;
+                    return ParseAddExpression(passShiftExpressionContext.add_expression());
                 case OxideParser.Left_shift_expressionContext leftShiftExpressionContext:
                     throw new NotImplementedException("left shift expression");
                     break;
@@ -284,13 +300,12 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        private void ParseAddExpression(OxideParser.Add_expressionContext ctx)
+        private Instruction ParseAddExpression(OxideParser.Add_expressionContext ctx)
         {
             switch (ctx)
             {
                 case OxideParser.Pass_add_expressionContext passAddExpressionContext:
-                    ParseMultiplyExpression(passAddExpressionContext.multiply_expression());
-                    break;
+                    return ParseMultiplyExpression(passAddExpressionContext.multiply_expression());
                 case OxideParser.Minus_add_expressionContext minusAddExpressionContext:
                     throw new NotImplementedException("Minus expression");
                     break;
@@ -302,13 +317,12 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        private void ParseMultiplyExpression(OxideParser.Multiply_expressionContext ctx)
+        private Instruction ParseMultiplyExpression(OxideParser.Multiply_expressionContext ctx)
         {
             switch (ctx)
             {
                 case OxideParser.Pass_multiply_expressionContext passMultiplyExpressionContext:
-                    ParseUnaryExpression(passMultiplyExpressionContext.unary_expression());
-                    break;
+                    return ParseUnaryExpression(passMultiplyExpressionContext.unary_expression());
                 case OxideParser.Div_multiply_expressionContext divMultiplyExpressionContext:
                     throw new NotImplementedException("Div expression");
                     break;
@@ -323,13 +337,12 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        private void ParseUnaryExpression(OxideParser.Unary_expressionContext ctx)
+        private Instruction ParseUnaryExpression(OxideParser.Unary_expressionContext ctx)
         {
             switch (ctx)
             {
                 case OxideParser.Pass_unary_expressionContext passUnaryExpressionContext:
-                    ParseBaseExpression(passUnaryExpressionContext.base_expression());
-                    break;
+                    return ParseBaseExpression(passUnaryExpressionContext.base_expression());
                 case OxideParser.Box_unary_expressionContext boxUnaryExpressionContext:
                     throw new NotImplementedException("Box expression");
                     break;
@@ -347,13 +360,12 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        private void ParseBaseExpression(OxideParser.Base_expressionContext ctx)
+        private Instruction ParseBaseExpression(OxideParser.Base_expressionContext ctx)
         {
             switch (ctx)
             {
                 case OxideParser.Literal_base_expressionContext literalBaseExpressionContext:
-                    ParseLiteral(literalBaseExpressionContext.literal());
-                    break;
+                    return ParseLiteral(literalBaseExpressionContext.literal());
                 case OxideParser.Access_base_expressionContext accessBaseExpressionContext:
                     throw new NotImplementedException("Access expression");
                     break;
@@ -380,7 +392,7 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        private void ParseLiteral(OxideParser.LiteralContext ctx)
+        private Instruction ParseLiteral(OxideParser.LiteralContext ctx)
         {
             switch (ctx)
             {
@@ -393,13 +405,12 @@ namespace Oxide.Compiler.Frontend
                 case OxideParser.Int_literalContext intLiteralContext:
                 {
                     var val = int.Parse(intLiteralContext.GetText());
-                    CurrentBlock.AddInstruction(new ConstInst
+                    return CurrentBlock.AddInstruction(new ConstInst
                     {
                         Id = ++_lastInstId,
-                        Type = ConstInst.PrimitiveType.I32,
+                        ConstType = ConstInst.PrimitiveType.I32,
                         Value = val
                     });
-                    break;
                 }
                 case OxideParser.Outer_bool_literalContext outerBoolLiteralContext:
                     switch (outerBoolLiteralContext.boolean_literal())

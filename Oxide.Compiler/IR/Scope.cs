@@ -10,6 +10,7 @@ namespace Oxide.Compiler.IR
         public Scope ParentScope { get; init; }
 
         private readonly Dictionary<int, VariableDeclaration> _variables;
+
         private readonly Dictionary<string, int> _variableMapping;
         // private readonly Dictionary<int, Block> _blocks;
 
@@ -20,10 +21,11 @@ namespace Oxide.Compiler.IR
             // _blocks = new Dictionary<int, Block>();
         }
 
-        public void DefineVariable(VariableDeclaration dec)
+        public VariableDeclaration DefineVariable(VariableDeclaration dec)
         {
             _variables.Add(dec.Id, dec);
             _variableMapping[dec.Name] = dec.Id;
+            return dec;
         }
     }
 }
