@@ -117,7 +117,6 @@ namespace Oxide.Compiler.Frontend
                 {
                     var bodyParser = new BodyParser(this, genericParams);
                     bodyParser.ParseBody(blockFuncBodyContext.block());
-
                     break;
                 }
                 case OxideParser.Empty_func_bodyContext emptyFuncBodyContext:
@@ -126,8 +125,6 @@ namespace Oxide.Compiler.Frontend
                 default:
                     throw new ArgumentOutOfRangeException();
             }
-
-            Console.WriteLine("c");
         }
 
         private List<ParameterDef> ParseParameters(OxideParser.ParameterContext[] paramCtxs, bool allowThis,

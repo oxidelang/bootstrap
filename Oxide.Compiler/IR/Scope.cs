@@ -27,5 +27,15 @@ namespace Oxide.Compiler.IR
             _variableMapping[dec.Name] = dec.Id;
             return dec;
         }
+
+        public VariableDeclaration ResolveVariable(string name)
+        {
+            if (_variableMapping.TryGetValue(name, out var decId))
+            {
+                return _variables[decId];
+            }
+
+            return ParentScope?.ResolveVariable(name);
+        }
     }
 }

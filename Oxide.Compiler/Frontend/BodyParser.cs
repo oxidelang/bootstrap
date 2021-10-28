@@ -74,8 +74,10 @@ namespace Oxide.Compiler.Frontend
                     throw new NotImplementedException("Block expression statement");
                     break;
                 case OxideParser.Expression_statementContext expressionStatementContext:
-                    throw new NotImplementedException("Expression statement");
+                {
+                    ParseExpression(expressionStatementContext.expression());
                     break;
+                }
                 case OxideParser.Variable_statement_topContext variableStatementTopContext:
                 {
                     ParseVariableStatement(variableStatementTopContext.variable_statement());
@@ -133,10 +135,10 @@ namespace Oxide.Compiler.Frontend
 
             if (valueId.HasValue)
             {
-                CurrentBlock.AddInstruction(new StoreLocal
+                CurrentBlock.AddInstruction(new StoreLocalInst
                 {
                     Id = ++_lastInstId,
-                    TargetId = varDec.Id,
+                    LocalId = varDec.Id,
                     ValueId = valueId.Value
                 });
             }
@@ -307,11 +309,31 @@ namespace Oxide.Compiler.Frontend
                 case OxideParser.Pass_add_expressionContext passAddExpressionContext:
                     return ParseMultiplyExpression(passAddExpressionContext.multiply_expression());
                 case OxideParser.Minus_add_expressionContext minusAddExpressionContext:
-                    throw new NotImplementedException("Minus expression");
-                    break;
+                {
+                    var left = ParseAddExpression(minusAddExpressionContext.add_expression());
+                    var right = ParseMultiplyExpression(minusAddExpressionContext.multiply_expression());
+                    return CurrentBlock.AddInstruction(new ArithmeticInst
+                    {
+                        Id = ++_lastInstId,
+                        LhsValue = left.Id,
+                        RhsValue = right.Id,
+                        OutputType = left.ValueType,
+                        Op = ArithmeticInst.Operation.Minus
+                    });
+                }
                 case OxideParser.Plus_add_expressionContext plusAddExpressionContext:
-                    throw new NotImplementedException("Add expression");
-                    break;
+                {
+                    var left = ParseAddExpression(plusAddExpressionContext.add_expression());
+                    var right = ParseMultiplyExpression(plusAddExpressionContext.multiply_expression());
+                    return CurrentBlock.AddInstruction(new ArithmeticInst
+                    {
+                        Id = ++_lastInstId,
+                        LhsValue = left.Id,
+                        RhsValue = right.Id,
+                        OutputType = left.ValueType,
+                        Op = ArithmeticInst.Operation.Add
+                    });
+                }
                 default:
                     throw new ArgumentOutOfRangeException(nameof(ctx));
             }
@@ -366,6 +388,9 @@ namespace Oxide.Compiler.Frontend
             {
                 case OxideParser.Literal_base_expressionContext literalBaseExpressionContext:
                     return ParseLiteral(literalBaseExpressionContext.literal());
+                case OxideParser.Method_call_base_expressionContext methodCallBaseExpressionContext:
+                    throw new NotImplementedException("Method call expression");
+                    break;
                 case OxideParser.Access_base_expressionContext accessBaseExpressionContext:
                     throw new NotImplementedException("Access expression");
                     break;
@@ -373,14 +398,11 @@ namespace Oxide.Compiler.Frontend
                     throw new NotImplementedException("Block expression");
                     break;
                 case OxideParser.Bracket_base_expressionContext bracketBaseExpressionContext:
-                    throw new NotImplementedException("Bracket expression");
-                    break;
-                case OxideParser.Invoke_base_expressionContext invokeBaseExpressionContext:
-                    throw new NotImplementedException("Invoke expression");
-                    break;
+                    return ParseExpression(bracketBaseExpressionContext.expression());
+                case OxideParser.Function_call_base_expressionContext functionCallBaseExpressionContext:
+                    return ParseFunctionCall(functionCallBaseExpressionContext);
                 case OxideParser.Qualified_base_expressionContext qualifiedBaseExpressionContext:
-                    throw new NotImplementedException("Qualified name expression");
-                    break;
+                    return ParseQnExpression(qualifiedBaseExpressionContext);
                 case OxideParser.Struct_base_expressionContext structBaseExpressionContext:
                     throw new NotImplementedException("Struct expression");
                     break;
@@ -390,6 +412,92 @@ namespace Oxide.Compiler.Frontend
                 default:
                     throw new ArgumentOutOfRangeException(nameof(ctx));
             }
+        }
+
+        private Instruction ParseFunctionCall(OxideParser.Function_call_base_expressionContext ctx)
+        {
+            if (ctx.qn_generics != null)
+            {
+                throw new NotImplementedException("Generic params on QN in function call expressions not implemented");
+            }
+
+            var qns = ctx.qualified_name();
+            if (qns.Length != 1)
+            {
+                throw new NotImplementedException("Generic param derived function calls not implemented");
+            }
+
+            if (ctx.method_generics != null)
+            {
+                throw new NotImplementedException("Generic method params in function call expressions not implemented");
+            }
+
+            var qn1 = qns[0].Parse();
+            if (qn1.Parts.Length != 1 || qn1.Parts[0] != "debug_int")
+            {
+                throw new NotImplementedException("Only static calls to debug_int are implemented");
+            }
+
+            var argIds = new List<int>();
+            if (ctx.arguments() != null)
+            {
+                foreach (var argument in ctx.arguments().argument())
+                {
+                    if (argument.label() != null)
+                    {
+                        throw new NotImplementedException("Argument labels are not implemented");
+                    }
+
+                    var inst = ParseExpression(argument.expression());
+                    if (!inst.HasValue)
+                    {
+                        throw new Exception("Argument does not return a value");
+                    }
+
+                    argIds.Add(inst.Id);
+                }
+            }
+
+            return CurrentBlock.AddInstruction(new StaticCallInst
+            {
+                Id = ++_lastInstId,
+                TargetMethod = qn1,
+                Arguments = argIds.ToImmutableList()
+            });
+        }
+
+        private Instruction ParseQnExpression(OxideParser.Qualified_base_expressionContext ctx)
+        {
+            if (ctx.type_generic_params() != null)
+            {
+                throw new NotImplementedException("Generic params on QN expressions not implemented");
+            }
+
+            var qns = ctx.qualified_name();
+            if (qns.Length != 1)
+            {
+                throw new NotImplementedException("Generic param derived QN not implemented");
+            }
+
+            var qn1 = qns[0].Parse();
+            if (qn1.Parts.Length > 1)
+            {
+                throw new NotImplementedException("Non-local QN expressions not implemented");
+            }
+
+            var varName = qn1.Parts[0];
+            var varDec = CurrentScope.ResolveVariable(varName);
+            if (varDec == null)
+            {
+                throw new Exception($"Unknown variable {varName}");
+            }
+
+            return CurrentBlock.AddInstruction(new LoadLocalInst
+            {
+                Id = ++_lastInstId,
+                LocalId = varDec.Id,
+                LocalType = varDec.Type
+            });
         }
 
         private Instruction ParseLiteral(OxideParser.LiteralContext ctx)

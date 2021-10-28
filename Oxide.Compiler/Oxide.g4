@@ -298,11 +298,13 @@ base_expression
     : DERIVED? LBRACK expression RBRACK #bracket_base_expression
     | literal #literal_base_expression
     | DERIVED? THIS_FIELD #this_base_expression
+    | base_expression PERIOD name type_generic_params? LBRACK arguments? RBRACK #method_call_base_expression
+    | base_expression PERIOD name #access_base_expression
+    | DERIVED? qualified_name (qn_generics=type_generic_params DCOLON qualified_name)? method_generics=type_generic_params? LBRACK arguments? RBRACK #function_call_base_expression
     | DERIVED? qualified_name (type_generic_params DCOLON qualified_name)? #qualified_base_expression
     | struct_initialiser #struct_base_expression
     | block_expression #block_base_expression
-    | base_expression PERIOD name #access_base_expression
-    | base_expression type_generic_params? LBRACK arguments? RBRACK #invoke_base_expression
+//    | base_expression LBRACK arguments? RBRACK #invoke_base_expression
     ;
 
 block_expression

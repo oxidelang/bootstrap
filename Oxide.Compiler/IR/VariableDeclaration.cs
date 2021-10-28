@@ -1,6 +1,4 @@
-using Oxide.Compiler.IR;
-
-namespace Oxide.Compiler.Frontend
+namespace Oxide.Compiler.IR
 {
     public class VariableDeclaration
     {
