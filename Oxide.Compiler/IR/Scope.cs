@@ -9,21 +9,21 @@ namespace Oxide.Compiler.IR
 
         public Scope ParentScope { get; init; }
 
-        private readonly Dictionary<int, VariableDeclaration> _variables;
+        public Dictionary<int, VariableDeclaration> Variables { get; private set; }
 
         private readonly Dictionary<string, int> _variableMapping;
         // private readonly Dictionary<int, Block> _blocks;
 
         public Scope()
         {
-            _variables = new Dictionary<int, VariableDeclaration>();
+            Variables = new Dictionary<int, VariableDeclaration>();
             _variableMapping = new Dictionary<string, int>();
             // _blocks = new Dictionary<int, Block>();
         }
 
         public VariableDeclaration DefineVariable(VariableDeclaration dec)
         {
-            _variables.Add(dec.Id, dec);
+            Variables.Add(dec.Id, dec);
             _variableMapping[dec.Name] = dec.Id;
             return dec;
         }
@@ -32,7 +32,7 @@ namespace Oxide.Compiler.IR
         {
             if (_variableMapping.TryGetValue(name, out var decId))
             {
-                return _variables[decId];
+                return Variables[decId];
             }
 
             return ParentScope?.ResolveVariable(name);

@@ -26,5 +26,16 @@ namespace Oxide.Compiler.IR.Instructions
                 };
             }
         }
+
+        public override void WriteIr(IrWriter writer)
+        {
+            var type = ConstType switch
+            {
+                PrimitiveType.I32 => "i32",
+                _ => throw new ArgumentOutOfRangeException()
+            };
+
+            writer.Write($"const {type} {Value}");
+        }
     }
 }

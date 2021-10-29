@@ -1,3 +1,5 @@
+using System;
+
 namespace Oxide.Compiler.IR.Instructions
 {
     public class ArithmeticInst : Instruction
@@ -14,5 +16,17 @@ namespace Oxide.Compiler.IR.Instructions
         public int LhsValue { get; init; }
         public int RhsValue { get; init; }
         public Operation Op { get; init; }
+
+        public override void WriteIr(IrWriter writer)
+        {
+            var op = Op switch
+            {
+                Operation.Add => "add",
+                Operation.Minus => "minus",
+                _ => throw new ArgumentOutOfRangeException()
+            };
+
+            writer.Write($"arithmetic {op} {LhsValue} {RhsValue}");
+        }
     }
 }

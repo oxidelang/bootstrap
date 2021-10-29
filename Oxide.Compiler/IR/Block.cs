@@ -7,9 +7,9 @@ namespace Oxide.Compiler.IR
     {
         public int Id { get; init; }
 
-        public bool HasInstructions => _instructions.Count > 0;
+        public bool HasInstructions => Instructions.Count > 0;
 
-        private readonly List<Instruction> _instructions;
+        public List<Instruction> Instructions { get; private set; }
 
         private readonly HashSet<int> _incomingBlocks;
 
@@ -19,14 +19,14 @@ namespace Oxide.Compiler.IR
 
         public Block()
         {
-            _instructions = new List<Instruction>();
+            Instructions = new List<Instruction>();
             _incomingBlocks = new HashSet<int>();
             _outgoingBlocks = new HashSet<int>();
         }
 
         public Instruction AddInstruction(Instruction instruction)
         {
-            _instructions.Add(instruction);
+            Instructions.Add(instruction);
             return instruction;
         }
     }

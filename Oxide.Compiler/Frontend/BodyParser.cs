@@ -12,16 +12,16 @@ namespace Oxide.Compiler.Frontend
         private readonly FileParser _fileParser;
         private readonly ImmutableList<string> _genericTypes;
 
-        private readonly List<Scope> _scopes;
+        public List<Scope> Scopes { get; private set; }
         private int _lastScopeId;
-        private Scope CurrentScope => _scopes[^1];
+        private Scope CurrentScope => Scopes[^1];
 
         private int _lastVariableId;
 
-        private readonly Dictionary<int, Block> _blocks;
+        public Dictionary<int, Block> Blocks { get; private set; }
         private int _lastBlockId;
         private int _currentBlockId;
-        private Block CurrentBlock => _blocks[_currentBlockId];
+        private Block CurrentBlock => Blocks[_currentBlockId];
 
         private int _lastInstId;
 
@@ -29,8 +29,8 @@ namespace Oxide.Compiler.Frontend
         {
             _genericTypes = genericTypes;
             _fileParser = fileParser;
-            _scopes = new List<Scope>();
-            _blocks = new Dictionary<int, Block>();
+            Scopes = new List<Scope>();
+            Blocks = new Dictionary<int, Block>();
             _lastScopeId = 0;
             _lastBlockId = 0;
             _lastVariableId = 0;
@@ -546,10 +546,10 @@ namespace Oxide.Compiler.Frontend
             var scope = new Scope
             {
                 Id = ++_lastScopeId,
-                ParentScope = _scopes.Count > 0 ? CurrentScope : null
+                ParentScope = Scopes.Count > 0 ? CurrentScope : null
             };
 
-            _scopes.Add(scope);
+            Scopes.Add(scope);
 
             return scope;
         }
@@ -561,7 +561,7 @@ namespace Oxide.Compiler.Frontend
                 Id = ++_lastBlockId,
                 Scope = scope
             };
-            _blocks.Add(block.Id, block);
+            Blocks.Add(block.Id, block);
             return block;
         }
 

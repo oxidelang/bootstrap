@@ -7,5 +7,7 @@ namespace Oxide.Compiler.IR.Instructions
         public abstract bool HasValue { get; }
 
         public abstract TypeDef ValueType { get; }
+
+        public abstract void WriteIr(IrWriter writer);
     }
 }

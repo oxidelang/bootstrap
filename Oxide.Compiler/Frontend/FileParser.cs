@@ -9,21 +9,21 @@ namespace Oxide.Compiler.Frontend
 {
     public class FileParser
     {
-        private QualifiedName _package;
-        private List<Import> _imports;
-        private Dictionary<QualifiedName, StructDef> _structs;
-        private Dictionary<QualifiedName, VariantDef> _variants;
-        private Dictionary<QualifiedName, InterfaceDef> _interfaces;
+        public QualifiedName Package { get; private set; }
+        public List<Import> Imports { get; private set; }
+        public Dictionary<QualifiedName, StructDef> Structs { get; private set; }
+        public Dictionary<QualifiedName, VariantDef> Variants { get; private set; }
+        public Dictionary<QualifiedName, InterfaceDef> Interfaces { get; private set; }
+        public Dictionary<QualifiedName, FunctionDef> Functions { get; private set; }
 
         public void Parse(OxideParser.Compilation_unitContext cu)
         {
-            _package = cu.package().qualified_name().Parse(true);
-            Console.WriteLine($"Package: {_package}");
+            Package = cu.package().qualified_name().Parse(true);
 
-            _imports = new List<Import>();
+            Imports = new List<Import>();
             foreach (var importStmt in cu.import_stmt())
             {
-                _imports.Add(new Import(
+                Imports.Add(new Import(
                     importStmt.qualified_name().Parse(true),
                     importStmt.name()?.GetText()
                 ));
@@ -70,21 +70,21 @@ namespace Oxide.Compiler.Frontend
             }
 
             // Parse structs
-            _structs = new Dictionary<QualifiedName, StructDef>();
+            Structs = new Dictionary<QualifiedName, StructDef>();
             foreach (var ctx in structDefs)
             {
                 ParseStruct(ctx);
             }
 
             // Parse variant types
-            _variants = new Dictionary<QualifiedName, VariantDef>();
+            Variants = new Dictionary<QualifiedName, VariantDef>();
             foreach (var ctx in variantsDefs)
             {
                 ParseVariant(ctx);
             }
 
             // Parse interfaces
-            _interfaces = new Dictionary<QualifiedName, InterfaceDef>();
+            Interfaces = new Dictionary<QualifiedName, InterfaceDef>();
             foreach (var ctx in ifaceDefs)
             {
                 throw new NotImplementedException("Interfaces");
@@ -97,6 +97,7 @@ namespace Oxide.Compiler.Frontend
             }
 
             // Parse top level funcs
+            Functions = new Dictionary<QualifiedName, FunctionDef>();
             foreach (var ctx in funcsDefs)
             {
                 ParseFunc(ctx);
@@ -110,21 +111,30 @@ namespace Oxide.Compiler.Frontend
             var genericParams = ctx.generic_def().Parse().ToImmutableList();
             var parameters = ParseParameters(ctx.parameter(), false, genericParams);
             var returnType = ctx.type() != null ? ParseType(ctx.type(), genericParams) : null;
+            OxideParser.BlockContext body = null;
 
             switch (ctx.func_body())
             {
                 case OxideParser.Block_func_bodyContext blockFuncBodyContext:
-                {
-                    var bodyParser = new BodyParser(this, genericParams);
-                    bodyParser.ParseBody(blockFuncBodyContext.block());
+                    body = blockFuncBodyContext.block();
                     break;
-                }
                 case OxideParser.Empty_func_bodyContext emptyFuncBodyContext:
                     throw new NotImplementedException("Empty function bodies not implemented");
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
             }
+
+            var qn = new QualifiedName(true, Package.Parts.Add(funcName));
+            Functions.Add(qn, new FunctionDef
+            {
+                Name = qn,
+                Visibility = vis,
+                Parameters = parameters.ToImmutableList(),
+                GenericParams = genericParams.ToImmutableList(),
+                ReturnType = returnType,
+                UnparsedBody = body
+            });
         }
 
         private List<ParameterDef> ParseParameters(OxideParser.ParameterContext[] paramCtxs, bool allowThis,
@@ -184,7 +194,7 @@ namespace Oxide.Compiler.Frontend
         private void ParseStruct(OxideParser.Struct_defContext ctx)
         {
             var vis = ctx.visibility().Parse();
-            var structName = new QualifiedName(true, _package.Parts.Add(ctx.name().GetText()));
+            var structName = new QualifiedName(true, Package.Parts.Add(ctx.name().GetText()));
             var genericParams = ctx.generic_def()?.Parse() ?? new List<string>();
             var fields = new List<FieldDef>();
 
@@ -200,7 +210,7 @@ namespace Oxide.Compiler.Frontend
                 });
             }
 
-            _structs.Add(
+            Structs.Add(
                 structName,
                 new StructDef(structName, vis, genericParams.ToImmutableList(), fields.ToImmutableList())
             );
@@ -209,7 +219,7 @@ namespace Oxide.Compiler.Frontend
         private void ParseVariant(OxideParser.Variant_defContext ctx)
         {
             var vis = ctx.visibility().Parse();
-            var variantName = new QualifiedName(true, _package.Parts.Add(ctx.name().GetText()));
+            var variantName = new QualifiedName(true, Package.Parts.Add(ctx.name().GetText()));
             var genericParams = ctx.generic_def()?.Parse() ?? new List<string>();
             var items = new Dictionary<string, VariantItemDef>();
 
@@ -291,7 +301,7 @@ namespace Oxide.Compiler.Frontend
                 }
             }
 
-            _variants.Add(
+            Variants.Add(
                 variantName,
                 new VariantDef
                 {
@@ -306,7 +316,7 @@ namespace Oxide.Compiler.Frontend
         private void ParseInterface(OxideParser.Iface_defContext ctx)
         {
             var vis = ctx.visibility().Parse();
-            var structName = new QualifiedName(true, _package.Parts.Add(ctx.name().GetText()));
+            var structName = new QualifiedName(true, Package.Parts.Add(ctx.name().GetText()));
             var genericParams = ctx.generic_def()?.Parse() ?? new List<string>();
         }
 
@@ -352,7 +362,7 @@ namespace Oxide.Compiler.Frontend
                 return qn;
             }
 
-            foreach (var import in _imports.AsEnumerable().Reverse())
+            foreach (var import in Imports.AsEnumerable().Reverse())
             {
                 if (import.Target == qn.Parts[0])
                 {
@@ -361,7 +371,7 @@ namespace Oxide.Compiler.Frontend
             }
 
             // Assume current package
-            return new QualifiedName(true, _package.Parts.AddRange(qn.Parts));
+            return new QualifiedName(true, Package.Parts.AddRange(qn.Parts));
         }
     }
 }
