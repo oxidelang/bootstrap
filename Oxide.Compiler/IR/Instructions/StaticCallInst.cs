@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Immutable;
+using System.Linq;
 
 namespace Oxide.Compiler.IR.Instructions
 {
@@ -15,7 +16,7 @@ namespace Oxide.Compiler.IR.Instructions
         {
             writer.Write("staticcall ");
             writer.WriteQn(TargetMethod);
-            writer.Write($" ({string.Join(", ", Arguments)})");
+            writer.Write($" ({string.Join(", ", Arguments.Select(x => $"%{x}"))})");
         }
     }
 }

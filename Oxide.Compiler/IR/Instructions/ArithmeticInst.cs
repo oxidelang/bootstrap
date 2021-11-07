@@ -26,7 +26,7 @@ namespace Oxide.Compiler.IR.Instructions
                 _ => throw new ArgumentOutOfRangeException()
             };
 
-            writer.Write($"arithmetic {op} {LhsValue} {RhsValue}");
+            writer.Write($"arithmetic {op} %{LhsValue} %{RhsValue}");
         }
     }
 }

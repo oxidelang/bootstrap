@@ -8,6 +8,7 @@ PACKAGE:    'package';
 IMPORT:     'import';
 PUBLIC:     'public';
 PRIVATE:    'private';
+EXTERN:     'extern';
 MUT:        'mut';
 STRUCT:     'struct';
 ENUM:       'enum';
@@ -192,7 +193,7 @@ alias_def
     ;
 
 func_def
-    : visibility? FUNC name generic_def? LBRACK (parameter (COMMA parameter)*)? RBRACK (COLON type)? func_body
+    : visibility? EXTERN? FUNC name generic_def? LBRACK (parameter (COMMA parameter)*)? RBRACK (COLON type)? func_body
     ;
 
 parameter

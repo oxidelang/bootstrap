@@ -8,7 +8,7 @@ namespace Oxide.Compiler.Frontend
 {
     public class OxideFrontend
     {
-        public void ParseFile(string file)
+        public FileParser ParseFile(string file)
         {
             var lexer = new OxideLexer(new AntlrFileStream(file));
             var parser = new OxideParser(new CommonTokenStream(lexer));
@@ -18,8 +18,13 @@ namespace Oxide.Compiler.Frontend
 
             foreach (var functionDef in fp.Functions.Values)
             {
+                if (functionDef.UnparsedBody == null)
+                {
+                    continue;
+                }
+
                 var bodyParser = new BodyParser(fp, functionDef.GenericParams);
-                bodyParser.ParseBody(functionDef.UnparsedBody);
+                functionDef.EntryBlock = bodyParser.ParseBody(functionDef.UnparsedBody);
                 functionDef.Blocks = bodyParser.Blocks.Values.ToImmutableList();
                 functionDef.Scopes = bodyParser.Scopes.ToImmutableList();
                 functionDef.UnparsedBody = null;
@@ -33,6 +38,8 @@ namespace Oxide.Compiler.Frontend
             }
 
             Console.WriteLine(irWriter.Generate());
+
+            return fp;
         }
     }
 }

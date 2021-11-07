@@ -20,6 +20,12 @@ namespace Oxide.Compiler.IR
             BeginLine();
             Write("func ");
             WriteVisibility(functionDef.Visibility);
+
+            if (functionDef.IsExtern)
+            {
+                Write(" extern");
+            }
+            
             Write(" ");
             WriteQn(functionDef.Name);
             Write(" (");
@@ -45,9 +51,18 @@ namespace Oxide.Compiler.IR
                 WriteType(functionDef.ReturnType);
             }
 
+            if (!functionDef.HasBody)
+            {
+                Write(";");
+                EndLine();
+                return;
+            }
+
             Write(" {");
             EndLine();
             _indentLevel++;
+
+            WriteLine($"entry = #{functionDef.EntryBlock}");
 
             foreach (var scope in functionDef.Scopes)
             {

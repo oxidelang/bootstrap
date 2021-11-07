@@ -36,7 +36,7 @@ namespace Oxide.Compiler.Frontend
             _lastVariableId = 0;
         }
 
-        public void ParseBody(OxideParser.BlockContext ctx)
+        public int ParseBody(OxideParser.BlockContext ctx)
         {
             var scope = PushScope();
 
@@ -45,6 +45,8 @@ namespace Oxide.Compiler.Frontend
 
             // TODO: Init context
             ParseBlock(ctx);
+
+            return block.Id;
         }
 
         private void ParseBlock(OxideParser.BlockContext ctx)

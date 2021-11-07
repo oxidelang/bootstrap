@@ -21,6 +21,8 @@ namespace Oxide.Compiler.Frontend
             Package = cu.package().qualified_name().Parse(true);
 
             Imports = new List<Import>();
+            Imports.Add(new Import(CommonTypes.I32.Name, "i32"));
+
             foreach (var importStmt in cu.import_stmt())
             {
                 Imports.Add(new Import(
@@ -118,8 +120,7 @@ namespace Oxide.Compiler.Frontend
                 case OxideParser.Block_func_bodyContext blockFuncBodyContext:
                     body = blockFuncBodyContext.block();
                     break;
-                case OxideParser.Empty_func_bodyContext emptyFuncBodyContext:
-                    throw new NotImplementedException("Empty function bodies not implemented");
+                case OxideParser.Empty_func_bodyContext:
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
@@ -133,6 +134,8 @@ namespace Oxide.Compiler.Frontend
                 Parameters = parameters.ToImmutableList(),
                 GenericParams = genericParams.ToImmutableList(),
                 ReturnType = returnType,
+                IsExtern = ctx.EXTERN() != null,
+                HasBody = body != null,
                 UnparsedBody = body
             });
         }
