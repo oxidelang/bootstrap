@@ -15,6 +15,18 @@ namespace Oxide.Compiler.IR
         {
             _units.Add(unit);
         }
-        
+
+        public IrUnit FindUnitForQn(QualifiedName qn)
+        {
+            foreach (var unit in _units)
+            {
+                if (unit.Objects.Contains(qn))
+                {
+                    return unit;
+                }
+            }
+
+            return null;
+        }
     }
 }

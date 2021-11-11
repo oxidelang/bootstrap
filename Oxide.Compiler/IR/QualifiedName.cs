@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 
@@ -18,7 +19,8 @@ namespace Oxide.Compiler.IR
 
         protected bool Equals(QualifiedName other)
         {
-            return IsAbsolute == other.IsAbsolute && Parts.Equals(other.Parts);
+            return IsAbsolute == other.IsAbsolute &&
+                   ((IStructuralEquatable)Parts).Equals(other.Parts, EqualityComparer<string>.Default);
         }
 
         public override bool Equals(object obj)
@@ -31,7 +33,10 @@ namespace Oxide.Compiler.IR
 
         public override int GetHashCode()
         {
-            return HashCode.Combine(IsAbsolute, Parts);
+            return HashCode.Combine(
+                IsAbsolute,
+                ((IStructuralEquatable)Parts).GetHashCode(EqualityComparer<string>.Default)
+            );
         }
 
         public override string ToString()

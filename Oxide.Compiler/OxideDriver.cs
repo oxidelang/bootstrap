@@ -29,6 +29,7 @@ namespace Oxide.Compiler
 
             Console.WriteLine("Processing");
             var unit = frontend.Process();
+            _store.AddUnit(unit);
 
             Console.WriteLine("Dumping IR");
             var writer = new IrWriter();
@@ -36,7 +37,7 @@ namespace Oxide.Compiler
             Console.WriteLine(writer.Generate());
 
             Console.WriteLine("Compiling");
-            var backend = new LlvmBackend();
+            var backend = new LlvmBackend(_store);
             backend.Begin();
             backend.CompileUnit(unit);
             backend.Complete();

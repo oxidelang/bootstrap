@@ -7,7 +7,14 @@ namespace Oxide.Compiler.Backend.Llvm
 {
     public class LlvmBackend
     {
+        public IrStore Store { get; }
+
         public LLVMModuleRef Module { get; private set; }
+
+        public LlvmBackend(IrStore store)
+        {
+            Store = store;
+        }
 
         public void Begin()
         {

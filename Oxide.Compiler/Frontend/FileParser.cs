@@ -357,13 +357,13 @@ namespace Oxide.Compiler.Frontend
             {
                 Category = category,
                 MutableRef = mutable,
-                GenericParams = genericParams.ToImmutableList(),
+                GenericParams = genericParams.ToImmutableArray(),
                 Source = source,
                 Name = qn
             };
         }
 
-        private QualifiedName ResolveQN(QualifiedName qn)
+        public QualifiedName ResolveQN(QualifiedName qn)
         {
             if (qn.IsAbsolute)
             {

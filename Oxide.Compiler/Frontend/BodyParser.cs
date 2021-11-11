@@ -9,6 +9,8 @@ namespace Oxide.Compiler.Frontend
 {
     public class BodyParser
     {
+        private readonly IrStore _store;
+        private readonly IrUnit _unit;
         private readonly FileParser _fileParser;
         private readonly ImmutableList<string> _genericTypes;
 
@@ -25,8 +27,11 @@ namespace Oxide.Compiler.Frontend
 
         private int _lastInstId;
 
-        public BodyParser(FileParser fileParser, ImmutableList<string> genericTypes)
+        public BodyParser(IrStore store, IrUnit unit, FileParser fileParser,
+            ImmutableList<string> genericTypes)
         {
+            _store = store;
+            _unit = unit;
             _genericTypes = genericTypes;
             _fileParser = fileParser;
             Scopes = new List<Scope>();
@@ -435,35 +440,53 @@ namespace Oxide.Compiler.Frontend
             }
 
             var qn1 = qns[0].Parse();
-            if (qn1.Parts.Length != 1 || qn1.Parts[0] != "debug_int")
+            var resolvedName = ResolveQN(qn1);
+            var unit = FindUnitForQn(resolvedName);
+            if (unit == null)
             {
-                throw new NotImplementedException("Only static calls to debug_int are implemented");
+                throw new Exception($"Unable to find unit for {resolvedName}");
+            }
+
+            var functionDef = unit.Functions[resolvedName];
+
+            var argumentCtxs = ctx.arguments() != null
+                ? ctx.arguments().argument()
+                : Array.Empty<OxideParser.ArgumentContext>();
+
+            if (argumentCtxs.Length != functionDef.Parameters.Count)
+            {
+                throw new Exception($"{functionDef.Name} takes {functionDef.Parameters.Count} parameters");
             }
 
             var argIds = new List<int>();
-            if (ctx.arguments() != null)
+            for (var i = 0; i < argumentCtxs.Length; i++)
             {
-                foreach (var argument in ctx.arguments().argument())
+                var argument = argumentCtxs[i];
+                var parameter = functionDef.Parameters[i];
+
+                if (argument.label() != null)
                 {
-                    if (argument.label() != null)
-                    {
-                        throw new NotImplementedException("Argument labels are not implemented");
-                    }
-
-                    var inst = ParseExpression(argument.expression());
-                    if (!inst.HasValue)
-                    {
-                        throw new Exception("Argument does not return a value");
-                    }
-
-                    argIds.Add(inst.Id);
+                    throw new NotImplementedException("Argument labels are not implemented");
                 }
+
+                var inst = ParseExpression(argument.expression());
+                if (!inst.HasValue)
+                {
+                    throw new Exception("Argument does not return a value");
+                }
+
+                if (!inst.ValueType.Equals(parameter.Type))
+                {
+                    throw new Exception($"Parameter type mismatch {inst.ValueType} != {parameter.Type}");
+                }
+
+                argIds.Add(inst.Id);
             }
 
             return CurrentBlock.AddInstruction(new StaticCallInst
             {
                 Id = ++_lastInstId,
-                TargetMethod = qn1,
+                TargetMethod = functionDef.Name,
                 Arguments = argIds.ToImmutableList()
             });
         }
@@ -575,6 +598,21 @@ namespace Oxide.Compiler.Frontend
         private TypeDef ParseType(OxideParser.TypeContext ctx)
         {
             return _fileParser.ParseType(ctx, _genericTypes);
+        }
+
+        private QualifiedName ResolveQN(QualifiedName qn)
+        {
+            return _fileParser.ResolveQN(qn);
+        }
+
+        private IrUnit FindUnitForQn(QualifiedName qn)
+        {
+            if (_unit.Objects.Contains(qn))
+            {
+                return _unit;
+            }
+
+            return _store.FindUnitForQn(qn);
         }
     }
 }

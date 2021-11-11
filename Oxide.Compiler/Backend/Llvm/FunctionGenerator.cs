@@ -14,6 +14,8 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private LLVMModuleRef Module => Backend.Module;
 
+        private IrStore Store => Backend.Store;
+
         private LLVMBuilderRef Builder { get; set; }
 
         private FunctionDef _funcDef;
@@ -175,14 +177,17 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private void CompileStaticCallInst(StaticCallInst inst)
         {
-            var debugparamTypes = new[] { LLVMTypeRef.Int32 };
-            var debugfuncType = LLVMTypeRef.CreateFunction(LLVMTypeRef.Void, debugparamTypes);
-            var debugfuncRef = Module.AddFunction("::std::debug_int", debugfuncType);
+            var unit = Store.FindUnitForQn(inst.TargetMethod) ??
+                       throw new Exception($"Failed to find unit for {inst.TargetMethod}");
+            var funDef = unit.Functions[inst.TargetMethod];
+            var funcRef = GetFunctionRef(funDef);
+            var args = inst.Arguments.Select(x => _valueMap[x]).ToArray();
 
-            // inst.TargetMethod
-
-            var value = Builder.BuildCall(debugfuncRef, new[] { _valueMap[inst.Arguments.Single()] });
-            _valueMap.Add(inst.Id, value);
+            var value = Builder.BuildCall(funcRef, args);
+            if (_funcDef.ReturnType != null)
+            {
+                _valueMap.Add(inst.Id, value);
+            }
         }
 
         public LLVMValueRef GetFunctionRef(FunctionDef funcDef)
