@@ -9,5 +9,7 @@ namespace Oxide.Compiler.IR
         public TypeDef Type { get; init; }
 
         public bool Mutable { get; init; }
+
+        public int? ParameterSource { get; init; }
     }
 }

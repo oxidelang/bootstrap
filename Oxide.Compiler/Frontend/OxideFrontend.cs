@@ -68,7 +68,7 @@ namespace Oxide.Compiler.Frontend
                     }
 
                     var unparsedBody = fp.UnparsedBodies[functionDef.Name];
-                    var bodyParser = new BodyParser(_store, _unit, fp, functionDef.GenericParams);
+                    var bodyParser = new BodyParser(_store, _unit, fp, functionDef);
                     functionDef.EntryBlock = bodyParser.ParseBody(unparsedBody);
                     functionDef.Blocks = bodyParser.Blocks.Values.ToImmutableList();
                     functionDef.Scopes = bodyParser.Scopes.ToImmutableList();

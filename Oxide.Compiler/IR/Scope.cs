@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Oxide.Compiler.Frontend;
 
@@ -23,6 +24,11 @@ namespace Oxide.Compiler.IR
 
         public VariableDeclaration DefineVariable(VariableDeclaration dec)
         {
+            if (dec.ParameterSource.HasValue && ParentScope != null)
+            {
+                throw new Exception("Parameter variables can only be defined in root scope");
+            }
+
             Variables.Add(dec.Id, dec);
             _variableMapping[dec.Name] = dec.Id;
             return dec;

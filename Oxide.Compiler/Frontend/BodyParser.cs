@@ -12,7 +12,7 @@ namespace Oxide.Compiler.Frontend
         private readonly IrStore _store;
         private readonly IrUnit _unit;
         private readonly FileParser _fileParser;
-        private readonly ImmutableList<string> _genericTypes;
+        private readonly FunctionDef _functionDef;
 
         public List<Scope> Scopes { get; private set; }
         private int _lastScopeId;
@@ -27,12 +27,11 @@ namespace Oxide.Compiler.Frontend
 
         private int _lastInstId;
 
-        public BodyParser(IrStore store, IrUnit unit, FileParser fileParser,
-            ImmutableList<string> genericTypes)
+        public BodyParser(IrStore store, IrUnit unit, FileParser fileParser, FunctionDef functionDef)
         {
             _store = store;
             _unit = unit;
-            _genericTypes = genericTypes;
+            _functionDef = functionDef;
             _fileParser = fileParser;
             Scopes = new List<Scope>();
             Blocks = new Dictionary<int, Block>();
@@ -45,11 +44,43 @@ namespace Oxide.Compiler.Frontend
         {
             var scope = PushScope();
 
+            for (var i = 0; i < _functionDef.Parameters.Count; i++)
+            {
+                var paramDef = _functionDef.Parameters[i];
+                if (paramDef.IsThis)
+                {
+                    throw new NotImplementedException("This params are not supported");
+                }
+
+                scope.DefineVariable(new VariableDeclaration
+                {
+                    Id = ++_lastVariableId,
+                    Name = paramDef.Name,
+                    Type = paramDef.Type,
+                    Mutable = false,
+                    ParameterSource = i
+                });
+            }
+
             var block = NewBlock(CurrentScope);
             MakeCurrent(block);
 
             // TODO: Init context
             ParseBlock(ctx);
+
+            // TODO: Improve
+            if (!CurrentBlock.HasTerminated)
+            {
+                if (_functionDef.ReturnType != null)
+                {
+                    throw new Exception("Function does not return value");
+                }
+
+                CurrentBlock.AddInstruction(new ReturnInst
+                {
+                    Id = ++_lastInstId
+                });
+            }
 
             return block.Id;
         }
@@ -161,8 +192,16 @@ namespace Oxide.Compiler.Frontend
                     throw new NotImplementedException("Assign expression");
                     break;
                 case OxideParser.Return_expressionContext returnExpressionContext:
-                    throw new NotImplementedException("Return expression");
-                    break;
+                {
+                    var result = returnExpressionContext.or_expression() != null
+                        ? (int?)ParseOrExpression(returnExpressionContext.or_expression()).Id
+                        : null;
+                    return CurrentBlock.AddInstruction(new ReturnInst
+                    {
+                        Id = ++_lastInstId,
+                        ResultValue = result
+                    });
+                }
                 default:
                     throw new ArgumentOutOfRangeException(nameof(ctx));
             }
@@ -597,7 +636,7 @@ namespace Oxide.Compiler.Frontend
 
         private TypeDef ParseType(OxideParser.TypeContext ctx)
         {
-            return _fileParser.ParseType(ctx, _genericTypes);
+            return _fileParser.ParseType(ctx, _functionDef.GenericParams);
         }
 
         private QualifiedName ResolveQN(QualifiedName qn)

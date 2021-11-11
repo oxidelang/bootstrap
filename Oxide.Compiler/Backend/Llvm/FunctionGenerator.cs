@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using LLVMSharp.Interop;
@@ -25,6 +26,10 @@ namespace Oxide.Compiler.Backend.Llvm
         private Dictionary<int, LLVMValueRef> _valueMap;
         private Dictionary<int, LLVMValueRef> _localMap;
         private Dictionary<int, LLVMBasicBlockRef> _blockMap;
+        private Dictionary<int, LLVMBasicBlockRef> _scopeReturnMap;
+        private LLVMValueRef? _returnSlot;
+
+        private Block CurrentBlock { get; set; }
 
         public FunctionGenerator(LlvmBackend backend)
         {
@@ -60,6 +65,15 @@ namespace Oxide.Compiler.Backend.Llvm
             // Generate entry block
             Builder.PositionAtEnd(entryBlock);
 
+            // Create storage slot for return value
+            if (_funcDef.ReturnType != null)
+            {
+                var varName = $"return_value";
+                var varType = ConvertType(funcDef.ReturnType);
+                _returnSlot = Builder.BuildAlloca(varType, varName);
+            }
+
+            // Create slots for locals
             _localMap = new Dictionary<int, LLVMValueRef>();
 
             // TODO: Reuse variable slots
@@ -73,7 +87,37 @@ namespace Oxide.Compiler.Backend.Llvm
                 }
             }
 
+            // Load parameters
+            foreach (var scope in funcDef.Scopes)
+            {
+                if (scope.ParentScope != null)
+                {
+                    continue;
+                }
+
+                foreach (var varDef in scope.Variables.Values)
+                {
+                    if (!varDef.ParameterSource.HasValue)
+                    {
+                        continue;
+                    }
+
+                    Builder.BuildStore(_funcRef.Params[varDef.ParameterSource.Value], _localMap[varDef.Id]);
+                }
+            }
+
+            // Jump to first block
             Builder.BuildBr(_blockMap[funcDef.EntryBlock]);
+
+            // Create "return" paths for scopes
+            _scopeReturnMap = new Dictionary<int, LLVMBasicBlockRef>();
+            foreach (var scope in funcDef.Scopes)
+            {
+                if (scope.ParentScope == null)
+                {
+                    CreateScopeReturn(scope);
+                }
+            }
 
             // Compile bodies
             foreach (var block in funcDef.Blocks)
@@ -81,14 +125,51 @@ namespace Oxide.Compiler.Backend.Llvm
                 CompileBlock(block);
             }
 
-            // Temporary
-            Builder.BuildRetVoid();
-
             Builder.Dispose();
+        }
+
+        private void CreateScopeReturn(Scope scope)
+        {
+            var block = _funcRef.AppendBasicBlock($"scope_{scope.Id}_return");
+            Builder.PositionAtEnd(block);
+
+            // TODO: Cleanup any values that need cleanup
+
+            if (scope.ParentScope == null)
+            {
+                if (_returnSlot.HasValue)
+                {
+                    var retVal = Builder.BuildLoad(_returnSlot.Value, "loaded_return_value");
+                    Builder.BuildRet(retVal);
+                }
+                else
+                {
+                    Builder.BuildRetVoid();
+                }
+            }
+            else
+            {
+                Builder.BuildBr(_scopeReturnMap[scope.ParentScope.Id]);
+            }
+
+            _scopeReturnMap.Add(scope.Id, block);
+
+            // Generate children's return path now that parents exists
+            foreach (var childScope in _funcDef.Scopes)
+            {
+                if (childScope.ParentScope != scope)
+                {
+                    continue;
+                }
+
+                CreateScopeReturn(childScope);
+            }
         }
 
         private void CompileBlock(Block block)
         {
+            CurrentBlock = block;
+
             var mainBlock = _blockMap[block.Id];
             Builder.PositionAtEnd(mainBlock);
 
@@ -98,6 +179,8 @@ namespace Oxide.Compiler.Backend.Llvm
             {
                 CompileInstruction(instruction);
             }
+
+            CurrentBlock = null;
         }
 
         private void CompileInstruction(Instruction instruction)
@@ -121,6 +204,9 @@ namespace Oxide.Compiler.Backend.Llvm
                     break;
                 case StaticCallInst staticCallInst:
                     CompileStaticCallInst(staticCallInst);
+                    break;
+                case ReturnInst returnInst:
+                    CompileReturnInst(returnInst);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(instruction));
@@ -217,6 +303,22 @@ namespace Oxide.Compiler.Backend.Llvm
             funcRef = Module.AddFunction(funcName, funcType);
 
             return funcRef;
+        }
+
+        private void CompileReturnInst(ReturnInst inst)
+        {
+            if (inst.ResultValue.HasValue != _returnSlot.HasValue)
+            {
+                throw new Exception("Invalid return expression");
+            }
+
+            if (inst.ResultValue.HasValue)
+            {
+                var value = _valueMap[inst.ResultValue.Value];
+                Builder.BuildStore(value, _returnSlot.Value);
+            }
+
+            Builder.BuildBr(_scopeReturnMap[CurrentBlock.Scope.Id]);
         }
 
         private LLVMTypeRef ConvertType(TypeDef typeDef)

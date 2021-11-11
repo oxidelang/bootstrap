@@ -219,7 +219,7 @@ statement
 
 expression
     : or_expression #pass_expression
-    | RETURN or_expression #return_expression
+    | RETURN or_expression? #return_expression
     | base_expression EQUAL or_expression #assign_expression_top
     ;
 

@@ -25,7 +25,7 @@ namespace Oxide.Compiler.IR
             {
                 Write(" extern");
             }
-            
+
             Write(" ");
             WriteQn(functionDef.Name);
             Write(" (");
@@ -90,6 +90,11 @@ namespace Oxide.Compiler.IR
                 Write(varDec.Name);
                 Write(" ");
                 WriteType(varDec.Type);
+                if (varDec.ParameterSource.HasValue)
+                {
+                    Write($" = param:{varDec.ParameterSource}");
+                }
+
                 EndLine();
             }
 
