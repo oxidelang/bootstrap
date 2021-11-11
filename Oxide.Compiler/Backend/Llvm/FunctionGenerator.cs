@@ -263,16 +263,21 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private void CompileStaticCallInst(StaticCallInst inst)
         {
+            var name = $"inst_{inst.Id}";
             var unit = Store.FindUnitForQn(inst.TargetMethod) ??
                        throw new Exception($"Failed to find unit for {inst.TargetMethod}");
             var funDef = unit.Functions[inst.TargetMethod];
             var funcRef = GetFunctionRef(funDef);
             var args = inst.Arguments.Select(x => _valueMap[x]).ToArray();
 
-            var value = Builder.BuildCall(funcRef, args);
-            if (_funcDef.ReturnType != null)
+            if (inst.ReturnType != null)
             {
+                var value = Builder.BuildCall(funcRef, args, name);
                 _valueMap.Add(inst.Id, value);
+            }
+            else
+            {
+                Builder.BuildCall(funcRef, args);
             }
         }
 

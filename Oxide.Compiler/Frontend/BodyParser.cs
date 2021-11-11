@@ -358,6 +358,11 @@ namespace Oxide.Compiler.Frontend
                 {
                     var left = ParseAddExpression(minusAddExpressionContext.add_expression());
                     var right = ParseMultiplyExpression(minusAddExpressionContext.multiply_expression());
+                    if (!left.ValueType.Equals(right.ValueType))
+                    {
+                        throw new NotImplementedException("Arithmetic of different types not implemented");
+                    }
+
                     return CurrentBlock.AddInstruction(new ArithmeticInst
                     {
                         Id = ++_lastInstId,
@@ -371,6 +376,11 @@ namespace Oxide.Compiler.Frontend
                 {
                     var left = ParseAddExpression(plusAddExpressionContext.add_expression());
                     var right = ParseMultiplyExpression(plusAddExpressionContext.multiply_expression());
+                    if (!left.ValueType.Equals(right.ValueType))
+                    {
+                        throw new NotImplementedException("Arithmetic of different types not implemented");
+                    }
+
                     return CurrentBlock.AddInstruction(new ArithmeticInst
                     {
                         Id = ++_lastInstId,
@@ -526,7 +536,8 @@ namespace Oxide.Compiler.Frontend
             {
                 Id = ++_lastInstId,
                 TargetMethod = functionDef.Name,
-                Arguments = argIds.ToImmutableList()
+                Arguments = argIds.ToImmutableList(),
+                ReturnType = functionDef.ReturnType
             });
         }
 
