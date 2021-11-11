@@ -14,6 +14,14 @@ namespace Oxide.Compiler.Backend.Llvm
             Module = LLVMModuleRef.CreateWithName("OxideModule");
         }
 
+        public void CompileUnit(IrUnit unit)
+        {
+            foreach (var funcDef in unit.Functions.Values)
+            {
+                CompileFunction(funcDef);
+            }
+        }
+
         public void CompileFunction(FunctionDef funcDef)
         {
             var funcGen = new FunctionGenerator(this);
@@ -44,7 +52,7 @@ namespace Oxide.Compiler.Backend.Llvm
                 throw new Exception($"Error: {error}");
             }
 
-            var debugFuncRef = Module.GetNamedFunction("::examples::debug_int");
+            var debugFuncRef = Module.GetNamedFunction("::std::debug_int");
             engine.AddGlobalMapping(debugFuncRef, Marshal.GetFunctionPointerForDelegate<DebugInt>(DebugIntImp));
 
             var funcRef = Module.GetNamedFunction("::examples::main");

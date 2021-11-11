@@ -177,11 +177,10 @@ namespace Oxide.Compiler.Backend.Llvm
         {
             var debugparamTypes = new[] { LLVMTypeRef.Int32 };
             var debugfuncType = LLVMTypeRef.CreateFunction(LLVMTypeRef.Void, debugparamTypes);
-            var debugfuncRef = Module.AddFunction("::examples::debug_int", debugfuncType);
+            var debugfuncRef = Module.AddFunction("::std::debug_int", debugfuncType);
 
-            
             // inst.TargetMethod
-            
+
             var value = Builder.BuildCall(debugfuncRef, new[] { _valueMap[inst.Arguments.Single()] });
             _valueMap.Add(inst.Id, value);
         }

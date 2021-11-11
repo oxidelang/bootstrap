@@ -19,8 +19,6 @@ namespace Oxide.Compiler.IR
 
         public bool HasBody { get; init; }
 
-        public OxideParser.BlockContext UnparsedBody { get; set; }
-
         public ImmutableList<Scope> Scopes { get; set; }
 
         public ImmutableList<Block> Blocks { get; set; }

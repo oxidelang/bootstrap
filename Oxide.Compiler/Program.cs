@@ -1,14 +1,11 @@
-﻿using Oxide.Compiler.Frontend;
-
-namespace Oxide.Compiler
+﻿namespace Oxide.Compiler
 {
     class Program
     {
         static void Main(string[] args)
         {
-
-            var frontend = new OxideFrontend();
-            frontend.ParseFile("sample.ox");
+            var driver = new OxideDriver();
+            driver.Compile(args[0]);
         }
     }
 }

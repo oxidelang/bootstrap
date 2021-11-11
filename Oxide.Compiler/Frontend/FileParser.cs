@@ -15,6 +15,7 @@ namespace Oxide.Compiler.Frontend
         public Dictionary<QualifiedName, VariantDef> Variants { get; private set; }
         public Dictionary<QualifiedName, InterfaceDef> Interfaces { get; private set; }
         public Dictionary<QualifiedName, FunctionDef> Functions { get; private set; }
+        public Dictionary<QualifiedName, OxideParser.BlockContext> UnparsedBodies { get; private set; }
 
         public void Parse(OxideParser.Compilation_unitContext cu)
         {
@@ -100,6 +101,7 @@ namespace Oxide.Compiler.Frontend
 
             // Parse top level funcs
             Functions = new Dictionary<QualifiedName, FunctionDef>();
+            UnparsedBodies = new Dictionary<QualifiedName, OxideParser.BlockContext>();
             foreach (var ctx in funcsDefs)
             {
                 ParseFunc(ctx);
@@ -136,8 +138,11 @@ namespace Oxide.Compiler.Frontend
                 ReturnType = returnType,
                 IsExtern = ctx.EXTERN() != null,
                 HasBody = body != null,
-                UnparsedBody = body
             });
+            if (body != null)
+            {
+                UnparsedBodies.Add(qn, body);
+            }
         }
 
         private List<ParameterDef> ParseParameters(OxideParser.ParameterContext[] paramCtxs, bool allowThis,
