@@ -315,8 +315,8 @@ block_expression
     ;
 
 if_expression
-    : IF expression block (ELSE (block | if_expression))? #simple_if_expression
-    | IF VAR expression block (ELSE (block | if_expression))? #let_if_expression
+    : IF cond=expression body=block (ELSE (else_block=block | else_if=if_expression))? #simple_if_expression
+    | IF VAR cond=expression body=block (ELSE (else_block=block | else_if=if_expression))? #let_if_expression
     ;
 
 arguments

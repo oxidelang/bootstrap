@@ -218,7 +218,16 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private void CompileJumpInst(JumpInst jumpInst)
         {
-            Builder.BuildBr(_blockMap[jumpInst.TargetBlock]);
+            if (jumpInst.ConditionValue.HasValue)
+            {
+                Builder.BuildCondBr(_valueMap[jumpInst.ConditionValue.Value], _blockMap[jumpInst.TargetBlock],
+                    _blockMap[jumpInst.ElseBlock]);
+            }
+            else
+            {
+                Builder.BuildBr(_blockMap[jumpInst.TargetBlock]);
+            }
+
             // TODO: Real cleanup
             // throw new NotImplementedException("Jump inst");
         }

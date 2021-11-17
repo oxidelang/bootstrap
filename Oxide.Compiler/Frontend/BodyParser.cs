@@ -89,18 +89,6 @@ namespace Oxide.Compiler.Frontend
 
         private Instruction ParseBlock(OxideParser.BlockContext ctx)
         {
-            var oldBlock = CurrentBlock;
-
-            PushScope();
-            var block = NewBlock(CurrentScope);
-            MakeCurrent(block);
-
-            oldBlock.AddInstruction(new JumpInst
-            {
-                Id = ++_lastInstId,
-                TargetBlock = block.Id
-            });
-
             if (ctx.statement() != null)
             {
                 foreach (var statement in ctx.statement())
@@ -151,12 +139,24 @@ namespace Oxide.Compiler.Frontend
                     }
 
                     var originalScope = CurrentScope;
+                    var originalBlock = CurrentBlock;
+
+                    PushScope();
+                    var block = NewBlock(CurrentScope);
+                    MakeCurrent(block);
+
+                    originalBlock.AddInstruction(new JumpInst
+                    {
+                        Id = ++_lastInstId,
+                        TargetBlock = block.Id
+                    });
 
                     var finalOp = ParseBlock(child.block());
+
                     var finalBlock = CurrentBlock;
                     if (finalBlock.HasTerminated)
                     {
-                        throw new NotImplementedException("TEST");
+                        throw new NotImplementedException("TODO");
                     }
 
                     var returnBlock = NewBlock(originalScope);
@@ -199,8 +199,129 @@ namespace Oxide.Compiler.Frontend
                     return null;
                 }
                 case OxideParser.If_block_expressionContext child:
-                    throw new NotImplementedException("If blocks");
-                    break;
+                    return ParseIfExpression(child.if_expression());
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(ctx));
+            }
+        }
+
+        private Instruction ParseIfExpression(OxideParser.If_expressionContext ctx)
+        {
+            switch (ctx)
+            {
+                case OxideParser.Simple_if_expressionContext child:
+                {
+                    var condInst = ParseExpression(child.expression());
+
+                    var originalScope = CurrentScope;
+                    var originalBlock = CurrentBlock;
+
+                    // Configure jump paths
+                    var returnBlock = NewBlock(originalScope);
+                    PushScope();
+                    var trueBlock = NewBlock(CurrentScope);
+                    RestoreScope(originalScope);
+
+                    var hasElse = child.else_block != null || child.else_if != null;
+                    var falseBlock = hasElse ? NewBlock(CurrentScope) : null;
+                    originalBlock.AddInstruction(new JumpInst
+                    {
+                        Id = ++_lastInstId,
+                        ConditionValue = condInst.Id,
+                        TargetBlock = trueBlock.Id,
+                        ElseBlock = hasElse ? falseBlock.Id : returnBlock.Id
+                    });
+
+                    MakeCurrent(trueBlock);
+                    var trueOp = ParseBlock(child.body);
+                    var trueFinalBlock = CurrentBlock;
+                    if (trueFinalBlock.HasTerminated)
+                    {
+                        throw new NotImplementedException("TODO");
+                    }
+
+                    Instruction falseOp = null;
+                    Block falseFinalBlock = null;
+                    if (hasElse)
+                    {
+                        MakeCurrent(falseBlock);
+                        falseOp = child.else_block != null
+                            ? ParseBlock(child.else_block)
+                            : ParseIfExpression(child.else_if);
+                        falseFinalBlock = CurrentBlock;
+                        if (falseFinalBlock.HasTerminated)
+                        {
+                            throw new NotImplementedException("TODO");
+                        }
+                    }
+
+                    MakeCurrent(returnBlock);
+
+                    if (hasElse && trueOp.HasValue && falseOp.HasValue)
+                    {
+                        if (!Equals(trueOp.ValueType, falseOp.ValueType))
+                        {
+                            throw new NotImplementedException("Incompatible if block true and false path values");
+                        }
+
+                        var resultDec = originalScope.DefineVariable(new VariableDeclaration
+                        {
+                            Id = ++_lastVariableId,
+                            Name = null,
+                            Type = trueOp.ValueType,
+                            Mutable = false
+                        });
+
+                        trueFinalBlock.AddInstruction(new StoreLocalInst
+                        {
+                            Id = ++_lastInstId,
+                            LocalId = resultDec.Id,
+                            ValueId = trueOp.Id
+                        });
+                        trueFinalBlock.AddInstruction(new JumpInst
+                        {
+                            Id = ++_lastInstId,
+                            TargetBlock = returnBlock.Id
+                        });
+
+                        falseFinalBlock.AddInstruction(new StoreLocalInst
+                        {
+                            Id = ++_lastInstId,
+                            LocalId = resultDec.Id,
+                            ValueId = falseOp.Id
+                        });
+                        falseFinalBlock.AddInstruction(new JumpInst
+                        {
+                            Id = ++_lastInstId,
+                            TargetBlock = returnBlock.Id
+                        });
+
+                        return returnBlock.AddInstruction(new LoadLocalInst
+                        {
+                            Id = ++_lastInstId,
+                            LocalId = resultDec.Id,
+                            LocalType = resultDec.Type,
+                        });
+                    }
+
+                    trueFinalBlock.AddInstruction(new JumpInst
+                    {
+                        Id = ++_lastInstId,
+                        TargetBlock = returnBlock.Id
+                    });
+                    if (hasElse)
+                    {
+                        falseFinalBlock.AddInstruction(new JumpInst
+                        {
+                            Id = ++_lastInstId,
+                            TargetBlock = returnBlock.Id
+                        });
+                    }
+
+                    return null;
+                }
+                case OxideParser.Let_if_expressionContext:
+                    throw new NotImplementedException("If let expressions");
                 default:
                     throw new ArgumentOutOfRangeException(nameof(ctx));
             }

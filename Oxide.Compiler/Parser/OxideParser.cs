@@ -3918,6 +3918,10 @@ public partial class OxideParser : Parser {
 		}
 	}
 	public partial class Simple_if_expressionContext : If_expressionContext {
+		public ExpressionContext cond;
+		public BlockContext body;
+		public BlockContext else_block;
+		public If_expressionContext else_if;
 		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode IF() { return GetToken(OxideParser.IF, 0); }
 		[System.Diagnostics.DebuggerNonUserCode] public ExpressionContext expression() {
 			return GetRuleContext<ExpressionContext>(0);
@@ -3935,6 +3939,10 @@ public partial class OxideParser : Parser {
 		public Simple_if_expressionContext(If_expressionContext context) { CopyFrom(context); }
 	}
 	public partial class Let_if_expressionContext : If_expressionContext {
+		public ExpressionContext cond;
+		public BlockContext body;
+		public BlockContext else_block;
+		public If_expressionContext else_if;
 		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode IF() { return GetToken(OxideParser.IF, 0); }
 		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode VAR() { return GetToken(OxideParser.VAR, 0); }
 		[System.Diagnostics.DebuggerNonUserCode] public ExpressionContext expression() {
@@ -3968,9 +3976,9 @@ public partial class OxideParser : Parser {
 				State = 637;
 				Match(IF);
 				State = 638;
-				expression();
+				((Simple_if_expressionContext)_localctx).cond = expression();
 				State = 639;
-				block();
+				((Simple_if_expressionContext)_localctx).body = block();
 				State = 645;
 				ErrorHandler.Sync(this);
 				switch ( Interpreter.AdaptivePredict(TokenStream,79,Context) ) {
@@ -3984,13 +3992,13 @@ public partial class OxideParser : Parser {
 					case LBRACE:
 						{
 						State = 641;
-						block();
+						((Simple_if_expressionContext)_localctx).else_block = block();
 						}
 						break;
 					case IF:
 						{
 						State = 642;
-						if_expression();
+						((Simple_if_expressionContext)_localctx).else_if = if_expression();
 						}
 						break;
 					default:
@@ -4010,9 +4018,9 @@ public partial class OxideParser : Parser {
 				State = 648;
 				Match(VAR);
 				State = 649;
-				expression();
+				((Let_if_expressionContext)_localctx).cond = expression();
 				State = 650;
-				block();
+				((Let_if_expressionContext)_localctx).body = block();
 				State = 656;
 				ErrorHandler.Sync(this);
 				switch ( Interpreter.AdaptivePredict(TokenStream,81,Context) ) {
@@ -4026,13 +4034,13 @@ public partial class OxideParser : Parser {
 					case LBRACE:
 						{
 						State = 652;
-						block();
+						((Let_if_expressionContext)_localctx).else_block = block();
 						}
 						break;
 					case IF:
 						{
 						State = 653;
-						if_expression();
+						((Let_if_expressionContext)_localctx).else_if = if_expression();
 						}
 						break;
 					default:
