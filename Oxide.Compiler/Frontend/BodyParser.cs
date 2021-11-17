@@ -531,8 +531,7 @@ namespace Oxide.Compiler.Frontend
                     throw new NotImplementedException("Access expression");
                     break;
                 case OxideParser.Block_base_expressionContext blockBaseExpressionContext:
-                    throw new NotImplementedException("Block expression");
-                    break;
+                    return ParseBlockExpression(blockBaseExpressionContext.block_expression());
                 case OxideParser.Bracket_base_expressionContext bracketBaseExpressionContext:
                     return ParseExpression(bracketBaseExpressionContext.expression());
                 case OxideParser.Function_call_base_expressionContext functionCallBaseExpressionContext:

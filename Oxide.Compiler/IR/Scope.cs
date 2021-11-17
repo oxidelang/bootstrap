@@ -30,7 +30,11 @@ namespace Oxide.Compiler.IR
             }
 
             Variables.Add(dec.Id, dec);
-            _variableMapping[dec.Name] = dec.Id;
+            if (dec.Name != null)
+            {
+                _variableMapping[dec.Name] = dec.Id;
+            }
+
             return dec;
         }
 

@@ -87,7 +87,7 @@ namespace Oxide.Compiler.IR
             {
                 BeginLine();
                 Write($"var ${varDec.Id} {(varDec.Mutable ? "mut" : "readonly")} ");
-                Write(varDec.Name);
+                Write(varDec.Name ?? "[internal]");
                 Write(" ");
                 WriteType(varDec.Type);
                 if (varDec.ParameterSource.HasValue)
