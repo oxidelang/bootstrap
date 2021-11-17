@@ -363,12 +363,40 @@ namespace Oxide.Compiler.Frontend
             {
                 case OxideParser.Pass_equal_expressionContext passEqualExpressionContext:
                     return ParseComparisonExpression(passEqualExpressionContext.comparison_expression());
-                case OxideParser.Eq_equal_expressionContext eqEqualExpressionContext:
-                    throw new NotImplementedException("Equal expression");
-                    break;
-                case OxideParser.Ne_equal_expressionContext neEqualExpressionContext:
-                    throw new NotImplementedException("Not equal expression");
-                    break;
+                case OxideParser.Eq_equal_expressionContext child:
+                {
+                    var left = ParseEqualExpression(child.equal_expression());
+                    var right = ParseComparisonExpression(child.comparison_expression());
+                    if (!left.ValueType.Equals(right.ValueType))
+                    {
+                        throw new NotImplementedException("Comparison of different types not implemented");
+                    }
+
+                    return CurrentBlock.AddInstruction(new ComparisonInst
+                    {
+                        Id = ++_lastInstId,
+                        LhsValue = left.Id,
+                        RhsValue = right.Id,
+                        Op = ComparisonInst.Operation.Eq
+                    });
+                }
+                case OxideParser.Ne_equal_expressionContext child:
+                {
+                    var left = ParseEqualExpression(child.equal_expression());
+                    var right = ParseComparisonExpression(child.comparison_expression());
+                    if (!left.ValueType.Equals(right.ValueType))
+                    {
+                        throw new NotImplementedException("Comparison of different types not implemented");
+                    }
+
+                    return CurrentBlock.AddInstruction(new ComparisonInst
+                    {
+                        Id = ++_lastInstId,
+                        LhsValue = left.Id,
+                        RhsValue = right.Id,
+                        Op = ComparisonInst.Operation.NEq
+                    });
+                }
                 default:
                     throw new ArgumentOutOfRangeException(nameof(ctx));
             }
@@ -380,18 +408,74 @@ namespace Oxide.Compiler.Frontend
             {
                 case OxideParser.Pass_comparison_expressionContext passComparisonExpressionContext:
                     return ParseCastExpression(passComparisonExpressionContext.cast_expression());
-                case OxideParser.Geq_comparison_expressionContext geqComparisonExpressionContext:
-                    throw new NotImplementedException("GEQ expression");
-                    break;
-                case OxideParser.Gt_comparison_expressionContext gtComparisonExpressionContext:
-                    throw new NotImplementedException("GT expression");
-                    break;
-                case OxideParser.Leq_comparison_expressionContext leqComparisonExpressionContext:
-                    throw new NotImplementedException("LEQ expression");
-                    break;
-                case OxideParser.Lt_comparison_expressionContext ltComparisonExpressionContext:
-                    throw new NotImplementedException("LT expression");
-                    break;
+                case OxideParser.Geq_comparison_expressionContext child:
+                {
+                    var left = ParseComparisonExpression(child.comparison_expression());
+                    var right = ParseCastExpression(child.cast_expression());
+                    if (!left.ValueType.Equals(right.ValueType))
+                    {
+                        throw new NotImplementedException("Comparison of different types not implemented");
+                    }
+
+                    return CurrentBlock.AddInstruction(new ComparisonInst
+                    {
+                        Id = ++_lastInstId,
+                        LhsValue = left.Id,
+                        RhsValue = right.Id,
+                        Op = ComparisonInst.Operation.GEq
+                    });
+                }
+                case OxideParser.Gt_comparison_expressionContext child:
+                {
+                    var left = ParseComparisonExpression(child.comparison_expression());
+                    var right = ParseCastExpression(child.cast_expression());
+                    if (!left.ValueType.Equals(right.ValueType))
+                    {
+                        throw new NotImplementedException("Comparison of different types not implemented");
+                    }
+
+                    return CurrentBlock.AddInstruction(new ComparisonInst
+                    {
+                        Id = ++_lastInstId,
+                        LhsValue = left.Id,
+                        RhsValue = right.Id,
+                        Op = ComparisonInst.Operation.Gt
+                    });
+                }
+                case OxideParser.Leq_comparison_expressionContext child:
+                {
+                    var left = ParseComparisonExpression(child.comparison_expression());
+                    var right = ParseCastExpression(child.cast_expression());
+                    if (!left.ValueType.Equals(right.ValueType))
+                    {
+                        throw new NotImplementedException("Comparison of different types not implemented");
+                    }
+
+                    return CurrentBlock.AddInstruction(new ComparisonInst
+                    {
+                        Id = ++_lastInstId,
+                        LhsValue = left.Id,
+                        RhsValue = right.Id,
+                        Op = ComparisonInst.Operation.LEq
+                    });
+                }
+                case OxideParser.Lt_comparison_expressionContext child:
+                {
+                    var left = ParseComparisonExpression(child.comparison_expression());
+                    var right = ParseCastExpression(child.cast_expression());
+                    if (!left.ValueType.Equals(right.ValueType))
+                    {
+                        throw new NotImplementedException("Comparison of different types not implemented");
+                    }
+
+                    return CurrentBlock.AddInstruction(new ComparisonInst
+                    {
+                        Id = ++_lastInstId,
+                        LhsValue = left.Id,
+                        RhsValue = right.Id,
+                        Op = ComparisonInst.Operation.Lt
+                    });
+                }
                 default:
                     throw new ArgumentOutOfRangeException(nameof(ctx));
             }

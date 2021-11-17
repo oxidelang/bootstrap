@@ -199,6 +199,9 @@ namespace Oxide.Compiler.Backend.Llvm
                 case ArithmeticInst arithmeticInst:
                     CompileArithmeticInstruction(arithmeticInst);
                     break;
+                case ComparisonInst comparisonInst:
+                    CompileComparisonInst(comparisonInst);
+                    break;
                 case JumpInst jumpInst:
                     CompileJumpInst(jumpInst);
                     break;
@@ -251,10 +254,23 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private void CompileArithmeticInstruction(ArithmeticInst inst)
         {
+            var leftInst = GetInst(inst.LhsValue);
             var left = _valueMap[inst.LhsValue];
+            var rightInst = GetInst(inst.RhsValue);
             var right = _valueMap[inst.RhsValue];
             var name = $"inst_{inst.Id}";
             LLVMValueRef value;
+
+            if (!Equals(leftInst.ValueType, rightInst.ValueType))
+            {
+                throw new Exception("Lhs and rhs have different type");
+            }
+
+            var integer = IsIntegerBacked(leftInst.ValueType);
+            if (!integer)
+            {
+                throw new NotImplementedException("Arithmetic of non-integers not implemented");
+            }
 
             switch (inst.Op)
             {
@@ -269,6 +285,69 @@ namespace Oxide.Compiler.Backend.Llvm
             }
 
             _valueMap.Add(inst.Id, value);
+        }
+
+        private void CompileComparisonInst(ComparisonInst inst)
+        {
+            var leftInst = GetInst(inst.LhsValue);
+            var left = _valueMap[inst.LhsValue];
+            var rightInst = GetInst(inst.RhsValue);
+            var right = _valueMap[inst.RhsValue];
+            var name = $"inst_{inst.Id}";
+            LLVMValueRef value;
+
+            if (!Equals(leftInst.ValueType, rightInst.ValueType))
+            {
+                throw new Exception("Lhs and rhs have different type");
+            }
+
+            var integer = IsIntegerBacked(leftInst.ValueType);
+            if (!integer)
+            {
+                throw new NotImplementedException("Comparison of non-integers not implemented");
+            }
+
+            var signed = IsSignedInteger(leftInst.ValueType);
+
+            switch (inst.Op)
+            {
+                case ComparisonInst.Operation.Eq:
+                    value = Builder.BuildICmp(LLVMIntPredicate.LLVMIntEQ, left, right, name);
+                    break;
+                case ComparisonInst.Operation.NEq:
+                    value = Builder.BuildICmp(LLVMIntPredicate.LLVMIntNE, left, right, name);
+                    break;
+                case ComparisonInst.Operation.GEq:
+                    value = Builder.BuildICmp(signed ? LLVMIntPredicate.LLVMIntSGE : LLVMIntPredicate.LLVMIntUGE, left,
+                        right, name);
+                    break;
+                case ComparisonInst.Operation.LEq:
+                    value = Builder.BuildICmp(signed ? LLVMIntPredicate.LLVMIntSLE : LLVMIntPredicate.LLVMIntULE, left,
+                        right, name);
+                    break;
+                case ComparisonInst.Operation.Gt:
+                    value = Builder.BuildICmp(signed ? LLVMIntPredicate.LLVMIntSGT : LLVMIntPredicate.LLVMIntUGT, left,
+                        right, name);
+                    break;
+                case ComparisonInst.Operation.Lt:
+                    value = Builder.BuildICmp(signed ? LLVMIntPredicate.LLVMIntSLT : LLVMIntPredicate.LLVMIntULT, left,
+                        right, name);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+
+            _valueMap.Add(inst.Id, value);
+        }
+
+        private bool IsIntegerBacked(TypeDef typeDef)
+        {
+            return Equals(typeDef, CommonTypes.I32) || Equals(typeDef, CommonTypes.Bool);
+        }
+
+        private bool IsSignedInteger(TypeDef typeDef)
+        {
+            return Equals(typeDef, CommonTypes.I32) || Equals(typeDef, CommonTypes.Bool);
         }
 
         private void CompileStaticCallInst(StaticCallInst inst)
@@ -382,6 +461,11 @@ namespace Oxide.Compiler.Backend.Llvm
                 default:
                     throw new ArgumentOutOfRangeException();
             }
+        }
+
+        private Instruction GetInst(int id)
+        {
+            return _funcDef.Blocks.SelectMany(block => block.Instructions).FirstOrDefault(inst => inst.Id == id);
         }
     }
 }
