@@ -16,7 +16,7 @@ namespace Oxide.Compiler.Frontend
 
         public List<Scope> Scopes { get; private set; }
         private int _lastScopeId;
-        private Scope CurrentScope => Scopes[^1];
+        private Scope CurrentScope { get; set; }
 
         private int _lastVariableId;
 
@@ -66,11 +66,13 @@ namespace Oxide.Compiler.Frontend
             MakeCurrent(block);
 
             // TODO: Init context
-            ParseBlock(ctx);
+            var finalOp = ParseBlock(ctx);
 
             // TODO: Improve
             if (!CurrentBlock.HasTerminated)
             {
+                // TODO: Attempt to return value from finalOp
+
                 if (_functionDef.ReturnType != null)
                 {
                     throw new Exception("Function does not return value");
@@ -85,8 +87,20 @@ namespace Oxide.Compiler.Frontend
             return block.Id;
         }
 
-        private void ParseBlock(OxideParser.BlockContext ctx)
+        private Instruction ParseBlock(OxideParser.BlockContext ctx)
         {
+            var oldBlock = CurrentBlock;
+
+            PushScope();
+            var block = NewBlock(CurrentScope);
+            MakeCurrent(block);
+
+            oldBlock.AddInstruction(new JumpInst
+            {
+                Id = ++_lastInstId,
+                TargetBlock = block.Id
+            });
+
             if (ctx.statement() != null)
             {
                 foreach (var statement in ctx.statement())
@@ -95,10 +109,7 @@ namespace Oxide.Compiler.Frontend
                 }
             }
 
-            if (ctx.expression() != null)
-            {
-                ParseExpression(ctx.expression());
-            }
+            return ctx.expression() != null ? ParseExpression(ctx.expression()) : null;
         }
 
         private void ParseStatement(OxideParser.StatementContext ctx)
@@ -109,8 +120,10 @@ namespace Oxide.Compiler.Frontend
                     // Ignore empty statement
                     break;
                 case OxideParser.Block_expression_statementContext blockExpressionStatementContext:
-                    throw new NotImplementedException("Block expression statement");
+                {
+                    ParseBlockExpression(blockExpressionStatementContext.block_expression());
                     break;
+                }
                 case OxideParser.Expression_statementContext expressionStatementContext:
                 {
                     ParseExpression(expressionStatementContext.expression());
@@ -121,6 +134,73 @@ namespace Oxide.Compiler.Frontend
                     ParseVariableStatement(variableStatementTopContext.variable_statement());
                     break;
                 }
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(ctx));
+            }
+        }
+
+        private Instruction ParseBlockExpression(OxideParser.Block_expressionContext ctx)
+        {
+            switch (ctx)
+            {
+                case OxideParser.Block_block_expressionContext child:
+                {
+                    if (child.UNSAFE() != null)
+                    {
+                        throw new NotImplementedException("Unsafe blocks");
+                    }
+
+                    var originalScope = CurrentScope;
+
+                    var finalOp = ParseBlock(child.block());
+                    var finalBlock = CurrentBlock;
+                    if (finalBlock.HasTerminated)
+                    {
+                        throw new NotImplementedException("TEST");
+                    }
+
+                    var returnBlock = NewBlock(originalScope);
+                    MakeCurrent(returnBlock);
+
+                    if (finalOp.HasValue)
+                    {
+                        var resultDec = originalScope.DefineVariable(new VariableDeclaration
+                        {
+                            Id = ++_lastVariableId,
+                            Name = null,
+                            Type = finalOp.ValueType,
+                            Mutable = false
+                        });
+
+                        finalBlock.AddInstruction(new StoreLocalInst
+                        {
+                            Id = ++_lastInstId,
+                            LocalId = resultDec.Id,
+                            ValueId = finalOp.Id
+                        });
+                        finalBlock.AddInstruction(new JumpInst
+                        {
+                            Id = ++_lastInstId,
+                            TargetBlock = returnBlock.Id
+                        });
+                        return returnBlock.AddInstruction(new LoadLocalInst
+                        {
+                            Id = ++_lastInstId,
+                            LocalId = resultDec.Id,
+                            LocalType = resultDec.Type,
+                        });
+                    }
+
+                    finalBlock.AddInstruction(new JumpInst
+                    {
+                        Id = ++_lastInstId,
+                        TargetBlock = returnBlock.Id
+                    });
+                    return null;
+                }
+                case OxideParser.If_block_expressionContext child:
+                    throw new NotImplementedException("If blocks");
+                    break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(ctx));
             }
@@ -621,12 +701,18 @@ namespace Oxide.Compiler.Frontend
             var scope = new Scope
             {
                 Id = ++_lastScopeId,
-                ParentScope = Scopes.Count > 0 ? CurrentScope : null
+                ParentScope = CurrentScope
             };
 
+            CurrentScope = scope;
             Scopes.Add(scope);
 
             return scope;
+        }
+
+        private void RestoreScope(Scope target)
+        {
+            CurrentScope = target;
         }
 
         private Block NewBlock(Scope scope)
@@ -642,6 +728,7 @@ namespace Oxide.Compiler.Frontend
 
         private void MakeCurrent(Block block)
         {
+            RestoreScope(block.Scope);
             _currentBlockId = block.Id;
         }
 

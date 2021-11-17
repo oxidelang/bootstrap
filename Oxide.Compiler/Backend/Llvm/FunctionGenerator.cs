@@ -200,7 +200,7 @@ namespace Oxide.Compiler.Backend.Llvm
                     CompileArithmeticInstruction(arithmeticInst);
                     break;
                 case JumpInst jumpInst:
-                    throw new NotImplementedException("Jump inst");
+                    CompileJumpInst(jumpInst);
                     break;
                 case StaticCallInst staticCallInst:
                     CompileStaticCallInst(staticCallInst);
@@ -211,6 +211,13 @@ namespace Oxide.Compiler.Backend.Llvm
                 default:
                     throw new ArgumentOutOfRangeException(nameof(instruction));
             }
+        }
+
+        private void CompileJumpInst(JumpInst jumpInst)
+        {
+            Builder.BuildBr(_blockMap[jumpInst.TargetBlock]);
+                // TODO: Real cleanup
+            // throw new NotImplementedException("Jump inst");
         }
 
         private void CompileConstInst(ConstInst inst)

@@ -1,14 +1,17 @@
+using System;
+
 namespace Oxide.Compiler.IR.Instructions
 {
     public class JumpInst : Instruction
     {
-        public int TargetScope { get; init; }
-        public override bool HasValue { get; }
-        public override TypeDef ValueType { get; }
+        public int TargetBlock { get; init; }
+        public override bool HasValue => false;
+        public override TypeDef ValueType => throw new Exception("No value");
+        public override bool Terminal => true;
 
         public override void WriteIr(IrWriter writer)
         {
-            throw new System.NotImplementedException();
+            writer.Write($"jump #{TargetBlock}");
         }
     }
 }

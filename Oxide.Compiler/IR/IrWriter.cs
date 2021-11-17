@@ -98,19 +98,19 @@ namespace Oxide.Compiler.IR
                 EndLine();
             }
 
-            foreach (var innerScope in functionDef.Scopes)
-            {
-                if (innerScope.ParentScope == scope)
-                {
-                    WriteScope(functionDef, innerScope);
-                }
-            }
-
             foreach (var block in functionDef.Blocks)
             {
                 if (block.Scope == scope)
                 {
                     WriteBlock(block);
+                }
+            }
+
+            foreach (var innerScope in functionDef.Scopes)
+            {
+                if (innerScope.ParentScope == scope)
+                {
+                    WriteScope(functionDef, innerScope);
                 }
             }
 
