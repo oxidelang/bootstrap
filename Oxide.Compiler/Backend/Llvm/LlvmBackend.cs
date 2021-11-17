@@ -44,6 +44,16 @@ namespace Oxide.Compiler.Backend.Llvm
 
             Module.Dump();
 
+            // unsafe
+            // {
+            //     LLVMPassManagerBuilderRef passManagerBuilder = LLVM.PassManagerBuilderCreate();
+            //     passManagerBuilder.SetOptLevel(1);
+            //     var passManager = LLVMPassManagerRef.Create();
+            //     passManagerBuilder.PopulateModulePassManager(passManager);
+            //     passManager.Run(Module);
+            //     Module.Dump();
+            // }
+
             // if (moduleRef.WriteBitcodeToFile("sum.bc") != 0)
             // {
             //     Console.WriteLine("error writing bitcode to file, skipping");
