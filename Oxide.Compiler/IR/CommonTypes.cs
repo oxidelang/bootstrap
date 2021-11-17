@@ -12,5 +12,14 @@ namespace Oxide.Compiler.IR
             Source = TypeSource.Concrete,
             GenericParams = ImmutableArray<TypeDef>.Empty
         };
+
+        public static TypeDef Bool = new()
+        {
+            Name = new QualifiedName(true, new[] { "std", "bool" }),
+            Category = TypeCategory.Direct,
+            MutableRef = false,
+            Source = TypeSource.Concrete,
+            GenericParams = ImmutableArray<TypeDef>.Empty
+        };
     }
 }

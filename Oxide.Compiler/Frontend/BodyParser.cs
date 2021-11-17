@@ -678,15 +678,22 @@ namespace Oxide.Compiler.Frontend
                     switch (outerBoolLiteralContext.boolean_literal())
                     {
                         case OxideParser.True_boolean_literalContext:
-                            break;
+                            return CurrentBlock.AddInstruction(new ConstInst
+                            {
+                                Id = ++_lastInstId,
+                                ConstType = ConstInst.PrimitiveType.Bool,
+                                Value = true
+                            });
                         case OxideParser.False_boolean_literalContext:
-                            break;
+                            return CurrentBlock.AddInstruction(new ConstInst
+                            {
+                                Id = ++_lastInstId,
+                                ConstType = ConstInst.PrimitiveType.Bool,
+                                Value = false
+                            });
                         default:
                             throw new ArgumentOutOfRangeException();
                     }
-
-                    throw new NotImplementedException("Bool literal");
-                    break;
                 case OxideParser.String_literalContext stringLiteralContext:
                     throw new NotImplementedException("String literal");
                     break;

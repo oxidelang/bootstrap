@@ -65,14 +65,15 @@ EX_OR_OP:   '^';
 LEQ_OP:     '<=';
 GEQ_OP:     '>=';
 
+TRUE:           'true';
+FALSE:          'false';
+
 IDENTIFIER:     Letter LetterOrDigit*;
 INT_NUMBER:     '-'? Digits;
 HEX_NUMBER:     '0' [xX] HexDigit ((HexDigit | '_')* HexDigit)? [lL]?;
 BINARY_NUMBER:  '0' [bB] BinaryDigit ((BinaryDigit | '_')* BinaryDigit)? [lL]?;
 CHAR_LITERAL:   '\'' (~['\\\r\n] | EscapeSequence) '\'';
 STRING_LITERAL: '"' (~["\\\r\n] | EscapeSequence)* '"';
-TRUE:           'true';
-FALSE:          'false';
 
 fragment EscapeSequence
     : '\\' [btnfr"'\\]

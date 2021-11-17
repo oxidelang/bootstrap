@@ -216,7 +216,7 @@ namespace Oxide.Compiler.Backend.Llvm
         private void CompileJumpInst(JumpInst jumpInst)
         {
             Builder.BuildBr(_blockMap[jumpInst.TargetBlock]);
-                // TODO: Real cleanup
+            // TODO: Real cleanup
             // throw new NotImplementedException("Jump inst");
         }
 
@@ -227,6 +227,9 @@ namespace Oxide.Compiler.Backend.Llvm
             {
                 case ConstInst.PrimitiveType.I32:
                     value = LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong)(int)inst.Value, true);
+                    break;
+                case ConstInst.PrimitiveType.Bool:
+                    value = LLVMValueRef.CreateConstInt(LLVMTypeRef.Int1, (ulong)((bool)inst.Value ? 1 : 0), true);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
@@ -350,6 +353,10 @@ namespace Oxide.Compiler.Backend.Llvm
             if (CommonTypes.I32.Name.Equals(typeDef.Name))
             {
                 baseType = LLVMTypeRef.Int32;
+            }
+            else if (CommonTypes.Bool.Name.Equals(typeDef.Name))
+            {
+                baseType = LLVMTypeRef.Int1;
             }
             else
             {

@@ -44,9 +44,8 @@ public partial class OxideParser : Parser {
 		LARROW=31, RARROW=32, LBRACE=33, RBRACE=34, COLON=35, DCOLON=36, SEMI=37, 
 		ARROW=38, AMP=39, PERIOD=40, COMMA=41, PLUS=42, MINUS=43, EQUAL=44, NOTEQ=45, 
 		EQUALTO=46, STAR=47, DIV=48, MOD=49, NOT=50, AS=51, OR_OP=52, AND_OP=53, 
-		INC_OR_OP=54, EX_OR_OP=55, LEQ_OP=56, GEQ_OP=57, IDENTIFIER=58, INT_NUMBER=59, 
-		HEX_NUMBER=60, BINARY_NUMBER=61, CHAR_LITERAL=62, STRING_LITERAL=63, TRUE=64, 
-		FALSE=65;
+		INC_OR_OP=54, EX_OR_OP=55, LEQ_OP=56, GEQ_OP=57, TRUE=58, FALSE=59, IDENTIFIER=60, 
+		INT_NUMBER=61, HEX_NUMBER=62, BINARY_NUMBER=63, CHAR_LITERAL=64, STRING_LITERAL=65;
 	public const int
 		RULE_compilation_unit = 0, RULE_package = 1, RULE_qualified_name = 2, 
 		RULE_qualified_name_part = 3, RULE_top_level = 4, RULE_import_stmt = 5, 
@@ -86,8 +85,8 @@ public partial class OxideParser : Parser {
 		"'ref'", "'weak'", "'~'", "'this'", "'return'", "'if'", "'else'", "'('", 
 		"')'", "'<'", "'>'", "'{'", "'}'", "':'", "'::'", "';'", "'->'", "'&'", 
 		"'.'", "','", "'+'", "'-'", "'='", "'!='", "'=='", "'*'", "'/'", "'%'", 
-		"'!'", "'as'", "'||'", "'&&'", "'|'", "'^'", "'<='", "'>='", null, null, 
-		null, null, null, null, "'true'", "'false'"
+		"'!'", "'as'", "'||'", "'&&'", "'|'", "'^'", "'<='", "'>='", "'true'", 
+		"'false'"
 	};
 	private static readonly string[] _SymbolicNames = {
 		null, "WS", "COMMENT", "LINE_COMMENT", "PACKAGE", "IMPORT", "PUBLIC", 
@@ -97,8 +96,8 @@ public partial class OxideParser : Parser {
 		"RARROW", "LBRACE", "RBRACE", "COLON", "DCOLON", "SEMI", "ARROW", "AMP", 
 		"PERIOD", "COMMA", "PLUS", "MINUS", "EQUAL", "NOTEQ", "EQUALTO", "STAR", 
 		"DIV", "MOD", "NOT", "AS", "OR_OP", "AND_OP", "INC_OR_OP", "EX_OR_OP", 
-		"LEQ_OP", "GEQ_OP", "IDENTIFIER", "INT_NUMBER", "HEX_NUMBER", "BINARY_NUMBER", 
-		"CHAR_LITERAL", "STRING_LITERAL", "TRUE", "FALSE"
+		"LEQ_OP", "GEQ_OP", "TRUE", "FALSE", "IDENTIFIER", "INT_NUMBER", "HEX_NUMBER", 
+		"BINARY_NUMBER", "CHAR_LITERAL", "STRING_LITERAL"
 	};
 	public static readonly IVocabulary DefaultVocabulary = new Vocabulary(_LiteralNames, _SymbolicNames);
 
@@ -1895,7 +1894,7 @@ public partial class OxideParser : Parser {
 			State = 383;
 			ErrorHandler.Sync(this);
 			_la = TokenStream.LA(1);
-			if (((((_la - 19)) & ~0x3f) == 0 && ((1L << (_la - 19)) & ((1L << (UNSAFE - 19)) | (1L << (BOX - 19)) | (1L << (DERIVED - 19)) | (1L << (THIS_FIELD - 19)) | (1L << (RETURN - 19)) | (1L << (IF - 19)) | (1L << (LBRACK - 19)) | (1L << (LBRACE - 19)) | (1L << (DCOLON - 19)) | (1L << (AMP - 19)) | (1L << (MINUS - 19)) | (1L << (NOT - 19)) | (1L << (IDENTIFIER - 19)) | (1L << (INT_NUMBER - 19)) | (1L << (HEX_NUMBER - 19)) | (1L << (BINARY_NUMBER - 19)) | (1L << (STRING_LITERAL - 19)) | (1L << (TRUE - 19)) | (1L << (FALSE - 19)))) != 0)) {
+			if (((((_la - 19)) & ~0x3f) == 0 && ((1L << (_la - 19)) & ((1L << (UNSAFE - 19)) | (1L << (BOX - 19)) | (1L << (DERIVED - 19)) | (1L << (THIS_FIELD - 19)) | (1L << (RETURN - 19)) | (1L << (IF - 19)) | (1L << (LBRACK - 19)) | (1L << (LBRACE - 19)) | (1L << (DCOLON - 19)) | (1L << (AMP - 19)) | (1L << (MINUS - 19)) | (1L << (NOT - 19)) | (1L << (TRUE - 19)) | (1L << (FALSE - 19)) | (1L << (IDENTIFIER - 19)) | (1L << (INT_NUMBER - 19)) | (1L << (HEX_NUMBER - 19)) | (1L << (BINARY_NUMBER - 19)) | (1L << (STRING_LITERAL - 19)))) != 0)) {
 				{
 				State = 382;
 				expression();
@@ -3387,13 +3386,13 @@ public partial class OxideParser : Parser {
 			case LBRACK:
 			case LBRACE:
 			case DCOLON:
+			case TRUE:
+			case FALSE:
 			case IDENTIFIER:
 			case INT_NUMBER:
 			case HEX_NUMBER:
 			case BINARY_NUMBER:
 			case STRING_LITERAL:
-			case TRUE:
-			case FALSE:
 				_localctx = new Pass_unary_expressionContext(_localctx);
 				EnterOuterAlt(_localctx, 1);
 				{
@@ -3685,7 +3684,7 @@ public partial class OxideParser : Parser {
 				State = 592;
 				ErrorHandler.Sync(this);
 				_la = TokenStream.LA(1);
-				if (((((_la - 19)) & ~0x3f) == 0 && ((1L << (_la - 19)) & ((1L << (UNSAFE - 19)) | (1L << (BOX - 19)) | (1L << (DERIVED - 19)) | (1L << (THIS_FIELD - 19)) | (1L << (RETURN - 19)) | (1L << (IF - 19)) | (1L << (LBRACK - 19)) | (1L << (LBRACE - 19)) | (1L << (DCOLON - 19)) | (1L << (AMP - 19)) | (1L << (MINUS - 19)) | (1L << (NOT - 19)) | (1L << (IDENTIFIER - 19)) | (1L << (INT_NUMBER - 19)) | (1L << (HEX_NUMBER - 19)) | (1L << (BINARY_NUMBER - 19)) | (1L << (STRING_LITERAL - 19)) | (1L << (TRUE - 19)) | (1L << (FALSE - 19)))) != 0)) {
+				if (((((_la - 19)) & ~0x3f) == 0 && ((1L << (_la - 19)) & ((1L << (UNSAFE - 19)) | (1L << (BOX - 19)) | (1L << (DERIVED - 19)) | (1L << (THIS_FIELD - 19)) | (1L << (RETURN - 19)) | (1L << (IF - 19)) | (1L << (LBRACK - 19)) | (1L << (LBRACE - 19)) | (1L << (DCOLON - 19)) | (1L << (AMP - 19)) | (1L << (MINUS - 19)) | (1L << (NOT - 19)) | (1L << (TRUE - 19)) | (1L << (FALSE - 19)) | (1L << (IDENTIFIER - 19)) | (1L << (INT_NUMBER - 19)) | (1L << (HEX_NUMBER - 19)) | (1L << (BINARY_NUMBER - 19)) | (1L << (STRING_LITERAL - 19)))) != 0)) {
 					{
 					State = 591;
 					arguments();
@@ -3786,7 +3785,7 @@ public partial class OxideParser : Parser {
 						State = 618;
 						ErrorHandler.Sync(this);
 						_la = TokenStream.LA(1);
-						if (((((_la - 19)) & ~0x3f) == 0 && ((1L << (_la - 19)) & ((1L << (UNSAFE - 19)) | (1L << (BOX - 19)) | (1L << (DERIVED - 19)) | (1L << (THIS_FIELD - 19)) | (1L << (RETURN - 19)) | (1L << (IF - 19)) | (1L << (LBRACK - 19)) | (1L << (LBRACE - 19)) | (1L << (DCOLON - 19)) | (1L << (AMP - 19)) | (1L << (MINUS - 19)) | (1L << (NOT - 19)) | (1L << (IDENTIFIER - 19)) | (1L << (INT_NUMBER - 19)) | (1L << (HEX_NUMBER - 19)) | (1L << (BINARY_NUMBER - 19)) | (1L << (STRING_LITERAL - 19)) | (1L << (TRUE - 19)) | (1L << (FALSE - 19)))) != 0)) {
+						if (((((_la - 19)) & ~0x3f) == 0 && ((1L << (_la - 19)) & ((1L << (UNSAFE - 19)) | (1L << (BOX - 19)) | (1L << (DERIVED - 19)) | (1L << (THIS_FIELD - 19)) | (1L << (RETURN - 19)) | (1L << (IF - 19)) | (1L << (LBRACK - 19)) | (1L << (LBRACE - 19)) | (1L << (DCOLON - 19)) | (1L << (AMP - 19)) | (1L << (MINUS - 19)) | (1L << (NOT - 19)) | (1L << (TRUE - 19)) | (1L << (FALSE - 19)) | (1L << (IDENTIFIER - 19)) | (1L << (INT_NUMBER - 19)) | (1L << (HEX_NUMBER - 19)) | (1L << (BINARY_NUMBER - 19)) | (1L << (STRING_LITERAL - 19)))) != 0)) {
 							{
 							State = 617;
 							arguments();
@@ -5357,9 +5356,9 @@ public partial class OxideParser : Parser {
 		'\x85', '\x87', '\x5', '\b', '\x5', '\x2', '\x86', '\x83', '\x3', '\x2', 
 		'\x2', '\x2', '\x86', '\x84', '\x3', '\x2', '\x2', '\x2', '\x87', '\a', 
 		'\x3', '\x2', '\x2', '\x2', '\x88', '\x89', '\b', '\x5', '\x1', '\x2', 
-		'\x89', '\x8A', '\a', '<', '\x2', '\x2', '\x8A', '\x90', '\x3', '\x2', 
+		'\x89', '\x8A', '\a', '>', '\x2', '\x2', '\x8A', '\x90', '\x3', '\x2', 
 		'\x2', '\x2', '\x8B', '\x8C', '\f', '\x3', '\x2', '\x2', '\x8C', '\x8D', 
-		'\a', '&', '\x2', '\x2', '\x8D', '\x8F', '\a', '<', '\x2', '\x2', '\x8E', 
+		'\a', '&', '\x2', '\x2', '\x8D', '\x8F', '\a', '>', '\x2', '\x2', '\x8E', 
 		'\x8B', '\x3', '\x2', '\x2', '\x2', '\x8F', '\x92', '\x3', '\x2', '\x2', 
 		'\x2', '\x90', '\x8E', '\x3', '\x2', '\x2', '\x2', '\x90', '\x91', '\x3', 
 		'\x2', '\x2', '\x2', '\x91', '\t', '\x3', '\x2', '\x2', '\x2', '\x92', 
@@ -5779,7 +5778,7 @@ public partial class OxideParser : Parser {
 		'\x2', '\x2', '\x2', '\x2CA', '\x2CB', '\x3', '\x2', '\x2', '\x2', '\x2CB', 
 		'\x2CC', '\x3', '\x2', '\x2', '\x2', '\x2CC', '\x2CD', '\a', '\'', '\x2', 
 		'\x2', '\x2CD', ']', '\x3', '\x2', '\x2', '\x2', '\x2CE', '\x2CF', '\a', 
-		'<', '\x2', '\x2', '\x2CF', '_', '\x3', '\x2', '\x2', '\x2', '\x2D0', 
+		'>', '\x2', '\x2', '\x2CF', '_', '\x3', '\x2', '\x2', '\x2', '\x2D0', 
 		'\x2D1', '\x5', '\x64', '\x33', '\x2', '\x2D1', '\x2D3', '\x5', '\x6', 
 		'\x4', '\x2', '\x2D2', '\x2D4', '\x5', '\x62', '\x32', '\x2', '\x2D3', 
 		'\x2D2', '\x3', '\x2', '\x2', '\x2', '\x2D3', '\x2D4', '\x3', '\x2', '\x2', 
@@ -5814,14 +5813,14 @@ public partial class OxideParser : Parser {
 		'\x2F7', '\x2FA', '\a', '\b', '\x2', '\x2', '\x2F8', '\x2FA', '\a', '\t', 
 		'\x2', '\x2', '\x2F9', '\x2F7', '\x3', '\x2', '\x2', '\x2', '\x2F9', '\x2F8', 
 		'\x3', '\x2', '\x2', '\x2', '\x2FA', 'g', '\x3', '\x2', '\x2', '\x2', 
-		'\x2FB', '\x301', '\x5', 'j', '\x36', '\x2', '\x2FC', '\x301', '\a', '=', 
-		'\x2', '\x2', '\x2FD', '\x301', '\a', '>', '\x2', '\x2', '\x2FE', '\x301', 
-		'\a', '?', '\x2', '\x2', '\x2FF', '\x301', '\a', '\x41', '\x2', '\x2', 
+		'\x2FB', '\x301', '\x5', 'j', '\x36', '\x2', '\x2FC', '\x301', '\a', '?', 
+		'\x2', '\x2', '\x2FD', '\x301', '\a', '@', '\x2', '\x2', '\x2FE', '\x301', 
+		'\a', '\x41', '\x2', '\x2', '\x2FF', '\x301', '\a', '\x43', '\x2', '\x2', 
 		'\x300', '\x2FB', '\x3', '\x2', '\x2', '\x2', '\x300', '\x2FC', '\x3', 
 		'\x2', '\x2', '\x2', '\x300', '\x2FD', '\x3', '\x2', '\x2', '\x2', '\x300', 
 		'\x2FE', '\x3', '\x2', '\x2', '\x2', '\x300', '\x2FF', '\x3', '\x2', '\x2', 
 		'\x2', '\x301', 'i', '\x3', '\x2', '\x2', '\x2', '\x302', '\x305', '\a', 
-		'\x42', '\x2', '\x2', '\x303', '\x305', '\a', '\x43', '\x2', '\x2', '\x304', 
+		'<', '\x2', '\x2', '\x303', '\x305', '\a', '=', '\x2', '\x2', '\x304', 
 		'\x302', '\x3', '\x2', '\x2', '\x2', '\x304', '\x303', '\x3', '\x2', '\x2', 
 		'\x2', '\x305', 'k', '\x3', '\x2', '\x2', '\x2', '\x306', '\x307', '\a', 
 		'!', '\x2', '\x2', '\x307', '\x308', '\a', '!', '\x2', '\x2', '\x308', 

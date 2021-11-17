@@ -59,8 +59,14 @@ namespace Oxide.Compiler.Backend.Llvm
                 throw new Exception($"Error: {error}");
             }
 
-            var debugFuncRef = Module.GetNamedFunction("::std::debug_int");
-            engine.AddGlobalMapping(debugFuncRef, Marshal.GetFunctionPointerForDelegate<DebugInt>(DebugIntImp));
+            engine.AddGlobalMapping(
+                Module.GetNamedFunction("::std::debug_int"),
+                Marshal.GetFunctionPointerForDelegate<DebugInt>(DebugIntImp)
+            );
+            engine.AddGlobalMapping(
+                Module.GetNamedFunction("::std::debug_bool"),
+                Marshal.GetFunctionPointerForDelegate<DebugBool>(DebugBoolImp)
+            );
 
             var funcRef = Module.GetNamedFunction("::examples::main");
             var mainMethod =
@@ -80,6 +86,14 @@ namespace Oxide.Compiler.Backend.Llvm
         public static void DebugIntImp(int val)
         {
             Console.WriteLine($"DebugInt: {val}");
+        }
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate void DebugBool(byte a);
+
+        public static void DebugBoolImp(byte val)
+        {
+            Console.WriteLine($"DebugBool: {val}");
         }
 
         static LlvmBackend()

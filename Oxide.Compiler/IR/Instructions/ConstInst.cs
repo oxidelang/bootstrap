@@ -6,7 +6,8 @@ namespace Oxide.Compiler.IR.Instructions
     {
         public enum PrimitiveType
         {
-            I32
+            I32,
+            Bool
         }
 
         public PrimitiveType ConstType { get; init; }
@@ -22,6 +23,7 @@ namespace Oxide.Compiler.IR.Instructions
                 return ConstType switch
                 {
                     PrimitiveType.I32 => CommonTypes.I32,
+                    PrimitiveType.Bool => CommonTypes.Bool,
                     _ => throw new ArgumentOutOfRangeException()
                 };
             }
@@ -32,6 +34,7 @@ namespace Oxide.Compiler.IR.Instructions
             var type = ConstType switch
             {
                 PrimitiveType.I32 => "i32",
+                PrimitiveType.Bool => "bool",
                 _ => throw new ArgumentOutOfRangeException()
             };
 

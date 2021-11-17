@@ -23,6 +23,7 @@ namespace Oxide.Compiler.Frontend
 
             Imports = new List<Import>();
             Imports.Add(new Import(CommonTypes.I32.Name, "i32"));
+            Imports.Add(new Import(CommonTypes.Bool.Name, "bool"));
 
             foreach (var importStmt in cu.import_stmt())
             {
