@@ -2,11 +2,11 @@ using System.Collections.Immutable;
 
 namespace Oxide.Compiler.IR
 {
-    public class FunctionDef : BaseDef
+    public class Function : OxObj
     {
-        public ImmutableList<ParameterDef> Parameters { get; init; }
+        public ImmutableList<Parameter> Parameters { get; init; }
 
-        public TypeDef ReturnType { get; init; }
+        public TypeRef ReturnType { get; init; }
 
         public bool IsExtern { get; init; }
 

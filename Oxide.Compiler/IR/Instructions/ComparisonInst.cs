@@ -15,7 +15,7 @@ namespace Oxide.Compiler.IR.Instructions
         }
 
         public override bool HasValue => true;
-        public override TypeDef ValueType => CommonTypes.Bool;
+        public override TypeRef ValueType => PrimitiveType.BoolRef;
         public int LhsValue { get; init; }
         public int RhsValue { get; init; }
         public Operation Op { get; init; }

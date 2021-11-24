@@ -39,22 +39,22 @@ namespace Oxide.Compiler.Frontend
             {
                 foreach (var def in fp.Structs.Values)
                 {
-                    _unit.AddStruct(def);
+                    _unit.Add(def);
                 }
 
                 foreach (var def in fp.Interfaces.Values)
                 {
-                    _unit.AddInterface(def);
+                    _unit.Add(def);
                 }
 
                 foreach (var def in fp.Variants.Values)
                 {
-                    _unit.AddVariant(def);
+                    _unit.Add(def);
                 }
 
                 foreach (var def in fp.Functions.Values)
                 {
-                    _unit.AddFunction(def);
+                    _unit.Add(def);
                 }
             }
 

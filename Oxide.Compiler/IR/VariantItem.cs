@@ -1,9 +1,9 @@
 namespace Oxide.Compiler.IR
 {
-    public class VariantItemDef
+    public class VariantItem
     {
         public string Name { get; init; }
 
-        public StructDef Content { get; init; }
+        public Struct Content { get; init; }
     }
 }

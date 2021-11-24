@@ -7,7 +7,7 @@ namespace Oxide.Compiler.IR.Instructions
         public int TargetBlock { get; init; }
         public int ElseBlock { get; init; }
         public override bool HasValue => false;
-        public override TypeDef ValueType => throw new Exception("No value");
+        public override TypeRef ValueType => throw new Exception("No value");
         public override bool Terminal => true;
 
         public int? ConditionValue { get; init; }

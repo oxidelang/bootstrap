@@ -15,43 +15,43 @@ namespace Oxide.Compiler.IR
             _dest = new StringBuilder();
         }
 
-        public void WriteFunction(FunctionDef functionDef)
+        public void WriteFunction(Function function)
         {
             BeginLine();
             Write("func ");
-            WriteVisibility(functionDef.Visibility);
+            WriteVisibility(function.Visibility);
 
-            if (functionDef.IsExtern)
+            if (function.IsExtern)
             {
                 Write(" extern");
             }
 
             Write(" ");
-            WriteQn(functionDef.Name);
+            WriteQn(function.Name);
             Write(" (");
 
-            for (var i = 0; i < functionDef.Parameters.Count; i++)
+            for (var i = 0; i < function.Parameters.Count; i++)
             {
                 if (i != 0)
                 {
                     Write(", ");
                 }
 
-                WriteParameter(functionDef.Parameters[i]);
+                WriteParameter(function.Parameters[i]);
             }
 
             Write(") ");
 
-            if (functionDef.ReturnType == null)
+            if (function.ReturnType == null)
             {
                 Write("void");
             }
             else
             {
-                WriteType(functionDef.ReturnType);
+                WriteType(function.ReturnType);
             }
 
-            if (!functionDef.HasBody)
+            if (!function.HasBody)
             {
                 Write(";");
                 EndLine();
@@ -62,13 +62,13 @@ namespace Oxide.Compiler.IR
             EndLine();
             _indentLevel++;
 
-            WriteLine($"entry = #{functionDef.EntryBlock}");
+            WriteLine($"entry = #{function.EntryBlock}");
 
-            foreach (var scope in functionDef.Scopes)
+            foreach (var scope in function.Scopes)
             {
                 if (scope.ParentScope == null)
                 {
-                    WriteScope(functionDef, scope);
+                    WriteScope(function, scope);
                 }
             }
 
@@ -78,7 +78,7 @@ namespace Oxide.Compiler.IR
             EndLine();
         }
 
-        private void WriteScope(FunctionDef functionDef, Scope scope)
+        private void WriteScope(Function function, Scope scope)
         {
             WriteLine($"scope @{scope.Id} {{");
             _indentLevel++;
@@ -98,7 +98,7 @@ namespace Oxide.Compiler.IR
                 EndLine();
             }
 
-            foreach (var block in functionDef.Blocks)
+            foreach (var block in function.Blocks)
             {
                 if (block.Scope == scope)
                 {
@@ -106,11 +106,11 @@ namespace Oxide.Compiler.IR
                 }
             }
 
-            foreach (var innerScope in functionDef.Scopes)
+            foreach (var innerScope in function.Scopes)
             {
                 if (innerScope.ParentScope == scope)
                 {
-                    WriteScope(functionDef, innerScope);
+                    WriteScope(function, innerScope);
                 }
             }
 
@@ -135,7 +135,7 @@ namespace Oxide.Compiler.IR
             WriteLine("}");
         }
 
-        public void WriteParameter(ParameterDef param)
+        public void WriteParameter(Parameter param)
         {
             if (param.IsThis)
             {
@@ -148,7 +148,7 @@ namespace Oxide.Compiler.IR
             }
         }
 
-        public void WriteType(TypeDef type)
+        public void WriteType(TypeRef type)
         {
             Write("[");
 

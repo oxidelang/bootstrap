@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using LLVMSharp.Interop;
 using Oxide.Compiler.IR;
@@ -20,8 +21,8 @@ namespace Oxide.Compiler.Backend.Llvm
         {
             Store = store;
             _typeStore = new Dictionary<QualifiedName, LLVMTypeRef>();
-            _typeStore.Add(CommonTypes.I32.Name, LLVMTypeRef.Int32);
-            _typeStore.Add(CommonTypes.Bool.Name, LLVMTypeRef.Int1);
+            _typeStore.Add(PrimitiveType.I32.Name, LLVMTypeRef.Int32);
+            _typeStore.Add(PrimitiveType.Bool.Name, LLVMTypeRef.Int1);
         }
 
         public void Begin()
@@ -32,34 +33,34 @@ namespace Oxide.Compiler.Backend.Llvm
 
         public void CompileUnit(IrUnit unit)
         {
-            foreach (var funcDef in unit.Functions.Values)
+            foreach (var funcDef in unit.Objects.Values.Where(x => x is Function).Cast<Function>())
             {
                 CompileFunction(funcDef);
             }
         }
 
-        public void CompileFunction(FunctionDef funcDef)
+        public void CompileFunction(Function func)
         {
             var funcGen = new FunctionGenerator(this);
-            funcGen.Compile(funcDef);
+            funcGen.Compile(func);
         }
 
-        public LLVMTypeRef ConvertType(TypeDef typeDef)
+        public LLVMTypeRef ConvertType(TypeRef typeRef)
         {
-            if (typeDef == null)
+            if (typeRef == null)
             {
                 return LLVMTypeRef.Void;
             }
 
-            if ((typeDef.GenericParams != null && !typeDef.GenericParams.IsEmpty) ||
-                typeDef.Source != TypeSource.Concrete)
+            if ((typeRef.GenericParams != null && !typeRef.GenericParams.IsEmpty) ||
+                typeRef.Source != TypeSource.Concrete)
             {
                 throw new NotImplementedException("Generic type support is not implemented");
             }
 
-            var baseType = ResolveBaseType(typeDef.Name);
+            var baseType = ResolveBaseType(typeRef.Name);
 
-            switch (typeDef.Category)
+            switch (typeRef.Category)
             {
                 case TypeCategory.Direct:
                     return baseType;
@@ -92,7 +93,7 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private LLVMTypeRef ResolveMissingType(QualifiedName qn)
         {
-            var objectDef = Store.LookupObject(qn);
+            var objectDef = Store.Lookup(qn);
             if (objectDef == null)
             {
                 throw new Exception($"Unable to resolve {qn}");
@@ -105,7 +106,7 @@ namespace Oxide.Compiler.Backend.Llvm
 
             switch (objectDef)
             {
-                case StructDef structDef:
+                case Struct structDef:
                 {
                     var structType = Context.CreateNamedStruct(structDef.Name.ToString());
                     _typeStore.Add(qn, structType);
@@ -120,11 +121,11 @@ namespace Oxide.Compiler.Backend.Llvm
 
                     return structType;
                 }
-                case FunctionDef functionDef:
+                case Function functionDef:
                     throw new Exception("Unexpected function type");
-                case InterfaceDef interfaceDef:
+                case Interface interfaceDef:
                     throw new NotImplementedException("Interface types not implemented");
-                case VariantDef variantDef:
+                case Variant variantDef:
                     throw new NotImplementedException("Variant types not implemented");
                 default:
                     throw new ArgumentOutOfRangeException(nameof(objectDef));

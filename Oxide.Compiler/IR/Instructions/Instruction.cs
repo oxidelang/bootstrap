@@ -6,7 +6,7 @@ namespace Oxide.Compiler.IR.Instructions
 
         public abstract bool HasValue { get; }
 
-        public abstract TypeDef ValueType { get; }
+        public abstract TypeRef ValueType { get; }
 
         public virtual bool Terminal => false;
 

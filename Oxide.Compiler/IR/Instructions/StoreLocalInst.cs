@@ -9,7 +9,7 @@ namespace Oxide.Compiler.IR.Instructions
         public int LocalId { get; init; }
 
         public override bool HasValue => false;
-        public override TypeDef ValueType => throw new InvalidOperationException("No value");
+        public override TypeRef ValueType => throw new InvalidOperationException("No value");
 
         public override void WriteIr(IrWriter writer)
         {

@@ -7,12 +7,12 @@ namespace Oxide.Compiler.IR.Instructions
     public class StaticCallInst : Instruction
     {
         public override bool HasValue => ReturnType != null;
-        public override TypeDef ValueType => ReturnType;
+        public override TypeRef ValueType => ReturnType;
         public QualifiedName TargetMethod { get; init; }
 
         public ImmutableList<int> Arguments { get; init; }
 
-        public TypeDef ReturnType { get; init; }
+        public TypeRef ReturnType { get; init; }
 
         public override void WriteIr(IrWriter writer)
         {

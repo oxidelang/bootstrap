@@ -4,6 +4,7 @@ using System.Collections.Immutable;
 using Oxide.Compiler.IR;
 using Oxide.Compiler.IR.Instructions;
 using Oxide.Compiler.Parser;
+using Object = System.Object;
 
 namespace Oxide.Compiler.Frontend
 {
@@ -12,7 +13,7 @@ namespace Oxide.Compiler.Frontend
         private readonly IrStore _store;
         private readonly IrUnit _unit;
         private readonly FileParser _fileParser;
-        private readonly FunctionDef _functionDef;
+        private readonly Function _function;
 
         public List<Scope> Scopes { get; private set; }
         private int _lastScopeId;
@@ -27,11 +28,11 @@ namespace Oxide.Compiler.Frontend
 
         private int _lastInstId;
 
-        public BodyParser(IrStore store, IrUnit unit, FileParser fileParser, FunctionDef functionDef)
+        public BodyParser(IrStore store, IrUnit unit, FileParser fileParser, Function function)
         {
             _store = store;
             _unit = unit;
-            _functionDef = functionDef;
+            _function = function;
             _fileParser = fileParser;
             Scopes = new List<Scope>();
             Blocks = new Dictionary<int, Block>();
@@ -44,9 +45,9 @@ namespace Oxide.Compiler.Frontend
         {
             var scope = PushScope();
 
-            for (var i = 0; i < _functionDef.Parameters.Count; i++)
+            for (var i = 0; i < _function.Parameters.Count; i++)
             {
-                var paramDef = _functionDef.Parameters[i];
+                var paramDef = _function.Parameters[i];
                 if (paramDef.IsThis)
                 {
                     throw new NotImplementedException("This params are not supported");
@@ -73,7 +74,7 @@ namespace Oxide.Compiler.Frontend
             {
                 // TODO: Attempt to return value from finalOp
 
-                if (_functionDef.ReturnType != null)
+                if (_function.ReturnType != null)
                 {
                     throw new Exception("Function does not return value");
                 }
@@ -770,11 +771,11 @@ namespace Oxide.Compiler.Frontend
             {
                 Id = ++_lastVariableId,
                 Name = null,
-                Type = new TypeDef
+                Type = new TypeRef
                 {
                     Category = TypeCategory.Direct,
                     MutableRef = true,
-                    GenericParams = ImmutableArray<TypeDef>.Empty,
+                    GenericParams = ImmutableArray<TypeRef>.Empty,
                     Source = structSource,
                     Name = structName
                 },
@@ -822,13 +823,11 @@ namespace Oxide.Compiler.Frontend
 
             var qn1 = qns[0].Parse();
             var resolvedName = ResolveQN(qn1);
-            var unit = FindUnitForQn(resolvedName);
-            if (unit == null)
+            var functionDef = Lookup<Function>(resolvedName);
+            if (functionDef == null)
             {
                 throw new Exception($"Unable to find unit for {resolvedName}");
             }
-
-            var functionDef = unit.Functions[resolvedName];
 
             var argumentCtxs = ctx.arguments() != null
                 ? ctx.arguments().argument()
@@ -923,7 +922,7 @@ namespace Oxide.Compiler.Frontend
                     return CurrentBlock.AddInstruction(new ConstInst
                     {
                         Id = ++_lastInstId,
-                        ConstType = ConstInst.PrimitiveType.I32,
+                        ConstType = ConstInst.ConstPrimitiveType.I32,
                         Value = val
                     });
                 }
@@ -934,14 +933,14 @@ namespace Oxide.Compiler.Frontend
                             return CurrentBlock.AddInstruction(new ConstInst
                             {
                                 Id = ++_lastInstId,
-                                ConstType = ConstInst.PrimitiveType.Bool,
+                                ConstType = ConstInst.ConstPrimitiveType.Bool,
                                 Value = true
                             });
                         case OxideParser.False_boolean_literalContext:
                             return CurrentBlock.AddInstruction(new ConstInst
                             {
                                 Id = ++_lastInstId,
-                                ConstType = ConstInst.PrimitiveType.Bool,
+                                ConstType = ConstInst.ConstPrimitiveType.Bool,
                                 Value = false
                             });
                         default:
@@ -991,9 +990,9 @@ namespace Oxide.Compiler.Frontend
             _currentBlockId = block.Id;
         }
 
-        private TypeDef ParseType(OxideParser.TypeContext ctx)
+        private TypeRef ParseType(OxideParser.TypeContext ctx)
         {
-            return _fileParser.ParseType(ctx, _functionDef.GenericParams);
+            return _fileParser.ParseType(ctx, _function.GenericParams);
         }
 
         private QualifiedName ResolveQN(QualifiedName qn)
@@ -1003,17 +1002,17 @@ namespace Oxide.Compiler.Frontend
 
         private (TypeSource source, QualifiedName qn) ResolveQnWithGenerics(QualifiedName qn)
         {
-            return _fileParser.ResolveQnWithGenerics(qn, _functionDef.GenericParams);
+            return _fileParser.ResolveQnWithGenerics(qn, _function.GenericParams);
         }
 
-        private IrUnit FindUnitForQn(QualifiedName qn)
+        private OxObj Lookup(QualifiedName qn)
         {
-            if (_unit.Objects.ContainsKey(qn))
-            {
-                return _unit;
-            }
+            return _unit.Lookup(qn) ?? _store.Lookup(qn);
+        }
 
-            return _store.FindUnitForQn(qn);
+        private T Lookup<T>(QualifiedName qn) where T : OxObj
+        {
+            return _unit.Lookup<T>(qn) ?? _store.Lookup<T>(qn);
         }
     }
 }

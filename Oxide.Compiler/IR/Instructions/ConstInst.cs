@@ -4,26 +4,26 @@ namespace Oxide.Compiler.IR.Instructions
 {
     public class ConstInst : Instruction
     {
-        public enum PrimitiveType
+        public enum ConstPrimitiveType
         {
             I32,
             Bool
         }
 
-        public PrimitiveType ConstType { get; init; }
+        public ConstPrimitiveType ConstType { get; init; }
 
         public object Value { get; init; }
 
         public override bool HasValue => true;
 
-        public override TypeDef ValueType
+        public override TypeRef ValueType
         {
             get
             {
                 return ConstType switch
                 {
-                    PrimitiveType.I32 => CommonTypes.I32,
-                    PrimitiveType.Bool => CommonTypes.Bool,
+                    ConstPrimitiveType.I32 => PrimitiveType.I32Ref,
+                    ConstPrimitiveType.Bool => PrimitiveType.BoolRef,
                     _ => throw new ArgumentOutOfRangeException()
                 };
             }
@@ -33,8 +33,8 @@ namespace Oxide.Compiler.IR.Instructions
         {
             var type = ConstType switch
             {
-                PrimitiveType.I32 => "i32",
-                PrimitiveType.Bool => "bool",
+                ConstPrimitiveType.I32 => "i32",
+                ConstPrimitiveType.Bool => "bool",
                 _ => throw new ArgumentOutOfRangeException()
             };
 

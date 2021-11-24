@@ -2,7 +2,7 @@ using System.Collections.Immutable;
 
 namespace Oxide.Compiler.IR
 {
-    public abstract class BaseDef
+    public abstract class OxObj
     {
         public QualifiedName Name { get; init; }
 

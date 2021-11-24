@@ -19,7 +19,7 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private LLVMBuilderRef Builder { get; set; }
 
-        private FunctionDef _funcDef;
+        private Function _func;
 
         private LLVMValueRef _funcRef;
 
@@ -36,19 +36,19 @@ namespace Oxide.Compiler.Backend.Llvm
             Backend = backend;
         }
 
-        public void Compile(FunctionDef funcDef)
+        public void Compile(Function func)
         {
-            _funcDef = funcDef;
+            _func = func;
 
-            if (!funcDef.GenericParams.IsEmpty)
+            if (!func.GenericParams.IsEmpty)
             {
                 throw new NotImplementedException("Generic function generation is not implemented");
             }
 
             Builder = Backend.Context.CreateBuilder();
 
-            _funcRef = GetFunctionRef(funcDef);
-            if (funcDef.IsExtern)
+            _funcRef = GetFunctionRef(func);
+            if (func.IsExtern)
             {
                 // _funcRef.Linkage = LLVMLinkage.LLVMExternalLinkage;
                 return;
@@ -57,7 +57,7 @@ namespace Oxide.Compiler.Backend.Llvm
             var entryBlock = _funcRef.AppendBasicBlock("entry");
 
             _blockMap = new Dictionary<int, LLVMBasicBlockRef>();
-            foreach (var block in funcDef.Blocks)
+            foreach (var block in func.Blocks)
             {
                 _blockMap.Add(block.Id, _funcRef.AppendBasicBlock($"scope_{block.Scope.Id}_block_{block.Id}"));
             }
@@ -66,10 +66,10 @@ namespace Oxide.Compiler.Backend.Llvm
             Builder.PositionAtEnd(entryBlock);
 
             // Create storage slot for return value
-            if (_funcDef.ReturnType != null)
+            if (_func.ReturnType != null)
             {
                 var varName = $"return_value";
-                var varType = Backend.ConvertType(funcDef.ReturnType);
+                var varType = Backend.ConvertType(func.ReturnType);
                 _returnSlot = Builder.BuildAlloca(varType, varName);
             }
 
@@ -77,7 +77,7 @@ namespace Oxide.Compiler.Backend.Llvm
             _localMap = new Dictionary<int, LLVMValueRef>();
 
             // TODO: Reuse variable slots
-            foreach (var scope in funcDef.Scopes)
+            foreach (var scope in func.Scopes)
             {
                 foreach (var varDef in scope.Variables.Values)
                 {
@@ -88,7 +88,7 @@ namespace Oxide.Compiler.Backend.Llvm
             }
 
             // Load parameters
-            foreach (var scope in funcDef.Scopes)
+            foreach (var scope in func.Scopes)
             {
                 if (scope.ParentScope != null)
                 {
@@ -107,11 +107,11 @@ namespace Oxide.Compiler.Backend.Llvm
             }
 
             // Jump to first block
-            Builder.BuildBr(_blockMap[funcDef.EntryBlock]);
+            Builder.BuildBr(_blockMap[func.EntryBlock]);
 
             // Create "return" paths for scopes
             _scopeReturnMap = new Dictionary<int, LLVMBasicBlockRef>();
-            foreach (var scope in funcDef.Scopes)
+            foreach (var scope in func.Scopes)
             {
                 if (scope.ParentScope == null)
                 {
@@ -120,7 +120,7 @@ namespace Oxide.Compiler.Backend.Llvm
             }
 
             // Compile bodies
-            foreach (var block in funcDef.Blocks)
+            foreach (var block in func.Blocks)
             {
                 CompileBlock(block);
             }
@@ -155,7 +155,7 @@ namespace Oxide.Compiler.Backend.Llvm
             _scopeReturnMap.Add(scope.Id, block);
 
             // Generate children's return path now that parents exists
-            foreach (var childScope in _funcDef.Scopes)
+            foreach (var childScope in _func.Scopes)
             {
                 if (childScope.ParentScope != scope)
                 {
@@ -247,10 +247,10 @@ namespace Oxide.Compiler.Backend.Llvm
             LLVMValueRef value;
             switch (inst.ConstType)
             {
-                case ConstInst.PrimitiveType.I32:
+                case ConstInst.ConstPrimitiveType.I32:
                     value = LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong)(int)inst.Value, true);
                     break;
-                case ConstInst.PrimitiveType.Bool:
+                case ConstInst.ConstPrimitiveType.Bool:
                     value = LLVMValueRef.CreateConstInt(LLVMTypeRef.Int1, (ulong)((bool)inst.Value ? 1 : 0), true);
                     break;
                 default:
@@ -359,23 +359,22 @@ namespace Oxide.Compiler.Backend.Llvm
             _valueMap.Add(inst.Id, value);
         }
 
-        private bool IsIntegerBacked(TypeDef typeDef)
+        private bool IsIntegerBacked(TypeRef typeRef)
         {
-            return Equals(typeDef, CommonTypes.I32) || Equals(typeDef, CommonTypes.Bool);
+            return Equals(typeRef.Name, PrimitiveType.I32.Name) || Equals(typeRef.Name, PrimitiveType.Bool.Name);
         }
 
-        private bool IsSignedInteger(TypeDef typeDef)
+        private bool IsSignedInteger(TypeRef typeRef)
         {
-            return Equals(typeDef, CommonTypes.I32) || Equals(typeDef, CommonTypes.Bool);
+            return Equals(typeRef.Name, PrimitiveType.I32.Name) || Equals(typeRef.Name, PrimitiveType.Bool.Name);
         }
 
         private void CompileStaticCallInst(StaticCallInst inst)
         {
             var name = $"inst_{inst.Id}";
-            var unit = Store.FindUnitForQn(inst.TargetMethod) ??
-                       throw new Exception($"Failed to find unit for {inst.TargetMethod}");
-            var funDef = unit.Functions[inst.TargetMethod];
-            var funcRef = GetFunctionRef(funDef);
+            var funcDef = Store.Lookup<Function>(inst.TargetMethod) ??
+                          throw new Exception($"Failed to find unit for {inst.TargetMethod}");
+            var funcRef = GetFunctionRef(funcDef);
             var args = inst.Arguments.Select(x => _valueMap[x]).ToArray();
 
             if (inst.ReturnType != null)
@@ -389,19 +388,19 @@ namespace Oxide.Compiler.Backend.Llvm
             }
         }
 
-        public LLVMValueRef GetFunctionRef(FunctionDef funcDef)
+        public LLVMValueRef GetFunctionRef(Function func)
         {
-            if (!funcDef.GenericParams.IsEmpty)
+            if (!func.GenericParams.IsEmpty)
             {
                 throw new NotImplementedException("Generic function support is not implemented");
             }
 
-            var funcName = funcDef.Name.ToString();
+            var funcName = func.Name.ToString();
             var funcRef = Module.GetNamedFunction(funcName);
             if (funcRef != null) return funcRef;
 
             var paramTypes = new List<LLVMTypeRef>();
-            foreach (var paramDef in funcDef.Parameters)
+            foreach (var paramDef in func.Parameters)
             {
                 if (paramDef.IsThis)
                 {
@@ -411,7 +410,7 @@ namespace Oxide.Compiler.Backend.Llvm
                 paramTypes.Add(Backend.ConvertType(paramDef.Type));
             }
 
-            var returnType = Backend.ConvertType(funcDef.ReturnType);
+            var returnType = Backend.ConvertType(func.ReturnType);
             var funcType = LLVMTypeRef.CreateFunction(returnType, paramTypes.ToArray());
             funcRef = Module.AddFunction(funcName, funcType);
 
@@ -436,7 +435,7 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private Instruction GetInst(int id)
         {
-            return _funcDef.Blocks.SelectMany(block => block.Instructions).FirstOrDefault(inst => inst.Id == id);
+            return _func.Blocks.SelectMany(block => block.Instructions).FirstOrDefault(inst => inst.Id == id);
         }
     }
 }

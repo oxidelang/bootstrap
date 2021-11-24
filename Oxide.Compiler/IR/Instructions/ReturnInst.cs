@@ -5,7 +5,7 @@ namespace Oxide.Compiler.IR.Instructions
     public class ReturnInst : Instruction
     {
         public override bool HasValue => false;
-        public override TypeDef ValueType => throw new InvalidOperationException("No value");
+        public override TypeRef ValueType => throw new InvalidOperationException("No value");
         public int? ResultValue { get; init; }
 
         public override bool Terminal => true;

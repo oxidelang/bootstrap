@@ -29,13 +29,26 @@ namespace Oxide.Compiler.IR
             return null;
         }
 
-        public BaseDef LookupObject(QualifiedName qn)
+        public OxObj Lookup(QualifiedName qn)
         {
             foreach (var unit in _units)
             {
                 if (unit.Objects.ContainsKey(qn))
                 {
-                    return unit.LookupObject(qn);
+                    return unit.Lookup(qn);
+                }
+            }
+
+            return null;
+        }
+
+        public T Lookup<T>(QualifiedName qn) where T : OxObj
+        {
+            foreach (var unit in _units)
+            {
+                if (unit.Objects.ContainsKey(qn))
+                {
+                    return unit.Lookup<T>(qn);
                 }
             }
 

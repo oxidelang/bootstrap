@@ -1,6 +1,6 @@
 namespace Oxide.Compiler.IR
 {
-    public class InterfaceDef : BaseDef
+    public class Interface : OxType
     {
     }
 }
