@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using LLVMSharp.Interop;
 using Oxide.Compiler.IR;
@@ -11,14 +12,22 @@ namespace Oxide.Compiler.Backend.Llvm
 
         public LLVMModuleRef Module { get; private set; }
 
+        public LLVMContextRef Context { get; private set; }
+
+        private Dictionary<QualifiedName, LLVMTypeRef> _typeStore;
+
         public LlvmBackend(IrStore store)
         {
             Store = store;
+            _typeStore = new Dictionary<QualifiedName, LLVMTypeRef>();
+            _typeStore.Add(CommonTypes.I32.Name, LLVMTypeRef.Int32);
+            _typeStore.Add(CommonTypes.Bool.Name, LLVMTypeRef.Int1);
         }
 
         public void Begin()
         {
             Module = LLVMModuleRef.CreateWithName("OxideModule");
+            Context = Module.Context;
         }
 
         public void CompileUnit(IrUnit unit)
@@ -33,6 +42,93 @@ namespace Oxide.Compiler.Backend.Llvm
         {
             var funcGen = new FunctionGenerator(this);
             funcGen.Compile(funcDef);
+        }
+
+        public LLVMTypeRef ConvertType(TypeDef typeDef)
+        {
+            if (typeDef == null)
+            {
+                return LLVMTypeRef.Void;
+            }
+
+            if ((typeDef.GenericParams != null && !typeDef.GenericParams.IsEmpty) ||
+                typeDef.Source != TypeSource.Concrete)
+            {
+                throw new NotImplementedException("Generic type support is not implemented");
+            }
+
+            var baseType = ResolveBaseType(typeDef.Name);
+
+            switch (typeDef.Category)
+            {
+                case TypeCategory.Direct:
+                    return baseType;
+                case TypeCategory.Pointer:
+                    throw new NotImplementedException("Pointer types not implemented");
+                    break;
+                case TypeCategory.Reference:
+                    throw new NotImplementedException("Reference types not implemented");
+                    break;
+                case TypeCategory.StrongReference:
+                    throw new NotImplementedException("Strong reference types not implemented");
+                    break;
+                case TypeCategory.WeakReference:
+                    throw new NotImplementedException("Weak reference types not implemented");
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+        }
+
+        public LLVMTypeRef ResolveBaseType(QualifiedName qn)
+        {
+            if (_typeStore.ContainsKey(qn))
+            {
+                return _typeStore[qn];
+            }
+
+            return ResolveMissingType(qn);
+        }
+
+        private LLVMTypeRef ResolveMissingType(QualifiedName qn)
+        {
+            var objectDef = Store.LookupObject(qn);
+            if (objectDef == null)
+            {
+                throw new Exception($"Unable to resolve {qn}");
+            }
+
+            if (objectDef.GenericParams != null && objectDef.GenericParams.Count > 0)
+            {
+                throw new NotImplementedException("Generic types");
+            }
+
+            switch (objectDef)
+            {
+                case StructDef structDef:
+                {
+                    var structType = Context.CreateNamedStruct(structDef.Name.ToString());
+                    _typeStore.Add(qn, structType);
+
+                    var bodyTypes = new List<LLVMTypeRef>();
+                    foreach (var fieldDef in structDef.Fields)
+                    {
+                        bodyTypes.Add(ConvertType(fieldDef.Type));
+                    }
+
+                    structType.StructSetBody(bodyTypes.ToArray(), false);
+
+                    return structType;
+                }
+                case FunctionDef functionDef:
+                    throw new Exception("Unexpected function type");
+                case InterfaceDef interfaceDef:
+                    throw new NotImplementedException("Interface types not implemented");
+                case VariantDef variantDef:
+                    throw new NotImplementedException("Variant types not implemented");
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(objectDef));
+            }
         }
 
         public void Complete()

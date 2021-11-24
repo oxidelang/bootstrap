@@ -364,6 +364,25 @@ namespace Oxide.Compiler.Frontend
             };
         }
 
+        public (TypeSource source, QualifiedName qn) ResolveQnWithGenerics(QualifiedName rawQn,
+            ImmutableList<string> genericParams)
+        {
+            TypeSource source;
+            QualifiedName qn;
+            if (!rawQn.IsAbsolute && genericParams.Contains(rawQn.Parts[0]))
+            {
+                source = TypeSource.Generic;
+                qn = rawQn;
+            }
+            else
+            {
+                source = TypeSource.Concrete;
+                qn = ResolveQN(rawQn);
+            }
+
+            return (source, qn);
+        }
+
         public QualifiedName ResolveQN(QualifiedName qn)
         {
             if (qn.IsAbsolute)

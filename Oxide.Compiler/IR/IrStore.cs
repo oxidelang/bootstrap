@@ -20,9 +20,22 @@ namespace Oxide.Compiler.IR
         {
             foreach (var unit in _units)
             {
-                if (unit.Objects.Contains(qn))
+                if (unit.Objects.ContainsKey(qn))
                 {
                     return unit;
+                }
+            }
+
+            return null;
+        }
+
+        public BaseDef LookupObject(QualifiedName qn)
+        {
+            foreach (var unit in _units)
+            {
+                if (unit.Objects.ContainsKey(qn))
+                {
+                    return unit.LookupObject(qn);
                 }
             }
 

@@ -2,14 +2,8 @@ using System.Collections.Immutable;
 
 namespace Oxide.Compiler.IR
 {
-    public class StructDef
+    public class StructDef : BaseDef
     {
-        public QualifiedName Name { get; }
-
-        public Visibility Visibility { get; }
-
-        public ImmutableList<string> GenericParams { get; }
-
         public ImmutableList<FieldDef> Fields { get; }
 
         public StructDef(QualifiedName name, Visibility visibility, ImmutableList<string> genericParams,

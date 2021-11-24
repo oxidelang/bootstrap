@@ -744,14 +744,62 @@ namespace Oxide.Compiler.Frontend
                 case OxideParser.Qualified_base_expressionContext qualifiedBaseExpressionContext:
                     return ParseQnExpression(qualifiedBaseExpressionContext);
                 case OxideParser.Struct_base_expressionContext structBaseExpressionContext:
-                    throw new NotImplementedException("Struct expression");
-                    break;
+                    return ParseStructInitialiser(structBaseExpressionContext.struct_initialiser());
                 case OxideParser.This_base_expressionContext thisBaseExpressionContext:
                     throw new NotImplementedException("This expression");
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(ctx));
             }
+        }
+
+        private Instruction ParseStructInitialiser(OxideParser.Struct_initialiserContext ctx)
+        {
+            if (ctx.type_generic_params() != null)
+            {
+                throw new NotImplementedException("Generic struct params");
+            }
+
+            var (structSource, structName) = ResolveQnWithGenerics(ctx.qualified_name().Parse());
+            if (structSource != TypeSource.Concrete)
+            {
+                throw new NotImplementedException("Only concrete structs implemented");
+            }
+
+            var varDec = CurrentScope.DefineVariable(new VariableDeclaration
+            {
+                Id = ++_lastVariableId,
+                Name = null,
+                Type = new TypeDef
+                {
+                    Category = TypeCategory.Direct,
+                    MutableRef = true,
+                    GenericParams = ImmutableArray<TypeDef>.Empty,
+                    Source = structSource,
+                    Name = structName
+                },
+                Mutable = true
+            });
+
+            CurrentBlock.AddInstruction(new AllocStructInst
+            {
+                Id = ++_lastInstId,
+                LocalId = varDec.Id,
+                StructName = structName
+            });
+
+            var loadInst = CurrentBlock.AddInstruction(new LoadLocalInst
+            {
+                Id = ++_lastInstId,
+                LocalId = varDec.Id,
+                LocalType = varDec.Type
+            });
+
+            foreach (var fieldInit in ctx.field_initialiser())
+            {
+            }
+
+            return loadInst;
         }
 
         private Instruction ParseFunctionCall(OxideParser.Function_call_base_expressionContext ctx)
@@ -953,9 +1001,14 @@ namespace Oxide.Compiler.Frontend
             return _fileParser.ResolveQN(qn);
         }
 
+        private (TypeSource source, QualifiedName qn) ResolveQnWithGenerics(QualifiedName qn)
+        {
+            return _fileParser.ResolveQnWithGenerics(qn, _functionDef.GenericParams);
+        }
+
         private IrUnit FindUnitForQn(QualifiedName qn)
         {
-            if (_unit.Objects.Contains(qn))
+            if (_unit.Objects.ContainsKey(qn))
             {
                 return _unit;
             }

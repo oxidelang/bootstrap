@@ -45,7 +45,7 @@ namespace Oxide.Compiler.Backend.Llvm
                 throw new NotImplementedException("Generic function generation is not implemented");
             }
 
-            Builder = LLVMBuilderRef.Create(Module.Context);
+            Builder = Backend.Context.CreateBuilder();
 
             _funcRef = GetFunctionRef(funcDef);
             if (funcDef.IsExtern)
@@ -69,7 +69,7 @@ namespace Oxide.Compiler.Backend.Llvm
             if (_funcDef.ReturnType != null)
             {
                 var varName = $"return_value";
-                var varType = ConvertType(funcDef.ReturnType);
+                var varType = Backend.ConvertType(funcDef.ReturnType);
                 _returnSlot = Builder.BuildAlloca(varType, varName);
             }
 
@@ -82,7 +82,7 @@ namespace Oxide.Compiler.Backend.Llvm
                 foreach (var varDef in scope.Variables.Values)
                 {
                     var varName = $"scope_{scope.Id}_local_{varDef.Id}_{varDef.Name}";
-                    var varType = ConvertType(varDef.Type);
+                    var varType = Backend.ConvertType(varDef.Type);
                     _localMap.Add(varDef.Id, Builder.BuildAlloca(varType, varName));
                 }
             }
@@ -211,9 +211,19 @@ namespace Oxide.Compiler.Backend.Llvm
                 case ReturnInst returnInst:
                     CompileReturnInst(returnInst);
                     break;
+                case AllocStructInst allocStructInst:
+                    CompileAllocStructInst(allocStructInst);
+                    break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(instruction));
             }
+        }
+
+        private void CompileAllocStructInst(AllocStructInst inst)
+        {
+            var baseType = Backend.ResolveBaseType(inst.StructName);
+            var structConst = LLVMValueRef.CreateConstNamedStruct(baseType, new LLVMValueRef[0]);
+            Builder.BuildStore(structConst, _localMap[inst.LocalId]);
         }
 
         private void CompileJumpInst(JumpInst jumpInst)
@@ -398,10 +408,10 @@ namespace Oxide.Compiler.Backend.Llvm
                     throw new NotImplementedException("This parameter support is not implemented");
                 }
 
-                paramTypes.Add(ConvertType(paramDef.Type));
+                paramTypes.Add(Backend.ConvertType(paramDef.Type));
             }
 
-            var returnType = ConvertType(funcDef.ReturnType);
+            var returnType = Backend.ConvertType(funcDef.ReturnType);
             var funcType = LLVMTypeRef.CreateFunction(returnType, paramTypes.ToArray());
             funcRef = Module.AddFunction(funcName, funcType);
 
@@ -422,54 +432,6 @@ namespace Oxide.Compiler.Backend.Llvm
             }
 
             Builder.BuildBr(_scopeReturnMap[CurrentBlock.Scope.Id]);
-        }
-
-        private LLVMTypeRef ConvertType(TypeDef typeDef)
-        {
-            if (typeDef == null)
-            {
-                return LLVMTypeRef.Void;
-            }
-
-            if ((typeDef.GenericParams != null && !typeDef.GenericParams.IsEmpty) ||
-                typeDef.Source != TypeSource.Concrete)
-            {
-                throw new NotImplementedException("Generic type support is not implemented");
-            }
-
-            LLVMTypeRef baseType;
-            if (CommonTypes.I32.Name.Equals(typeDef.Name))
-            {
-                baseType = LLVMTypeRef.Int32;
-            }
-            else if (CommonTypes.Bool.Name.Equals(typeDef.Name))
-            {
-                baseType = LLVMTypeRef.Int1;
-            }
-            else
-            {
-                throw new Exception($"Unresolved type {typeDef.Name}");
-            }
-
-            switch (typeDef.Category)
-            {
-                case TypeCategory.Direct:
-                    return baseType;
-                case TypeCategory.Pointer:
-                    throw new NotImplementedException("Pointer types not implemented");
-                    break;
-                case TypeCategory.Reference:
-                    throw new NotImplementedException("Reference types not implemented");
-                    break;
-                case TypeCategory.StrongReference:
-                    throw new NotImplementedException("Strong reference types not implemented");
-                    break;
-                case TypeCategory.WeakReference:
-                    throw new NotImplementedException("Weak reference types not implemented");
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
         }
 
         private Instruction GetInst(int id)

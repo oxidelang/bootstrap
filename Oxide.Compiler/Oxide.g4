@@ -332,7 +332,7 @@ label
     ;
 
 struct_initialiser
-    : name type_generic_params? LBRACE field_initialiser* RBRACE
+    : qualified_name type_generic_params? LBRACE field_initialiser* RBRACE
     ;
 
 field_initialiser
