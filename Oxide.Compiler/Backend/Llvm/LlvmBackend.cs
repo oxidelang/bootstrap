@@ -141,7 +141,6 @@ namespace Oxide.Compiler.Backend.Llvm
             }
 
             var llvmIr = Module.PrintToString();
-            Console.WriteLine(llvmIr);
             File.WriteAllText($"{path}/compiled.llvm", llvmIr);
 
             // unsafe
@@ -182,6 +181,10 @@ namespace Oxide.Compiler.Backend.Llvm
             var mainMethod =
                 (MainMethod)Marshal.GetDelegateForFunctionPointer(engine.GetPointerToGlobal(funcRef),
                     typeof(MainMethod));
+            
+            Console.WriteLine("Running...");
+            Console.WriteLine("------------");
+            Console.WriteLine();
             mainMethod();
 
             engine.Dispose();

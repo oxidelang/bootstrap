@@ -40,7 +40,6 @@ namespace Oxide.Compiler
             var writer = new IrWriter();
             unit.WriteIr(writer);
             var ir = writer.Generate();
-            Console.WriteLine(ir);
             File.WriteAllText($"{path}/compiled.ir", ir);
 
             Console.WriteLine("Compiling");
