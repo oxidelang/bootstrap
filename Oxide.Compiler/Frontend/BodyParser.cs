@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using Oxide.Compiler.IR;
 using Oxide.Compiler.IR.Instructions;
 using Oxide.Compiler.Parser;
@@ -763,8 +764,7 @@ namespace Oxide.Compiler.Frontend
                     throw new NotImplementedException("Method call expression");
                     break;
                 case OxideParser.Access_base_expressionContext accessBaseExpressionContext:
-                    throw new NotImplementedException("Access expression");
-                    break;
+                    return ParseAccessExpression(accessBaseExpressionContext);
                 case OxideParser.Block_base_expressionContext blockBaseExpressionContext:
                     return ParseBlockExpression(blockBaseExpressionContext.block_expression());
                 case OxideParser.Bracket_base_expressionContext bracketBaseExpressionContext:
@@ -783,6 +783,44 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
+        private Instruction ParseAccessExpression(OxideParser.Access_base_expressionContext ctx)
+        {
+            var fieldName = ctx.name().GetText();
+
+            var exp = ParseBaseExpression(ctx.base_expression());
+            if (!exp.HasValue)
+            {
+                throw new Exception($"Cannot access {fieldName} on value with no type");
+            }
+            
+            if (exp.ValueType.Source != TypeSource.Concrete)
+            {
+                throw new NotImplementedException("Non concrete types not implemented");
+            }
+
+            if (exp.ValueType.GenericParams != null && exp.ValueType.GenericParams.Length > 0)
+            {
+                throw new NotImplementedException("Generics");
+            }
+
+            var structDef = Lookup<Struct>(exp.ValueType.Name);
+            if (structDef == null)
+            {
+                throw new Exception($"Failed to find {exp.ValueType.Name}");
+            }
+
+            var fieldDef = structDef.Fields.Single(x => x.Name == fieldName);
+
+            return CurrentBlock.AddInstruction(new LoadFieldInst
+            {
+                Id = ++_lastInstId,
+                TargetId = exp.Id,
+                TargetField = fieldName,
+                TargetType = structDef.Name,
+                TargetFieldType = fieldDef.Type
+            });
+        }
+
         private Instruction ParseStructInitialiser(OxideParser.Struct_initialiserContext ctx)
         {
             if (ctx.type_generic_params() != null)
@@ -795,6 +833,8 @@ namespace Oxide.Compiler.Frontend
             {
                 throw new NotImplementedException("Only concrete structs implemented");
             }
+
+            var structDef = Lookup<Struct>(structName);
 
             var varDec = CurrentScope.DefineVariable(new VariableDeclaration
             {
@@ -827,6 +867,71 @@ namespace Oxide.Compiler.Frontend
 
             foreach (var fieldInit in ctx.field_initialiser())
             {
+                switch (fieldInit)
+                {
+                    case OxideParser.Label_field_initialiserContext labelFieldInitialiserContext:
+                    {
+                        var fieldName = labelFieldInitialiserContext.label().Parse();
+
+                        var fieldValue = ParseExpression(labelFieldInitialiserContext.expression());
+                        if (!fieldValue.HasValue)
+                        {
+                            throw new Exception($"Cannot assign {fieldName} to no value");
+                        }
+
+                        var fieldDef = structDef.Fields.Single(x => x.Name == fieldName);
+                        if (!fieldDef.Type.Equals(fieldValue.ValueType))
+                        {
+                            throw new Exception($"Incompatible types for {fieldName}");
+                        }
+
+                        CurrentBlock.AddInstruction(new StoreFieldInst
+                        {
+                            Id = ++_lastInstId,
+                            ValueId = fieldValue.Id,
+                            TargetId = loadInst.Id,
+                            TargetField = fieldName,
+                            TargetType = structDef.Name,
+                        });
+                        break;
+                    }
+                    case OxideParser.Var_field_initialiserContext varFieldInitialiserContext:
+                    {
+                        var fieldName = varFieldInitialiserContext.name().GetText();
+                        var sourceDec = CurrentScope.ResolveVariable(fieldName);
+                        if (sourceDec == null)
+                        {
+                            throw new Exception($"Unknown local {fieldName}");
+                        }
+
+                        var fieldDef = structDef.Fields.Single(x => x.Name == fieldName);
+                        if (!fieldDef.Type.Equals(sourceDec.Type))
+                        {
+                            throw new Exception($"Incompatible types for {fieldName}");
+                        }
+
+                        var loadSource = CurrentBlock.AddInstruction(new LoadLocalInst
+                        {
+                            Id = ++_lastInstId,
+                            LocalId = sourceDec.Id,
+                            LocalType = sourceDec.Type
+                        });
+
+                        CurrentBlock.AddInstruction(new StoreFieldInst
+                        {
+                            Id = ++_lastInstId,
+                            ValueId = loadSource.Id,
+                            TargetId = loadInst.Id,
+                            TargetField = fieldName,
+                            TargetType = structDef.Name,
+                        });
+                        break;
+                    }
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(fieldInit));
+                }
+
+                // TODO: Check the user provided each field at least once and no more
             }
 
             return loadInst;

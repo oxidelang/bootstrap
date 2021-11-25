@@ -4438,6 +4438,18 @@ public partial class OxideParser : Parser {
 	}
 
 	public partial class Field_initialiserContext : ParserRuleContext {
+		public Field_initialiserContext(ParserRuleContext parent, int invokingState)
+			: base(parent, invokingState)
+		{
+		}
+		public override int RuleIndex { get { return RULE_field_initialiser; } }
+	 
+		public Field_initialiserContext() { }
+		public virtual void CopyFrom(Field_initialiserContext context) {
+			base.CopyFrom(context);
+		}
+	}
+	public partial class Label_field_initialiserContext : Field_initialiserContext {
 		[System.Diagnostics.DebuggerNonUserCode] public LabelContext label() {
 			return GetRuleContext<LabelContext>(0);
 		}
@@ -4445,14 +4457,14 @@ public partial class OxideParser : Parser {
 			return GetRuleContext<ExpressionContext>(0);
 		}
 		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode COMMA() { return GetToken(OxideParser.COMMA, 0); }
+		public Label_field_initialiserContext(Field_initialiserContext context) { CopyFrom(context); }
+	}
+	public partial class Var_field_initialiserContext : Field_initialiserContext {
 		[System.Diagnostics.DebuggerNonUserCode] public NameContext name() {
 			return GetRuleContext<NameContext>(0);
 		}
-		public Field_initialiserContext(ParserRuleContext parent, int invokingState)
-			: base(parent, invokingState)
-		{
-		}
-		public override int RuleIndex { get { return RULE_field_initialiser; } }
+		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode COMMA() { return GetToken(OxideParser.COMMA, 0); }
+		public Var_field_initialiserContext(Field_initialiserContext context) { CopyFrom(context); }
 	}
 
 	[RuleVersion(0)]
@@ -4464,6 +4476,7 @@ public partial class OxideParser : Parser {
 			ErrorHandler.Sync(this);
 			switch ( Interpreter.AdaptivePredict(TokenStream,90,Context) ) {
 			case 1:
+				_localctx = new Label_field_initialiserContext(_localctx);
 				EnterOuterAlt(_localctx, 1);
 				{
 				State = 711;
@@ -4475,6 +4488,7 @@ public partial class OxideParser : Parser {
 				}
 				break;
 			case 2:
+				_localctx = new Var_field_initialiserContext(_localctx);
 				EnterOuterAlt(_localctx, 2);
 				{
 				State = 715;

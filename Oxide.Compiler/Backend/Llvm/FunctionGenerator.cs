@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
@@ -25,6 +26,7 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private Dictionary<int, LLVMValueRef> _valueMap;
         private Dictionary<int, LLVMValueRef> _localMap;
+        private Dictionary<int, VariableDeclaration> _localDefs;
         private Dictionary<int, LLVMBasicBlockRef> _blockMap;
         private Dictionary<int, LLVMBasicBlockRef> _scopeReturnMap;
         private LLVMValueRef? _returnSlot;
@@ -75,6 +77,7 @@ namespace Oxide.Compiler.Backend.Llvm
 
             // Create slots for locals
             _localMap = new Dictionary<int, LLVMValueRef>();
+            _localDefs = new Dictionary<int, VariableDeclaration>();
 
             // TODO: Reuse variable slots
             foreach (var scope in func.Scopes)
@@ -84,6 +87,7 @@ namespace Oxide.Compiler.Backend.Llvm
                     var varName = $"scope_{scope.Id}_local_{varDef.Id}_{varDef.Name}";
                     var varType = Backend.ConvertType(varDef.Type);
                     _localMap.Add(varDef.Id, Builder.BuildAlloca(varType, varName));
+                    _localDefs.Add(varDef.Id, varDef);
                 }
             }
 
@@ -214,8 +218,165 @@ namespace Oxide.Compiler.Backend.Llvm
                 case AllocStructInst allocStructInst:
                     CompileAllocStructInst(allocStructInst);
                     break;
+                case StoreFieldInst storeFieldInst:
+                    CompileStoreFieldInst(storeFieldInst);
+                    break;
+                case LoadFieldInst loadFieldInst:
+                    CompileLoadFieldInst(loadFieldInst);
+                    break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(instruction));
+            }
+        }
+
+        private void CompileLoadFieldInst(LoadFieldInst inst)
+        {
+            var structDef = Store.Lookup<Struct>(inst.TargetType);
+            if (structDef == null)
+            {
+                throw new Exception($"Cannot find struct {inst.TargetType}");
+            }
+
+            var index = structDef.Fields.FindIndex(x => x.Name == inst.TargetField);
+            var fieldDef = structDef.Fields[index];
+            var addr = Builder.BuildInBoundsGEP(
+                _valueMap[inst.TargetId],
+                new[]
+                {
+                    LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0),
+                    LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong)index)
+                },
+                $"inst_{inst.Id}_addr"
+            );
+
+            _valueMap.Add(inst.Id, CreateLoad(addr, fieldDef.Type, $"inst_{inst.Id}_load"));
+        }
+
+        private void CompileLoadLocalInst(LoadLocalInst inst)
+        {
+            // TODO: Check local type
+            _valueMap.Add(inst.Id, CreateLoad(_localMap[inst.LocalId], inst.LocalType, $"inst_{inst.Id}"));
+        }
+
+        private LLVMValueRef CreateLoad(LLVMValueRef ptr, TypeRef typeRef, string name)
+        {
+            if (typeRef.Source != TypeSource.Concrete)
+            {
+                throw new NotImplementedException("Non concrete types not implemented");
+            }
+
+            if (typeRef.GenericParams != null && typeRef.GenericParams.Length > 0)
+            {
+                throw new NotImplementedException("Generics");
+            }
+
+            var obj = Store.Lookup(typeRef.Name);
+            if (obj == null)
+            {
+                throw new Exception($"Failed to find {typeRef}");
+            }
+
+            return CreateLoad(ptr, obj, name);
+        }
+
+        private LLVMValueRef CreateLoad(LLVMValueRef ptr, OxObj type, string name)
+        {
+            LLVMValueRef value;
+            switch (type)
+            {
+                case PrimitiveType:
+                    value = Builder.BuildLoad(ptr, name);
+                    break;
+                case Struct:
+                    value = Builder.BuildInBoundsGEP(
+                        ptr,
+                        new[] { LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0) },
+                        name
+                    );
+                    break;
+                case Function function:
+                case Interface iface:
+                case Variant variant:
+                    throw new NotImplementedException();
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(type));
+            }
+
+            return value;
+        }
+
+        private void CompileStoreFieldInst(StoreFieldInst inst)
+        {
+            var structDef = Store.Lookup<Struct>(inst.TargetType);
+            if (structDef == null)
+            {
+                throw new Exception($"Cannot find struct {inst.TargetType}");
+            }
+
+            var index = structDef.Fields.FindIndex(x => x.Name == inst.TargetField);
+            var fieldDef = structDef.Fields[index];
+            var addr = Builder.BuildInBoundsGEP(
+                _valueMap[inst.TargetId],
+                new[]
+                {
+                    LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0),
+                    LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong)index)
+                },
+                $"inst_{inst.Id}_addr"
+            );
+
+            CreateStore(addr, _valueMap[inst.ValueId], fieldDef.Type, $"inst_{inst.Id}");
+        }
+
+        private void CompileStoreLocalInst(StoreLocalInst inst)
+        {
+            // TODO: Check local type
+            CreateStore(_localMap[inst.LocalId], _valueMap[inst.ValueId], _localDefs[inst.LocalId].Type,
+                $"inst_{inst.Id}");
+        }
+
+        private void CreateStore(LLVMValueRef ptr, LLVMValueRef value, TypeRef typeRef, string name)
+        {
+            if (typeRef.Source != TypeSource.Concrete)
+            {
+                throw new NotImplementedException("Non concrete types not implemented");
+            }
+
+            if (typeRef.GenericParams != null && typeRef.GenericParams.Length > 0)
+            {
+                throw new NotImplementedException("Generics");
+            }
+
+            var obj = Store.Lookup(typeRef.Name);
+            if (obj == null)
+            {
+                throw new Exception($"Failed to find {typeRef}");
+            }
+
+            CreateStore(ptr, value, obj, name);
+        }
+
+        private void CreateStore(LLVMValueRef ptr, LLVMValueRef value, OxObj type, string name)
+        {
+            switch (type)
+            {
+                case PrimitiveType:
+                    Builder.BuildStore(value, ptr);
+                    break;
+                case Struct:
+                    // value = Builder.BuildInBoundsGEP(
+                    //     ptr,
+                    //     new[] { LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0) },
+                    //     name
+                    // );
+                    throw new NotImplementedException("Struct store");
+                    break;
+                case Function function:
+                case Interface iface:
+                case Variant variant:
+                    throw new NotImplementedException();
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(type));
             }
         }
 
@@ -258,17 +419,6 @@ namespace Oxide.Compiler.Backend.Llvm
             }
 
             _valueMap.Add(inst.Id, value);
-        }
-
-        private void CompileLoadLocalInst(LoadLocalInst inst)
-        {
-            var val = Builder.BuildLoad(_localMap[inst.LocalId], $"inst_{inst.Id}");
-            _valueMap.Add(inst.Id, val);
-        }
-
-        private void CompileStoreLocalInst(StoreLocalInst inst)
-        {
-            Builder.BuildStore(_valueMap[inst.ValueId], _localMap[inst.LocalId]);
         }
 
         private void CompileArithmeticInstruction(ArithmeticInst inst)

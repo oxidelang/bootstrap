@@ -345,8 +345,8 @@ struct_initialiser
     ;
 
 field_initialiser
-    : label expression COMMA
-    | name COMMA
+    : label expression COMMA #label_field_initialiser
+    | name COMMA #var_field_initialiser
     ;
 
 variable_statement

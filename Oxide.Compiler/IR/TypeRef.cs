@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Text;
 
 namespace Oxide.Compiler.IR
 {
@@ -40,8 +41,47 @@ namespace Oxide.Compiler.IR
 
         public override string ToString()
         {
-            return
-                $"{nameof(Category)}: {Category}, {nameof(MutableRef)}: {MutableRef}, {nameof(Name)}: {Name}, {nameof(Source)}: {Source}, {nameof(GenericParams)}: {string.Join(",", GenericParams)}";
+            var sb = new StringBuilder();
+            sb.Append("[");
+
+            switch (Category)
+            {
+                case TypeCategory.Direct:
+                    sb.Append("d");
+                    break;
+                case TypeCategory.Pointer:
+                    sb.Append("p");
+                    break;
+                case TypeCategory.Reference:
+                    sb.Append(MutableRef ? "m" : "r");
+                    sb.Append("r");
+                    break;
+                case TypeCategory.StrongReference:
+                    sb.Append("s");
+                    break;
+                case TypeCategory.WeakReference:
+                    sb.Append("w");
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+
+            switch (Source)
+            {
+                case TypeSource.Concrete:
+                    sb.Append("c");
+                    break;
+                case TypeSource.Generic:
+                    sb.Append("g");
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+
+            sb.Append("]");
+            sb.Append(Name);
+
+            return sb.ToString();
         }
     }
 }

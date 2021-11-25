@@ -96,5 +96,10 @@ namespace Oxide.Compiler.Frontend
 
             return (category, mutable);
         }
+
+        public static string Parse(this OxideParser.LabelContext ctx)
+        {
+            return ctx.name().GetText();
+        }
     }
 }

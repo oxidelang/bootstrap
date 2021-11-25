@@ -26,7 +26,7 @@ namespace Oxide.Compiler
             var frontend = new OxideFrontend(_store);
 
             Console.WriteLine($"Parsing files");
-            foreach (var file in Directory.GetFiles(path, "*", SearchOption.AllDirectories))
+            foreach (var file in Directory.GetFiles(path, "*.ox", SearchOption.AllDirectories))
             {
                 Console.WriteLine($" - Parsing {file}");
                 frontend.ParseFile(file);
@@ -39,13 +39,15 @@ namespace Oxide.Compiler
             Console.WriteLine("Dumping IR");
             var writer = new IrWriter();
             unit.WriteIr(writer);
-            Console.WriteLine(writer.Generate());
+            var ir = writer.Generate();
+            Console.WriteLine(ir);
+            File.WriteAllText($"{path}/compiled.ir", ir);
 
             Console.WriteLine("Compiling");
             var backend = new LlvmBackend(_store);
             backend.Begin();
             backend.CompileUnit(unit);
-            backend.Complete();
+            backend.Complete(path);
             backend.Run();
         }
     }

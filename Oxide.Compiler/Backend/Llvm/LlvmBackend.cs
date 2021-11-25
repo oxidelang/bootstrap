@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using LLVMSharp.Interop;
@@ -132,14 +133,16 @@ namespace Oxide.Compiler.Backend.Llvm
             }
         }
 
-        public void Complete()
+        public void Complete(string path)
         {
             if (!Module.TryVerify(LLVMVerifierFailureAction.LLVMPrintMessageAction, out var error))
             {
                 Console.WriteLine($"Error: {error}");
             }
 
-            Module.Dump();
+            var llvmIr = Module.PrintToString();
+            Console.WriteLine(llvmIr);
+            File.WriteAllText($"{path}/compiled.llvm", llvmIr);
 
             // unsafe
             // {
