@@ -143,21 +143,22 @@ namespace Oxide.Compiler.Backend.Llvm
             var llvmIr = Module.PrintToString();
             File.WriteAllText($"{path}/compiled.llvm", llvmIr);
 
-            // unsafe
-            // {
-            //     LLVMPassManagerBuilderRef passManagerBuilder = LLVM.PassManagerBuilderCreate();
-            //     passManagerBuilder.SetOptLevel(1);
-            //     var passManager = LLVMPassManagerRef.Create();
-            //     passManagerBuilder.PopulateModulePassManager(passManager);
-            //     passManager.Run(Module);
-            //     Module.Dump();
-            // }
+            unsafe
+            {
+                LLVMPassManagerBuilderRef passManagerBuilder = LLVM.PassManagerBuilderCreate();
+                passManagerBuilder.SetOptLevel(1);
+                var passManager = LLVMPassManagerRef.Create();
+                passManagerBuilder.PopulateModulePassManager(passManager);
+                passManager.Run(Module);
+            }
 
-            // if (moduleRef.WriteBitcodeToFile("sum.bc") != 0)
-            // {
-            //     Console.WriteLine("error writing bitcode to file, skipping");
-            // }
-            // Console.WriteLine(moduleRef.PrintToString());
+            llvmIr = Module.PrintToString();
+            File.WriteAllText($"{path}/compiled.opt.llvm", llvmIr);
+
+            if (Module.WriteBitcodeToFile($"{path}/compiled.opt.bc") != 0)
+            {
+                Console.WriteLine("error writing bitcode to file");
+            }
         }
 
         public void Run()
@@ -181,7 +182,7 @@ namespace Oxide.Compiler.Backend.Llvm
             var mainMethod =
                 (MainMethod)Marshal.GetDelegateForFunctionPointer(engine.GetPointerToGlobal(funcRef),
                     typeof(MainMethod));
-            
+
             Console.WriteLine("Running...");
             Console.WriteLine("------------");
             Console.WriteLine();
