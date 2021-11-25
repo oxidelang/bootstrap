@@ -216,12 +216,21 @@ statement
     | expression SEMI #expression_statement
     | block_expression #block_expression_statement
     | variable_statement #variable_statement_top
+    | assign_statement #assign_statement_top
+    ;
+
+assign_statement
+    : assign_target EQUAL expression SEMI
+    ;
+
+assign_target
+    : base_expression PERIOD name #field_assign_target
+    | qualified_name (type_generic_params DCOLON qualified_name)? #qualified_assign_target
     ;
 
 expression
     : or_expression #pass_expression
     | RETURN or_expression? #return_expression
-    | base_expression EQUAL or_expression #assign_expression_top
     ;
 
 or_expression

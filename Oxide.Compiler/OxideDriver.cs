@@ -13,6 +13,11 @@ namespace Oxide.Compiler
         public OxideDriver()
         {
             _store = new IrStore();
+
+            var inbuilt = new IrUnit();
+            inbuilt.Add(PrimitiveType.I32);
+            inbuilt.Add(PrimitiveType.Bool);
+            _store.AddUnit(inbuilt);
         }
 
         public void Compile(string path)

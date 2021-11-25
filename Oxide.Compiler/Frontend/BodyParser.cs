@@ -109,22 +109,54 @@ namespace Oxide.Compiler.Frontend
                     // Ignore empty statement
                     break;
                 case OxideParser.Block_expression_statementContext blockExpressionStatementContext:
-                {
                     ParseBlockExpression(blockExpressionStatementContext.block_expression());
                     break;
-                }
                 case OxideParser.Expression_statementContext expressionStatementContext:
-                {
                     ParseExpression(expressionStatementContext.expression());
                     break;
-                }
                 case OxideParser.Variable_statement_topContext variableStatementTopContext:
-                {
                     ParseVariableStatement(variableStatementTopContext.variable_statement());
+                    break;
+                case OxideParser.Assign_statement_topContext assignStatementTopContext:
+                    ParseAssignStatement(assignStatementTopContext.assign_statement());
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(ctx));
+            }
+        }
+
+        private void ParseAssignStatement(OxideParser.Assign_statementContext assignStatementContext)
+        {
+            var exp = ParseExpression(assignStatementContext.expression());
+            if (!exp.HasValue)
+            {
+                throw new Exception($"No value returned by {exp.Id}");
+            }
+
+            switch (assignStatementContext.assign_target())
+            {
+                case OxideParser.Field_assign_targetContext fieldAssignTargetContext:
+                    throw new NotImplementedException("field assignment");
+                case OxideParser.Qualified_assign_targetContext qualifiedAssignTargetContext:
+                {
+                    var varDec = ResolveQn(qualifiedAssignTargetContext.qualified_name(),
+                        qualifiedAssignTargetContext.type_generic_params());
+
+                    if (!exp.ValueType.Equals(varDec.Type))
+                    {
+                        throw new Exception($"Cannot assign {exp.ValueType} to {varDec.Type}");
+                    }
+
+                    CurrentBlock.AddInstruction(new StoreLocalInst
+                    {
+                        Id = ++_lastInstId,
+                        LocalId = varDec.Id,
+                        ValueId = exp.Id
+                    });
                     break;
                 }
                 default:
-                    throw new ArgumentOutOfRangeException(nameof(ctx));
+                    throw new ArgumentOutOfRangeException();
             }
         }
 
@@ -390,9 +422,6 @@ namespace Oxide.Compiler.Frontend
             {
                 case OxideParser.Pass_expressionContext passExpressionContext:
                     return ParseOrExpression(passExpressionContext.or_expression());
-                case OxideParser.Assign_expression_topContext assignExpressionTopContext:
-                    throw new NotImplementedException("Assign expression");
-                    break;
                 case OxideParser.Return_expressionContext returnExpressionContext:
                 {
                     var result = returnExpressionContext.or_expression() != null
@@ -874,12 +903,23 @@ namespace Oxide.Compiler.Frontend
 
         private Instruction ParseQnExpression(OxideParser.Qualified_base_expressionContext ctx)
         {
-            if (ctx.type_generic_params() != null)
+            var varDec = ResolveQn(ctx.qualified_name(), ctx.type_generic_params());
+            return CurrentBlock.AddInstruction(new LoadLocalInst
+            {
+                Id = ++_lastInstId,
+                LocalId = varDec.Id,
+                LocalType = varDec.Type
+            });
+        }
+
+        private VariableDeclaration ResolveQn(OxideParser.Qualified_nameContext[] qns,
+            OxideParser.Type_generic_paramsContext typeGenericParams)
+        {
+            if (typeGenericParams != null)
             {
                 throw new NotImplementedException("Generic params on QN expressions not implemented");
             }
 
-            var qns = ctx.qualified_name();
             if (qns.Length != 1)
             {
                 throw new NotImplementedException("Generic param derived QN not implemented");
@@ -898,12 +938,7 @@ namespace Oxide.Compiler.Frontend
                 throw new Exception($"Unknown variable {varName}");
             }
 
-            return CurrentBlock.AddInstruction(new LoadLocalInst
-            {
-                Id = ++_lastInstId,
-                LocalId = varDec.Id,
-                LocalType = varDec.Type
-            });
+            return varDec;
         }
 
         private Instruction ParseLiteral(OxideParser.LiteralContext ctx)
