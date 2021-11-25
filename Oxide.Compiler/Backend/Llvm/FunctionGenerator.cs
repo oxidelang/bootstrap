@@ -363,14 +363,39 @@ namespace Oxide.Compiler.Backend.Llvm
                 case PrimitiveType:
                     Builder.BuildStore(value, ptr);
                     break;
-                case Struct:
-                    // value = Builder.BuildInBoundsGEP(
-                    //     ptr,
-                    //     new[] { LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0) },
-                    //     name
-                    // );
-                    throw new NotImplementedException("Struct store");
+                case Struct stct:
+                {
+                    for (var i = 0; i < stct.Fields.Count; i++)
+                    {
+                        var field = stct.Fields[i];
+
+                        var sourceAddr = Builder.BuildInBoundsGEP(
+                            value,
+                            new[]
+                            {
+                                LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0),
+                                LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong)i)
+                            },
+                            $"{name}_{field.Name}_saddr"
+                        );
+
+                        var source = CreateLoad(sourceAddr, field.Type, $"{name}_{field.Name}_load");
+
+                        var destAddr = Builder.BuildInBoundsGEP(
+                            ptr,
+                            new[]
+                            {
+                                LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0),
+                                LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong)i)
+                            },
+                            $"{name}_{field.Name}_daddr"
+                        );
+
+                        CreateStore(destAddr, source, field.Type, $"{name}_{field.Name}_store");
+                    }
+
                     break;
+                }
                 case Function function:
                 case Interface iface:
                 case Variant variant:

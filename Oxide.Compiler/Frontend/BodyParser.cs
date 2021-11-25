@@ -134,10 +134,60 @@ namespace Oxide.Compiler.Frontend
                 throw new Exception($"No value returned by {exp.Id}");
             }
 
+            if (exp.ValueType.Source != TypeSource.Concrete)
+            {
+                throw new NotImplementedException("Non concrete types not implemented");
+            }
+
+            if (exp.ValueType.GenericParams != null && exp.ValueType.GenericParams.Length > 0)
+            {
+                throw new NotImplementedException("Generics");
+            }
+
             switch (assignStatementContext.assign_target())
             {
                 case OxideParser.Field_assign_targetContext fieldAssignTargetContext:
-                    throw new NotImplementedException("field assignment");
+                {
+                    var fieldName = fieldAssignTargetContext.name().GetText();
+                    var tgt = ParseBaseExpression(fieldAssignTargetContext.base_expression());
+                    if (!tgt.HasValue)
+                    {
+                        throw new Exception($"Cannot access {fieldName} on value with no type");
+                    }
+
+                    if (tgt.ValueType.Source != TypeSource.Concrete)
+                    {
+                        throw new NotImplementedException("Non concrete types not implemented");
+                    }
+
+                    if (tgt.ValueType.GenericParams != null && tgt.ValueType.GenericParams.Length > 0)
+                    {
+                        throw new NotImplementedException("Generics");
+                    }
+
+                    var structDef = Lookup<Struct>(tgt.ValueType.Name);
+                    if (structDef == null)
+                    {
+                        throw new Exception($"Failed to find {tgt.ValueType.Name}");
+                    }
+
+                    var fieldDef = structDef.Fields.Single(x => x.Name == fieldName);
+
+                    if (!exp.ValueType.Equals(fieldDef.Type))
+                    {
+                        throw new Exception($"Cannot assign {exp.ValueType} to {fieldDef.Type}");
+                    }
+
+                    CurrentBlock.AddInstruction(new StoreFieldInst
+                    {
+                        Id = ++_lastInstId,
+                        TargetId = tgt.Id,
+                        TargetField = fieldName,
+                        TargetType = structDef.Name,
+                        ValueId = exp.Id
+                    });
+                    break;
+                }
                 case OxideParser.Qualified_assign_targetContext qualifiedAssignTargetContext:
                 {
                     var varDec = ResolveQn(qualifiedAssignTargetContext.qualified_name(),
@@ -792,7 +842,7 @@ namespace Oxide.Compiler.Frontend
             {
                 throw new Exception($"Cannot access {fieldName} on value with no type");
             }
-            
+
             if (exp.ValueType.Source != TypeSource.Concrete)
             {
                 throw new NotImplementedException("Non concrete types not implemented");
