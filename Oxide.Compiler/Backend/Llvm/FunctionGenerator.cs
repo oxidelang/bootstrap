@@ -592,18 +592,72 @@ namespace Oxide.Compiler.Backend.Llvm
             var funcDef = Store.Lookup<Function>(inst.TargetMethod) ??
                           throw new Exception($"Failed to find unit for {inst.TargetMethod}");
             var funcRef = GetFunctionRef(funcDef);
-            var args = inst.Arguments.Select(x => _valueMap[x]).ToArray();
+
+            if (funcDef.Parameters.Count != inst.Arguments.Count)
+            {
+                throw new Exception("Invalid number of arguments");
+            }
+
+            var args = new List<LLVMValueRef>();
+
+            for (var i = 0; i < funcDef.Parameters.Count; i++)
+            {
+                var param = funcDef.Parameters[i];
+                var arg = inst.Arguments[i];
+
+                args.Add(LoadParameter(param, arg, name));
+            }
 
             if (inst.ReturnType != null)
             {
-                var value = Builder.BuildCall(funcRef, args, name);
+                var value = Builder.BuildCall(funcRef, args.ToArray(), $"{name}_ret");
                 _valueMap.Add(inst.Id, value);
             }
             else
             {
-                Builder.BuildCall(funcRef, args);
+                Builder.BuildCall(funcRef, args.ToArray());
             }
         }
+
+        private LLVMValueRef LoadParameter(Parameter parameter, int arg, string name)
+        {
+            var argVal = _valueMap[arg];
+            // TODO: Check param vs arg type
+
+            if (parameter.IsThis)
+            {
+                throw new NotImplementedException("This support not implemented");
+            }
+
+            if ((parameter.Type.GenericParams != null && !parameter.Type.GenericParams.IsEmpty) ||
+                parameter.Type.Source != TypeSource.Concrete)
+            {
+                throw new NotImplementedException("Generic type support is not implemented");
+            }
+
+            if (parameter.Type.Category != TypeCategory.Direct)
+            {
+                throw new NotImplementedException("Only direct parameters implemented");
+            }
+
+            var baseType = Store.Lookup(parameter.Type.Name);
+
+            switch (baseType)
+            {
+                case PrimitiveType:
+                    return argVal;
+                case Struct @struct:
+                    // TODO: Deep copy
+                    return Builder.BuildLoad(argVal, $"{name}_param_{parameter.Name}");
+                case Function function:
+                case Interface @interface:
+                case Variant variant:
+                    throw new NotImplementedException();
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(baseType));
+            }
+        }
+
 
         public LLVMValueRef GetFunctionRef(Function func)
         {

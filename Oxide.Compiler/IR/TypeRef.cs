@@ -44,6 +44,8 @@ namespace Oxide.Compiler.IR
             var sb = new StringBuilder();
             sb.Append("[");
 
+            sb.Append(MutableRef ? "m" : "_");
+
             switch (Category)
             {
                 case TypeCategory.Direct:
@@ -53,7 +55,6 @@ namespace Oxide.Compiler.IR
                     sb.Append("p");
                     break;
                 case TypeCategory.Reference:
-                    sb.Append(MutableRef ? "m" : "r");
                     sb.Append("r");
                     break;
                 case TypeCategory.StrongReference:

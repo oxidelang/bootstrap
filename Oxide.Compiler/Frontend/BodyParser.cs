@@ -893,7 +893,7 @@ namespace Oxide.Compiler.Frontend
                 Type = new TypeRef
                 {
                     Category = TypeCategory.Direct,
-                    MutableRef = true,
+                    MutableRef = false,
                     GenericParams = ImmutableArray<TypeRef>.Empty,
                     Source = structSource,
                     Name = structName
