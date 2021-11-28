@@ -8,7 +8,8 @@ namespace Oxide.Compiler.IR
         {
             Name = new QualifiedName(true, new[] { "std", "i32" }),
             Visibility = Visibility.Public,
-            GenericParams = ImmutableList<string>.Empty
+            GenericParams = ImmutableList<string>.Empty,
+            Kind = PrimitiveKind.I32,
         };
 
         public static TypeRef I32Ref = new()
@@ -24,7 +25,8 @@ namespace Oxide.Compiler.IR
         {
             Name = new QualifiedName(true, new[] { "std", "bool" }),
             Visibility = Visibility.Public,
-            GenericParams = ImmutableList<string>.Empty
+            GenericParams = ImmutableList<string>.Empty,
+            Kind = PrimitiveKind.Bool,
         };
 
         public static TypeRef BoolRef = new()
@@ -35,5 +37,7 @@ namespace Oxide.Compiler.IR
             GenericParams = ImmutableArray<TypeRef>.Empty,
             MutableRef = false
         };
+
+        public PrimitiveKind Kind { get; init; }
     }
 }

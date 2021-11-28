@@ -1112,7 +1112,7 @@ namespace Oxide.Compiler.Frontend
                     return CurrentBlock.AddInstruction(new ConstInst
                     {
                         Id = ++_lastInstId,
-                        ConstType = ConstInst.ConstPrimitiveType.I32,
+                        ConstType = PrimitiveKind.I32,
                         Value = val
                     });
                 }
@@ -1123,14 +1123,14 @@ namespace Oxide.Compiler.Frontend
                             return CurrentBlock.AddInstruction(new ConstInst
                             {
                                 Id = ++_lastInstId,
-                                ConstType = ConstInst.ConstPrimitiveType.Bool,
+                                ConstType = PrimitiveKind.Bool,
                                 Value = true
                             });
                         case OxideParser.False_boolean_literalContext:
                             return CurrentBlock.AddInstruction(new ConstInst
                             {
                                 Id = ++_lastInstId,
-                                ConstType = ConstInst.ConstPrimitiveType.Bool,
+                                ConstType = PrimitiveKind.Bool,
                                 Value = false
                             });
                         default:

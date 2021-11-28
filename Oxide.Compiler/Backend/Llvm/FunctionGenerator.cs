@@ -407,9 +407,51 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private void CompileAllocStructInst(AllocStructInst inst)
         {
-            var baseType = Backend.ResolveBaseType(inst.StructName);
-            var structConst = LLVMValueRef.CreateConstNamedStruct(baseType, new LLVMValueRef[0]);
+            var structConst = ZeroInit(new TypeRef
+            {
+                Category = TypeCategory.Direct,
+                GenericParams = ImmutableArray<TypeRef>.Empty,
+                MutableRef = false,
+                Name = inst.StructName,
+                Source = TypeSource.Concrete
+            });
             Builder.BuildStore(structConst, _localMap[inst.LocalId]);
+        }
+
+        private LLVMValueRef ZeroInit(TypeRef tref)
+        {
+            var val = Store.Lookup(tref.Name);
+            switch (val)
+            {
+                case PrimitiveType primitiveType:
+                    switch (primitiveType.Kind)
+                    {
+                        case PrimitiveKind.I32:
+                            return LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0);
+                        case PrimitiveKind.Bool:
+                            return LLVMValueRef.CreateConstInt(LLVMTypeRef.Int1, 0);
+                        default:
+                            throw new ArgumentOutOfRangeException();
+                    }
+                case Struct @struct:
+                {
+                    var baseType = Backend.ResolveBaseType(tref.Name);
+
+                    var consts = new List<LLVMValueRef>();
+                    foreach (var fieldDef in @struct.Fields)
+                    {
+                        consts.Add(ZeroInit(fieldDef.Type));
+                    }
+
+                    return LLVMValueRef.CreateConstNamedStruct(baseType, consts.ToArray());
+                }
+                case Function function:
+                case Interface @interface:
+                case Variant variant:
+                    throw new NotImplementedException($"Zero init not implemented for {val}");
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(val));
+            }
         }
 
         private void CompileJumpInst(JumpInst jumpInst)
@@ -433,10 +475,10 @@ namespace Oxide.Compiler.Backend.Llvm
             LLVMValueRef value;
             switch (inst.ConstType)
             {
-                case ConstInst.ConstPrimitiveType.I32:
+                case PrimitiveKind.I32:
                     value = LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong)(int)inst.Value, true);
                     break;
-                case ConstInst.ConstPrimitiveType.Bool:
+                case PrimitiveKind.Bool:
                     value = LLVMValueRef.CreateConstInt(LLVMTypeRef.Int1, (ulong)((bool)inst.Value ? 1 : 0), true);
                     break;
                 default:
