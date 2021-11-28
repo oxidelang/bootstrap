@@ -84,7 +84,7 @@ namespace Oxide.Compiler.Backend.Llvm
             {
                 foreach (var varDef in scope.Variables.Values)
                 {
-                    var varName = $"scope_{scope.Id}_local_{varDef.Id}_{varDef.Name}";
+                    var varName = $"scope_{scope.Id}_local_{varDef.Id}_{varDef.Name ?? "autogen"}";
                     var varType = Backend.ConvertType(varDef.Type);
                     _localMap.Add(varDef.Id, Builder.BuildAlloca(varType, varName));
                     _localDefs.Add(varDef.Id, varDef);
@@ -608,14 +608,50 @@ namespace Oxide.Compiler.Backend.Llvm
                 args.Add(LoadParameter(param, arg, name));
             }
 
-            if (inst.ReturnType != null)
+            if (inst.ResultLocal != null)
             {
                 var value = Builder.BuildCall(funcRef, args.ToArray(), $"{name}_ret");
-                _valueMap.Add(inst.Id, value);
+                // TODO: Check local type
+                StoreCallResult(funcDef.ReturnType, value, inst.ResultLocal.Value, name);
             }
             else
             {
                 Builder.BuildCall(funcRef, args.ToArray());
+            }
+        }
+
+        private void StoreCallResult(TypeRef returnType, LLVMValueRef returnValue, int destLocal, string name)
+        {
+            var localPtr = _localMap[destLocal];
+
+            if ((returnType.GenericParams != null && !returnType.GenericParams.IsEmpty) ||
+                returnType.Source != TypeSource.Concrete)
+            {
+                throw new NotImplementedException("Generic type support is not implemented");
+            }
+
+            if (returnType.Category != TypeCategory.Direct)
+            {
+                throw new NotImplementedException("Only direct parameters implemented");
+            }
+
+            var baseType = Store.Lookup(returnType.Name);
+
+            switch (baseType)
+            {
+                case PrimitiveType:
+                    Builder.BuildStore(returnValue, localPtr);
+                    return;
+                case Struct @struct:
+                    // TODO: Deep copy / import
+                    Builder.BuildStore(returnValue, localPtr);
+                    return;
+                case Function function:
+                case Interface @interface:
+                case Variant variant:
+                    throw new NotImplementedException();
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(baseType));
             }
         }
 
@@ -697,8 +733,9 @@ namespace Oxide.Compiler.Backend.Llvm
 
             if (inst.ResultValue.HasValue)
             {
+                // TODO: Check return type
                 var value = _valueMap[inst.ResultValue.Value];
-                Builder.BuildStore(value, _returnSlot.Value);
+                CreateStore(_returnSlot.Value, value, _func.ReturnType, $"inst_{inst.Id}");
             }
 
             Builder.BuildBr(_scopeReturnMap[CurrentBlock.Scope.Id]);

@@ -1047,12 +1047,37 @@ namespace Oxide.Compiler.Frontend
                 argIds.Add(inst.Id);
             }
 
+            if (functionDef.ReturnType != null)
+            {
+                var resultDec = CurrentScope.DefineVariable(new VariableDeclaration
+                {
+                    Id = ++_lastVariableId,
+                    Name = null,
+                    Type = functionDef.ReturnType,
+                    Mutable = false
+                });
+
+                CurrentBlock.AddInstruction(new StaticCallInst
+                {
+                    Id = ++_lastInstId,
+                    TargetMethod = functionDef.Name,
+                    Arguments = argIds.ToImmutableList(),
+                    ResultLocal = resultDec.Id
+                });
+
+                return CurrentBlock.AddInstruction(new LoadLocalInst
+                {
+                    Id = ++_lastInstId,
+                    LocalId = resultDec.Id,
+                    LocalType = resultDec.Type,
+                });
+            }
+
             return CurrentBlock.AddInstruction(new StaticCallInst
             {
                 Id = ++_lastInstId,
                 TargetMethod = functionDef.Name,
                 Arguments = argIds.ToImmutableList(),
-                ReturnType = functionDef.ReturnType
             });
         }
 

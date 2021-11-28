@@ -6,27 +6,20 @@ namespace Oxide.Compiler.IR.Instructions
 {
     public class StaticCallInst : Instruction
     {
-        public override bool HasValue => ReturnType != null;
-        public override TypeRef ValueType => ReturnType;
+        public override bool HasValue => false;
+        public override TypeRef ValueType => throw new InvalidOperationException();
         public QualifiedName TargetMethod { get; init; }
 
         public ImmutableList<int> Arguments { get; init; }
 
-        public TypeRef ReturnType { get; init; }
+        public int? ResultLocal { get; init; }
 
         public override void WriteIr(IrWriter writer)
         {
             writer.Write("staticcall ");
             writer.WriteQn(TargetMethod);
             writer.Write($" ({string.Join(", ", Arguments.Select(x => $"%{x}"))}) -> ");
-            if (ReturnType != null)
-            {
-                writer.WriteType(ReturnType);
-            }
-            else
-            {
-                writer.Write("void");
-            }
+            writer.Write($"${ResultLocal}");
         }
     }
 }
