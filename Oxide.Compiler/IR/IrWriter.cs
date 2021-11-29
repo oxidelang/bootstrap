@@ -1,6 +1,8 @@
 using System;
 using System.Linq;
 using System.Text;
+using Oxide.Compiler.IR.TypeRefs;
+using Oxide.Compiler.IR.Types;
 
 namespace Oxide.Compiler.IR
 {
@@ -83,7 +85,7 @@ namespace Oxide.Compiler.IR
             WriteLine($"scope @{scope.Id} {{");
             _indentLevel++;
 
-            foreach (var varDec in scope.Variables.Values)
+            foreach (var varDec in scope.Slots.Values)
             {
                 BeginLine();
                 Write($"var ${varDec.Id} {(varDec.Mutable ? "mut" : "readonly")} ");
@@ -154,44 +156,7 @@ namespace Oxide.Compiler.IR
 
         public void WriteType(TypeRef type)
         {
-            Write("[");
-
-            switch (type.Category)
-            {
-                case TypeCategory.Direct:
-                    Write("d");
-                    break;
-                case TypeCategory.Pointer:
-                    Write("p");
-                    break;
-                case TypeCategory.Reference:
-                    Write(type.MutableRef ? "m" : "r");
-                    Write("r");
-                    break;
-                case TypeCategory.StrongReference:
-                    Write("s");
-                    break;
-                case TypeCategory.WeakReference:
-                    Write("w");
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
-
-            switch (type.Source)
-            {
-                case TypeSource.Concrete:
-                    Write("c");
-                    break;
-                case TypeSource.Generic:
-                    Write("g");
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
-
-            Write("]");
-            WriteQn(type.Name);
+            Write(type.ToString());
         }
 
         public void WriteQn(QualifiedName qn)

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Immutable;
 using System.Linq;
+using Oxide.Compiler.IR.TypeRefs;
 
 namespace Oxide.Compiler.IR.Instructions
 {

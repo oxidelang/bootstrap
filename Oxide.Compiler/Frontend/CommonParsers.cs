@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Oxide.Compiler.IR;
+using Oxide.Compiler.IR.TypeRefs;
 using Oxide.Compiler.Parser;
 
 namespace Oxide.Compiler.Frontend
@@ -60,11 +61,8 @@ namespace Oxide.Compiler.Frontend
             var mutable = false;
             switch (ctx)
             {
-                case OxideParser.Direct_type_flagsContext:
-                    category = TypeCategory.Direct;
-                    break;
                 case OxideParser.Local_type_flagsContext local:
-                    category = TypeCategory.Reference;
+                    category = TypeCategory.Borrow;
                     mutable = local.MUT() != null;
                     break;
                 case OxideParser.Ptr_type_flagsContext ptr:

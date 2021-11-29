@@ -1,3 +1,5 @@
+using Oxide.Compiler.IR.TypeRefs;
+
 namespace Oxide.Compiler.IR.Instructions
 {
     public class LoadLocalInst : Instruction

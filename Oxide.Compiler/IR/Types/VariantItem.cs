@@ -1,4 +1,4 @@
-namespace Oxide.Compiler.IR
+namespace Oxide.Compiler.IR.Types
 {
     public class VariantItem
     {

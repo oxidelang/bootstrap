@@ -1,6 +1,8 @@
-namespace Oxide.Compiler.IR
+using Oxide.Compiler.IR.TypeRefs;
+
+namespace Oxide.Compiler.IR.Types
 {
-    public class VariableDeclaration
+    public class SlotDeclaration
     {
         public int Id { get; init; }
 

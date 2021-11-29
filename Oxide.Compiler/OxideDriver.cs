@@ -3,6 +3,7 @@ using System.IO;
 using Oxide.Compiler.Backend.Llvm;
 using Oxide.Compiler.Frontend;
 using Oxide.Compiler.IR;
+using Oxide.Compiler.IR.Types;
 
 namespace Oxide.Compiler
 {

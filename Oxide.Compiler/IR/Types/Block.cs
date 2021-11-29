@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using Oxide.Compiler.IR.Instructions;
 
-namespace Oxide.Compiler.IR
+namespace Oxide.Compiler.IR.Types
 {
     public class Block
     {

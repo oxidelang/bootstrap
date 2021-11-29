@@ -5,6 +5,8 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using LLVMSharp.Interop;
 using Oxide.Compiler.IR;
+using Oxide.Compiler.IR.TypeRefs;
+using Oxide.Compiler.IR.Types;
 
 namespace Oxide.Compiler.Backend.Llvm
 {
@@ -68,8 +70,8 @@ namespace Oxide.Compiler.Backend.Llvm
                 case TypeCategory.Pointer:
                     throw new NotImplementedException("Pointer types not implemented");
                     break;
-                case TypeCategory.Reference:
-                    throw new NotImplementedException("Reference types not implemented");
+                case TypeCategory.Borrow:
+                    throw new NotImplementedException("Borrow types not implemented");
                     break;
                 case TypeCategory.StrongReference:
                     throw new NotImplementedException("Strong reference types not implemented");

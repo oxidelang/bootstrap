@@ -1,10 +1,10 @@
-namespace Oxide.Compiler.IR
+namespace Oxide.Compiler.IR.TypeRefs
 {
     public enum TypeCategory
     {
         Direct,
         Pointer,
-        Reference,
+        Borrow,
         StrongReference,
         WeakReference,
     }

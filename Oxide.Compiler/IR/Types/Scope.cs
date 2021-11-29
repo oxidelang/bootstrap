@@ -1,8 +1,7 @@
 using System;
 using System.Collections.Generic;
-using Oxide.Compiler.Frontend;
 
-namespace Oxide.Compiler.IR
+namespace Oxide.Compiler.IR.Types
 {
     public class Scope
     {
@@ -10,26 +9,24 @@ namespace Oxide.Compiler.IR
 
         public Scope ParentScope { get; init; }
 
-        public Dictionary<int, VariableDeclaration> Variables { get; private set; }
+        public Dictionary<int, SlotDeclaration> Slots { get; }
 
         private readonly Dictionary<string, int> _variableMapping;
-        // private readonly Dictionary<int, Block> _blocks;
 
         public Scope()
         {
-            Variables = new Dictionary<int, VariableDeclaration>();
+            Slots = new Dictionary<int, SlotDeclaration>();
             _variableMapping = new Dictionary<string, int>();
-            // _blocks = new Dictionary<int, Block>();
         }
 
-        public VariableDeclaration DefineVariable(VariableDeclaration dec)
+        public SlotDeclaration DefineSlot(SlotDeclaration dec)
         {
             if (dec.ParameterSource.HasValue && ParentScope != null)
             {
                 throw new Exception("Parameter variables can only be defined in root scope");
             }
 
-            Variables.Add(dec.Id, dec);
+            Slots.Add(dec.Id, dec);
             if (dec.Name != null)
             {
                 _variableMapping[dec.Name] = dec.Id;
@@ -38,11 +35,11 @@ namespace Oxide.Compiler.IR
             return dec;
         }
 
-        public VariableDeclaration ResolveVariable(string name)
+        public SlotDeclaration ResolveVariable(string name)
         {
             if (_variableMapping.TryGetValue(name, out var decId))
             {
-                return Variables[decId];
+                return Slots[decId];
             }
 
             return ParentScope?.ResolveVariable(name);

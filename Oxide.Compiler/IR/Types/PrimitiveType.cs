@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
+using Oxide.Compiler.IR.TypeRefs;
 
-namespace Oxide.Compiler.IR
+namespace Oxide.Compiler.IR.Types
 {
     public class PrimitiveType : OxType
     {
@@ -12,14 +13,7 @@ namespace Oxide.Compiler.IR
             Kind = PrimitiveKind.I32,
         };
 
-        public static TypeRef I32Ref = new()
-        {
-            Name = I32.Name,
-            Category = TypeCategory.Direct,
-            Source = TypeSource.Concrete,
-            GenericParams = ImmutableArray<TypeRef>.Empty,
-            MutableRef = false
-        };
+        public static DirectTypeRef I32Ref = new(I32.Name, TypeSource.Concrete, ImmutableArray<TypeRef>.Empty);
 
         public static PrimitiveType Bool = new()
         {
@@ -29,14 +23,7 @@ namespace Oxide.Compiler.IR
             Kind = PrimitiveKind.Bool,
         };
 
-        public static TypeRef BoolRef = new()
-        {
-            Name = Bool.Name,
-            Category = TypeCategory.Direct,
-            Source = TypeSource.Concrete,
-            GenericParams = ImmutableArray<TypeRef>.Empty,
-            MutableRef = false
-        };
+        public static DirectTypeRef BoolRef = new(Bool.Name, TypeSource.Concrete, ImmutableArray<TypeRef>.Empty);
 
         public PrimitiveKind Kind { get; init; }
     }

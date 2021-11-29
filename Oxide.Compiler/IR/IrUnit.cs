@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Oxide.Compiler.IR.Types;
 
 namespace Oxide.Compiler.IR
 {

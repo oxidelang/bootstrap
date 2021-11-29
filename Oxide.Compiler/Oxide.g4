@@ -358,7 +358,8 @@ name
     ;
 
 type
-    : type_flags qualified_name type_generic_params?
+    : type_flags type #flagged_type
+    | qualified_name type_generic_params? #direct_type
     ;
 
 type_generic_params
@@ -366,10 +367,9 @@ type_generic_params
     ;
 
 type_flags
-    : UNSAFE? (REF | DERIVED | WEAK) #ref_type_flags
-    | UNSAFE? AMP MUT? #local_type_flags
-    | UNSAFE? STAR MUT? #ptr_type_flags
-    | UNSAFE? #direct_type_flags
+    : (REF | DERIVED | WEAK) #ref_type_flags
+    | AMP MUT? #local_type_flags
+    | STAR MUT? #ptr_type_flags
     ;
 
 visibility

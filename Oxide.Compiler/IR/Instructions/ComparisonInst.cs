@@ -1,4 +1,6 @@
 using System;
+using Oxide.Compiler.IR.TypeRefs;
+using Oxide.Compiler.IR.Types;
 
 namespace Oxide.Compiler.IR.Instructions
 {

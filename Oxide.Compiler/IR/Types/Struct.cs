@@ -1,6 +1,6 @@
 using System.Collections.Immutable;
 
-namespace Oxide.Compiler.IR
+namespace Oxide.Compiler.IR.Types
 {
     public class Struct : OxType
     {

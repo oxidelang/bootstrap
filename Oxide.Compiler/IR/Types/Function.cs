@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
+using Oxide.Compiler.IR.TypeRefs;
 
-namespace Oxide.Compiler.IR
+namespace Oxide.Compiler.IR.Types
 {
     public class Function : OxObj
     {

@@ -7,6 +7,8 @@ using System.Reflection;
 using LLVMSharp.Interop;
 using Oxide.Compiler.IR;
 using Oxide.Compiler.IR.Instructions;
+using Oxide.Compiler.IR.TypeRefs;
+using Oxide.Compiler.IR.Types;
 
 namespace Oxide.Compiler.Backend.Llvm
 {
@@ -25,8 +27,8 @@ namespace Oxide.Compiler.Backend.Llvm
         private LLVMValueRef _funcRef;
 
         private Dictionary<int, LLVMValueRef> _valueMap;
-        private Dictionary<int, LLVMValueRef> _localMap;
-        private Dictionary<int, VariableDeclaration> _localDefs;
+        private Dictionary<int, LLVMValueRef> _slotMap;
+        private Dictionary<int, SlotDeclaration> _slotDefs;
         private Dictionary<int, LLVMBasicBlockRef> _blockMap;
         private Dictionary<int, LLVMBasicBlockRef> _scopeReturnMap;
         private LLVMValueRef? _returnSlot;
@@ -76,18 +78,18 @@ namespace Oxide.Compiler.Backend.Llvm
             }
 
             // Create slots for locals
-            _localMap = new Dictionary<int, LLVMValueRef>();
-            _localDefs = new Dictionary<int, VariableDeclaration>();
+            _slotMap = new Dictionary<int, LLVMValueRef>();
+            _slotDefs = new Dictionary<int, SlotDeclaration>();
 
             // TODO: Reuse variable slots
             foreach (var scope in func.Scopes)
             {
-                foreach (var varDef in scope.Variables.Values)
+                foreach (var slotDef in scope.Slots.Values)
                 {
-                    var varName = $"scope_{scope.Id}_local_{varDef.Id}_{varDef.Name ?? "autogen"}";
-                    var varType = Backend.ConvertType(varDef.Type);
-                    _localMap.Add(varDef.Id, Builder.BuildAlloca(varType, varName));
-                    _localDefs.Add(varDef.Id, varDef);
+                    var varName = $"scope_{scope.Id}_slot_{slotDef.Id}_{slotDef.Name ?? "autogen"}";
+                    var varType = Backend.ConvertType(slotDef.Type);
+                    _slotMap.Add(slotDef.Id, Builder.BuildAlloca(varType, varName));
+                    _slotDefs.Add(slotDef.Id, slotDef);
                 }
             }
 
@@ -99,14 +101,14 @@ namespace Oxide.Compiler.Backend.Llvm
                     continue;
                 }
 
-                foreach (var varDef in scope.Variables.Values)
+                foreach (var varDef in scope.Slots.Values)
                 {
                     if (!varDef.ParameterSource.HasValue)
                     {
                         continue;
                     }
 
-                    Builder.BuildStore(_funcRef.Params[varDef.ParameterSource.Value], _localMap[varDef.Id]);
+                    Builder.BuildStore(_funcRef.Params[varDef.ParameterSource.Value], _slotMap[varDef.Id]);
                 }
             }
 
@@ -255,11 +257,16 @@ namespace Oxide.Compiler.Backend.Llvm
         private void CompileLoadLocalInst(LoadLocalInst inst)
         {
             // TODO: Check local type
-            _valueMap.Add(inst.Id, CreateLoad(_localMap[inst.LocalId], inst.LocalType, $"inst_{inst.Id}"));
+            _valueMap.Add(inst.Id, CreateLoad(_slotMap[inst.LocalId], inst.LocalType, $"inst_{inst.Id}"));
         }
 
         private LLVMValueRef CreateLoad(LLVMValueRef ptr, TypeRef typeRef, string name)
         {
+            if (typeRef is not DirectTypeRef)
+            {
+                throw new NotImplementedException("Non direct types");
+            }
+
             if (typeRef.Source != TypeSource.Concrete)
             {
                 throw new NotImplementedException("Non concrete types not implemented");
@@ -331,12 +338,17 @@ namespace Oxide.Compiler.Backend.Llvm
         private void CompileStoreLocalInst(StoreLocalInst inst)
         {
             // TODO: Check local type
-            CreateStore(_localMap[inst.LocalId], _valueMap[inst.ValueId], _localDefs[inst.LocalId].Type,
+            CreateStore(_slotMap[inst.LocalId], _valueMap[inst.ValueId], _slotDefs[inst.LocalId].Type,
                 $"inst_{inst.Id}");
         }
 
         private void CreateStore(LLVMValueRef ptr, LLVMValueRef value, TypeRef typeRef, string name)
         {
+            if (typeRef is not DirectTypeRef)
+            {
+                throw new NotImplementedException("Non direct types");
+            }
+
             if (typeRef.Source != TypeSource.Concrete)
             {
                 throw new NotImplementedException("Non concrete types not implemented");
@@ -407,19 +419,21 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private void CompileAllocStructInst(AllocStructInst inst)
         {
-            var structConst = ZeroInit(new TypeRef
-            {
-                Category = TypeCategory.Direct,
-                GenericParams = ImmutableArray<TypeRef>.Empty,
-                MutableRef = false,
-                Name = inst.StructName,
-                Source = TypeSource.Concrete
-            });
-            Builder.BuildStore(structConst, _localMap[inst.LocalId]);
+            var structConst = ZeroInit(new DirectTypeRef(
+                inst.StructName,
+                TypeSource.Concrete,
+                ImmutableArray<TypeRef>.Empty
+            ));
+            Builder.BuildStore(structConst, _slotMap[inst.LocalId]);
         }
 
         private LLVMValueRef ZeroInit(TypeRef tref)
         {
+            if (tref is not DirectTypeRef)
+            {
+                throw new NotImplementedException("Zero init of non direct type not implemented");
+            }
+
             var val = Store.Lookup(tref.Name);
             switch (val)
             {
@@ -578,11 +592,21 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private bool IsIntegerBacked(TypeRef typeRef)
         {
+            if (typeRef is not DirectTypeRef)
+            {
+                throw new NotImplementedException("Non direct types");
+            }
+
             return Equals(typeRef.Name, PrimitiveType.I32.Name) || Equals(typeRef.Name, PrimitiveType.Bool.Name);
         }
 
         private bool IsSignedInteger(TypeRef typeRef)
         {
+            if (typeRef is not DirectTypeRef)
+            {
+                throw new NotImplementedException("Non direct types");
+            }
+
             return Equals(typeRef.Name, PrimitiveType.I32.Name) || Equals(typeRef.Name, PrimitiveType.Bool.Name);
         }
 
@@ -622,7 +646,7 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private void StoreCallResult(TypeRef returnType, LLVMValueRef returnValue, int destLocal, string name)
         {
-            var localPtr = _localMap[destLocal];
+            var slotPtr = _slotMap[destLocal];
 
             if ((returnType.GenericParams != null && !returnType.GenericParams.IsEmpty) ||
                 returnType.Source != TypeSource.Concrete)
@@ -630,7 +654,7 @@ namespace Oxide.Compiler.Backend.Llvm
                 throw new NotImplementedException("Generic type support is not implemented");
             }
 
-            if (returnType.Category != TypeCategory.Direct)
+            if (returnType is not DirectTypeRef)
             {
                 throw new NotImplementedException("Only direct parameters implemented");
             }
@@ -640,11 +664,11 @@ namespace Oxide.Compiler.Backend.Llvm
             switch (baseType)
             {
                 case PrimitiveType:
-                    Builder.BuildStore(returnValue, localPtr);
+                    Builder.BuildStore(returnValue, slotPtr);
                     return;
                 case Struct @struct:
                     // TODO: Deep copy / import
-                    Builder.BuildStore(returnValue, localPtr);
+                    Builder.BuildStore(returnValue, slotPtr);
                     return;
                 case Function function:
                 case Interface @interface:

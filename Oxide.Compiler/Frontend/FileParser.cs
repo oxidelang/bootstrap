@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using Oxide.Compiler.IR;
+using Oxide.Compiler.IR.TypeRefs;
+using Oxide.Compiler.IR.Types;
 using Oxide.Compiler.Parser;
 
 namespace Oxide.Compiler.Frontend
@@ -180,16 +182,17 @@ namespace Oxide.Compiler.Frontend
 
                         var (category, mutable) = thisParameterContext.type_flags().Parse();
 
-                        parameters.Add(new Parameter
-                        {
-                            Name = "this",
-                            IsThis = true,
-                            Type = new TypeRef
-                            {
-                                Category = category,
-                                MutableRef = mutable,
-                            },
-                        });
+                        // parameters.Add(new Parameter
+                        // {
+                        //     Name = "this",
+                        //     IsThis = true,
+                        //     Type = new TypeRef
+                        //     {
+                        //         Category = category,
+                        //         MutableRef = mutable,
+                        //     },
+                        // });
+                        throw new NotImplementedException("This parameters not implemented");
                         break;
                     }
                     default:
@@ -331,37 +334,55 @@ namespace Oxide.Compiler.Frontend
 
         public TypeRef ParseType(OxideParser.TypeContext ctx, ImmutableList<string> genericTypes)
         {
-            var (category, mutable) = ctx.type_flags().Parse();
-
-            var genericParams = new List<TypeRef>();
-            if (ctx.type_generic_params() != null)
+            switch (ctx)
             {
-                genericParams.AddRange(ctx.type_generic_params().type().Select(x => ParseType(x, genericTypes)));
+                case OxideParser.Direct_typeContext directTypeContext:
+                {
+                    var genericParams = new List<TypeRef>();
+                    if (directTypeContext.type_generic_params() != null)
+                    {
+                        genericParams.AddRange(directTypeContext.type_generic_params().type()
+                            .Select(x => ParseType(x, genericTypes)));
+                    }
+
+                    var rawQn = directTypeContext.qualified_name().Parse();
+
+                    TypeSource source;
+                    QualifiedName qn;
+                    if (!rawQn.IsAbsolute && genericTypes.Contains(rawQn.Parts[0]))
+                    {
+                        source = TypeSource.Generic;
+                        qn = rawQn;
+                    }
+                    else
+                    {
+                        source = TypeSource.Concrete;
+                        qn = ResolveQN(rawQn);
+                    }
+
+                    return new DirectTypeRef(qn, source, genericParams.ToImmutableArray());
+                }
+                case OxideParser.Flagged_typeContext flaggedTypeContext:
+                {
+                    var (category, mutable) = flaggedTypeContext.type_flags().Parse();
+                    var inner = ParseType(flaggedTypeContext.type(), genericTypes);
+
+                    switch (category)
+                    {
+                        case TypeCategory.Pointer:
+                            return new PointerTypeRef(inner, mutable);
+                        case TypeCategory.Borrow:
+                            return new BorrowTypeRef(inner, mutable);
+                        case TypeCategory.StrongReference:
+                        case TypeCategory.WeakReference:
+                            return new ReferenceTypeRef(inner, category == TypeCategory.StrongReference);
+                        default:
+                            throw new ArgumentOutOfRangeException();
+                    }
+                }
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(ctx));
             }
-
-            var rawQn = ctx.qualified_name().Parse();
-
-            TypeSource source;
-            QualifiedName qn;
-            if (!rawQn.IsAbsolute && genericTypes.Contains(rawQn.Parts[0]))
-            {
-                source = TypeSource.Generic;
-                qn = rawQn;
-            }
-            else
-            {
-                source = TypeSource.Concrete;
-                qn = ResolveQN(rawQn);
-            }
-
-            return new TypeRef
-            {
-                Category = category,
-                MutableRef = mutable,
-                GenericParams = genericParams.ToImmutableArray(),
-                Source = source,
-                Name = qn
-            };
         }
 
         public (TypeSource source, QualifiedName qn) ResolveQnWithGenerics(QualifiedName rawQn,

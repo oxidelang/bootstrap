@@ -1,4 +1,6 @@
-namespace Oxide.Compiler.IR
+using Oxide.Compiler.IR.TypeRefs;
+
+namespace Oxide.Compiler.IR.Types
 {
     public class Parameter
     {

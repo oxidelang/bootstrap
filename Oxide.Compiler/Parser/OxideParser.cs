@@ -1651,7 +1651,7 @@ public partial class OxideParser : Parser {
 			State = 357;
 			ErrorHandler.Sync(this);
 			_la = TokenStream.LA(1);
-			if ((((_la) & ~0x3f) == 0 && ((1L << _la) & ((1L << UNSAFE) | (1L << REF) | (1L << WEAK) | (1L << DERIVED) | (1L << THIS_FIELD) | (1L << AMP) | (1L << STAR) | (1L << IDENTIFIER))) != 0)) {
+			if ((((_la) & ~0x3f) == 0 && ((1L << _la) & ((1L << REF) | (1L << WEAK) | (1L << DERIVED) | (1L << AMP) | (1L << STAR) | (1L << IDENTIFIER))) != 0)) {
 				{
 				State = 349;
 				parameter();
@@ -1753,11 +1753,9 @@ public partial class OxideParser : Parser {
 				type();
 				}
 				break;
-			case UNSAFE:
 			case REF:
 			case WEAK:
 			case DERIVED:
-			case THIS_FIELD:
 			case AMP:
 			case STAR:
 				_localctx = new This_parameterContext(_localctx);
@@ -4625,20 +4623,34 @@ public partial class OxideParser : Parser {
 	}
 
 	public partial class TypeContext : ParserRuleContext {
-		[System.Diagnostics.DebuggerNonUserCode] public Type_flagsContext type_flags() {
-			return GetRuleContext<Type_flagsContext>(0);
+		public TypeContext(ParserRuleContext parent, int invokingState)
+			: base(parent, invokingState)
+		{
 		}
+		public override int RuleIndex { get { return RULE_type; } }
+	 
+		public TypeContext() { }
+		public virtual void CopyFrom(TypeContext context) {
+			base.CopyFrom(context);
+		}
+	}
+	public partial class Direct_typeContext : TypeContext {
 		[System.Diagnostics.DebuggerNonUserCode] public Qualified_nameContext qualified_name() {
 			return GetRuleContext<Qualified_nameContext>(0);
 		}
 		[System.Diagnostics.DebuggerNonUserCode] public Type_generic_paramsContext type_generic_params() {
 			return GetRuleContext<Type_generic_paramsContext>(0);
 		}
-		public TypeContext(ParserRuleContext parent, int invokingState)
-			: base(parent, invokingState)
-		{
+		public Direct_typeContext(TypeContext context) { CopyFrom(context); }
+	}
+	public partial class Flagged_typeContext : TypeContext {
+		[System.Diagnostics.DebuggerNonUserCode] public Type_flagsContext type_flags() {
+			return GetRuleContext<Type_flagsContext>(0);
 		}
-		public override int RuleIndex { get { return RULE_type; } }
+		[System.Diagnostics.DebuggerNonUserCode] public TypeContext type() {
+			return GetRuleContext<TypeContext>(0);
+		}
+		public Flagged_typeContext(TypeContext context) { CopyFrom(context); }
 	}
 
 	[RuleVersion(0)]
@@ -4646,22 +4658,44 @@ public partial class OxideParser : Parser {
 		TypeContext _localctx = new TypeContext(Context, State);
 		EnterRule(_localctx, 98, RULE_type);
 		try {
-			EnterOuterAlt(_localctx, 1);
-			{
-			State = 737;
-			type_flags();
-			State = 738;
-			qualified_name();
-			State = 740;
+			State = 744;
 			ErrorHandler.Sync(this);
-			switch ( Interpreter.AdaptivePredict(TokenStream,94,Context) ) {
-			case 1:
+			switch (TokenStream.LA(1)) {
+			case REF:
+			case WEAK:
+			case DERIVED:
+			case AMP:
+			case STAR:
+				_localctx = new Flagged_typeContext(_localctx);
+				EnterOuterAlt(_localctx, 1);
 				{
-				State = 739;
-				type_generic_params();
+				State = 737;
+				type_flags();
+				State = 738;
+				type();
 				}
 				break;
-			}
+			case DCOLON:
+			case IDENTIFIER:
+				_localctx = new Direct_typeContext(_localctx);
+				EnterOuterAlt(_localctx, 2);
+				{
+				State = 740;
+				qualified_name();
+				State = 742;
+				ErrorHandler.Sync(this);
+				switch ( Interpreter.AdaptivePredict(TokenStream,94,Context) ) {
+				case 1:
+					{
+					State = 741;
+					type_generic_params();
+					}
+					break;
+				}
+				}
+				break;
+			default:
+				throw new NoViableAltException(this);
 			}
 		}
 		catch (RecognitionException re) {
@@ -4703,27 +4737,27 @@ public partial class OxideParser : Parser {
 		try {
 			EnterOuterAlt(_localctx, 1);
 			{
-			State = 742;
+			State = 746;
 			Match(LARROW);
-			State = 743;
+			State = 747;
 			type();
-			State = 748;
+			State = 752;
 			ErrorHandler.Sync(this);
 			_la = TokenStream.LA(1);
 			while (_la==COMMA) {
 				{
 				{
-				State = 744;
+				State = 748;
 				Match(COMMA);
-				State = 745;
+				State = 749;
 				type();
 				}
 				}
-				State = 750;
+				State = 754;
 				ErrorHandler.Sync(this);
 				_la = TokenStream.LA(1);
 			}
-			State = 751;
+			State = 755;
 			Match(RARROW);
 			}
 		}
@@ -4752,25 +4786,18 @@ public partial class OxideParser : Parser {
 	}
 	public partial class Ptr_type_flagsContext : Type_flagsContext {
 		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode STAR() { return GetToken(OxideParser.STAR, 0); }
-		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode UNSAFE() { return GetToken(OxideParser.UNSAFE, 0); }
 		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode MUT() { return GetToken(OxideParser.MUT, 0); }
 		public Ptr_type_flagsContext(Type_flagsContext context) { CopyFrom(context); }
 	}
 	public partial class Local_type_flagsContext : Type_flagsContext {
 		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode AMP() { return GetToken(OxideParser.AMP, 0); }
-		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode UNSAFE() { return GetToken(OxideParser.UNSAFE, 0); }
 		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode MUT() { return GetToken(OxideParser.MUT, 0); }
 		public Local_type_flagsContext(Type_flagsContext context) { CopyFrom(context); }
-	}
-	public partial class Direct_type_flagsContext : Type_flagsContext {
-		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode UNSAFE() { return GetToken(OxideParser.UNSAFE, 0); }
-		public Direct_type_flagsContext(Type_flagsContext context) { CopyFrom(context); }
 	}
 	public partial class Ref_type_flagsContext : Type_flagsContext {
 		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode REF() { return GetToken(OxideParser.REF, 0); }
 		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode DERIVED() { return GetToken(OxideParser.DERIVED, 0); }
 		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode WEAK() { return GetToken(OxideParser.WEAK, 0); }
-		[System.Diagnostics.DebuggerNonUserCode] public ITerminalNode UNSAFE() { return GetToken(OxideParser.UNSAFE, 0); }
 		public Ref_type_flagsContext(Type_flagsContext context) { CopyFrom(context); }
 	}
 
@@ -4780,24 +4807,16 @@ public partial class OxideParser : Parser {
 		EnterRule(_localctx, 102, RULE_type_flags);
 		int _la;
 		try {
-			State = 774;
+			State = 766;
 			ErrorHandler.Sync(this);
-			switch ( Interpreter.AdaptivePredict(TokenStream,102,Context) ) {
-			case 1:
+			switch (TokenStream.LA(1)) {
+			case REF:
+			case WEAK:
+			case DERIVED:
 				_localctx = new Ref_type_flagsContext(_localctx);
 				EnterOuterAlt(_localctx, 1);
 				{
-				State = 754;
-				ErrorHandler.Sync(this);
-				_la = TokenStream.LA(1);
-				if (_la==UNSAFE) {
-					{
-					State = 753;
-					Match(UNSAFE);
-					}
-				}
-
-				State = 756;
+				State = 757;
 				_la = TokenStream.LA(1);
 				if ( !((((_la) & ~0x3f) == 0 && ((1L << _la) & ((1L << REF) | (1L << WEAK) | (1L << DERIVED))) != 0)) ) {
 				ErrorHandler.RecoverInline(this);
@@ -4808,78 +4827,44 @@ public partial class OxideParser : Parser {
 				}
 				}
 				break;
-			case 2:
+			case AMP:
 				_localctx = new Local_type_flagsContext(_localctx);
 				EnterOuterAlt(_localctx, 2);
 				{
 				State = 758;
-				ErrorHandler.Sync(this);
-				_la = TokenStream.LA(1);
-				if (_la==UNSAFE) {
-					{
-					State = 757;
-					Match(UNSAFE);
-					}
-				}
-
-				State = 760;
 				Match(AMP);
-				State = 762;
+				State = 760;
 				ErrorHandler.Sync(this);
 				_la = TokenStream.LA(1);
 				if (_la==MUT) {
 					{
-					State = 761;
+					State = 759;
 					Match(MUT);
 					}
 				}
 
 				}
 				break;
-			case 3:
+			case STAR:
 				_localctx = new Ptr_type_flagsContext(_localctx);
 				EnterOuterAlt(_localctx, 3);
 				{
-				State = 765;
-				ErrorHandler.Sync(this);
-				_la = TokenStream.LA(1);
-				if (_la==UNSAFE) {
-					{
-					State = 764;
-					Match(UNSAFE);
-					}
-				}
-
-				State = 767;
+				State = 762;
 				Match(STAR);
-				State = 769;
+				State = 764;
 				ErrorHandler.Sync(this);
 				_la = TokenStream.LA(1);
 				if (_la==MUT) {
 					{
-					State = 768;
+					State = 763;
 					Match(MUT);
 					}
 				}
 
 				}
 				break;
-			case 4:
-				_localctx = new Direct_type_flagsContext(_localctx);
-				EnterOuterAlt(_localctx, 4);
-				{
-				State = 772;
-				ErrorHandler.Sync(this);
-				_la = TokenStream.LA(1);
-				if (_la==UNSAFE) {
-					{
-					State = 771;
-					Match(UNSAFE);
-					}
-				}
-
-				}
-				break;
+			default:
+				throw new NoViableAltException(this);
 			}
 		}
 		catch (RecognitionException re) {
@@ -4919,14 +4904,14 @@ public partial class OxideParser : Parser {
 		VisibilityContext _localctx = new VisibilityContext(Context, State);
 		EnterRule(_localctx, 104, RULE_visibility);
 		try {
-			State = 778;
+			State = 770;
 			ErrorHandler.Sync(this);
 			switch (TokenStream.LA(1)) {
 			case PUBLIC:
 				_localctx = new Public_visibilityContext(_localctx);
 				EnterOuterAlt(_localctx, 1);
 				{
-				State = 776;
+				State = 768;
 				Match(PUBLIC);
 				}
 				break;
@@ -4934,7 +4919,7 @@ public partial class OxideParser : Parser {
 				_localctx = new Private_visibilityContext(_localctx);
 				EnterOuterAlt(_localctx, 2);
 				{
-				State = 777;
+				State = 769;
 				Match(PRIVATE);
 				}
 				break;
@@ -4993,7 +4978,7 @@ public partial class OxideParser : Parser {
 		LiteralContext _localctx = new LiteralContext(Context, State);
 		EnterRule(_localctx, 106, RULE_literal);
 		try {
-			State = 785;
+			State = 777;
 			ErrorHandler.Sync(this);
 			switch (TokenStream.LA(1)) {
 			case TRUE:
@@ -5001,7 +4986,7 @@ public partial class OxideParser : Parser {
 				_localctx = new Outer_bool_literalContext(_localctx);
 				EnterOuterAlt(_localctx, 1);
 				{
-				State = 780;
+				State = 772;
 				boolean_literal();
 				}
 				break;
@@ -5009,7 +4994,7 @@ public partial class OxideParser : Parser {
 				_localctx = new Int_literalContext(_localctx);
 				EnterOuterAlt(_localctx, 2);
 				{
-				State = 781;
+				State = 773;
 				Match(INT_NUMBER);
 				}
 				break;
@@ -5017,7 +5002,7 @@ public partial class OxideParser : Parser {
 				_localctx = new Hex_literalContext(_localctx);
 				EnterOuterAlt(_localctx, 3);
 				{
-				State = 782;
+				State = 774;
 				Match(HEX_NUMBER);
 				}
 				break;
@@ -5025,7 +5010,7 @@ public partial class OxideParser : Parser {
 				_localctx = new Binary_literalContext(_localctx);
 				EnterOuterAlt(_localctx, 4);
 				{
-				State = 783;
+				State = 775;
 				Match(BINARY_NUMBER);
 				}
 				break;
@@ -5033,7 +5018,7 @@ public partial class OxideParser : Parser {
 				_localctx = new String_literalContext(_localctx);
 				EnterOuterAlt(_localctx, 5);
 				{
-				State = 784;
+				State = 776;
 				Match(STRING_LITERAL);
 				}
 				break;
@@ -5078,14 +5063,14 @@ public partial class OxideParser : Parser {
 		Boolean_literalContext _localctx = new Boolean_literalContext(Context, State);
 		EnterRule(_localctx, 108, RULE_boolean_literal);
 		try {
-			State = 789;
+			State = 781;
 			ErrorHandler.Sync(this);
 			switch (TokenStream.LA(1)) {
 			case TRUE:
 				_localctx = new True_boolean_literalContext(_localctx);
 				EnterOuterAlt(_localctx, 1);
 				{
-				State = 787;
+				State = 779;
 				Match(TRUE);
 				}
 				break;
@@ -5093,7 +5078,7 @@ public partial class OxideParser : Parser {
 				_localctx = new False_boolean_literalContext(_localctx);
 				EnterOuterAlt(_localctx, 2);
 				{
-				State = 788;
+				State = 780;
 				Match(FALSE);
 				}
 				break;
@@ -5133,11 +5118,11 @@ public partial class OxideParser : Parser {
 		try {
 			EnterOuterAlt(_localctx, 1);
 			{
-			State = 791;
+			State = 783;
 			_localctx.f = Match(LARROW);
-			State = 792;
+			State = 784;
 			_localctx.s = Match(LARROW);
-			State = 793;
+			State = 785;
 			if (!((_localctx.f!=null?_localctx.f.TokenIndex:0) + 1 == (_localctx.s!=null?_localctx.s.TokenIndex:0))) throw new FailedPredicateException(this, "$f.index + 1 == $s.index");
 			}
 		}
@@ -5173,11 +5158,11 @@ public partial class OxideParser : Parser {
 		try {
 			EnterOuterAlt(_localctx, 1);
 			{
-			State = 795;
+			State = 787;
 			_localctx.f = Match(RARROW);
-			State = 796;
+			State = 788;
 			_localctx.s = Match(RARROW);
-			State = 797;
+			State = 789;
 			if (!((_localctx.f!=null?_localctx.f.TokenIndex:0) + 1 == (_localctx.s!=null?_localctx.s.TokenIndex:0))) throw new FailedPredicateException(this, "$f.index + 1 == $s.index");
 			}
 		}
@@ -5314,7 +5299,7 @@ public partial class OxideParser : Parser {
 
 	private static char[] _serializedATN = {
 		'\x3', '\x608B', '\xA72A', '\x8133', '\xB9ED', '\x417C', '\x3BE7', '\x7786', 
-		'\x5964', '\x3', '\x43', '\x322', '\x4', '\x2', '\t', '\x2', '\x4', '\x3', 
+		'\x5964', '\x3', '\x43', '\x31A', '\x4', '\x2', '\t', '\x2', '\x4', '\x3', 
 		'\t', '\x3', '\x4', '\x4', '\t', '\x4', '\x4', '\x5', '\t', '\x5', '\x4', 
 		'\x6', '\t', '\x6', '\x4', '\a', '\t', '\a', '\x4', '\b', '\t', '\b', 
 		'\x4', '\t', '\t', '\t', '\x4', '\n', '\t', '\n', '\x4', '\v', '\t', '\v', 
@@ -5461,18 +5446,16 @@ public partial class OxideParser : Parser {
 		'\x3', '\x31', '\x3', '\x31', '\x3', '\x31', '\x5', '\x31', '\x2DA', '\n', 
 		'\x31', '\x3', '\x31', '\x3', '\x31', '\x5', '\x31', '\x2DE', '\n', '\x31', 
 		'\x3', '\x31', '\x3', '\x31', '\x3', '\x32', '\x3', '\x32', '\x3', '\x33', 
-		'\x3', '\x33', '\x3', '\x33', '\x5', '\x33', '\x2E7', '\n', '\x33', '\x3', 
-		'\x34', '\x3', '\x34', '\x3', '\x34', '\x3', '\x34', '\a', '\x34', '\x2ED', 
-		'\n', '\x34', '\f', '\x34', '\xE', '\x34', '\x2F0', '\v', '\x34', '\x3', 
-		'\x34', '\x3', '\x34', '\x3', '\x35', '\x5', '\x35', '\x2F5', '\n', '\x35', 
-		'\x3', '\x35', '\x3', '\x35', '\x5', '\x35', '\x2F9', '\n', '\x35', '\x3', 
-		'\x35', '\x3', '\x35', '\x5', '\x35', '\x2FD', '\n', '\x35', '\x3', '\x35', 
-		'\x5', '\x35', '\x300', '\n', '\x35', '\x3', '\x35', '\x3', '\x35', '\x5', 
-		'\x35', '\x304', '\n', '\x35', '\x3', '\x35', '\x5', '\x35', '\x307', 
-		'\n', '\x35', '\x5', '\x35', '\x309', '\n', '\x35', '\x3', '\x36', '\x3', 
-		'\x36', '\x5', '\x36', '\x30D', '\n', '\x36', '\x3', '\x37', '\x3', '\x37', 
-		'\x3', '\x37', '\x3', '\x37', '\x3', '\x37', '\x5', '\x37', '\x314', '\n', 
-		'\x37', '\x3', '\x38', '\x3', '\x38', '\x5', '\x38', '\x318', '\n', '\x38', 
+		'\x3', '\x33', '\x3', '\x33', '\x3', '\x33', '\x3', '\x33', '\x5', '\x33', 
+		'\x2E9', '\n', '\x33', '\x5', '\x33', '\x2EB', '\n', '\x33', '\x3', '\x34', 
+		'\x3', '\x34', '\x3', '\x34', '\x3', '\x34', '\a', '\x34', '\x2F1', '\n', 
+		'\x34', '\f', '\x34', '\xE', '\x34', '\x2F4', '\v', '\x34', '\x3', '\x34', 
+		'\x3', '\x34', '\x3', '\x35', '\x3', '\x35', '\x3', '\x35', '\x5', '\x35', 
+		'\x2FB', '\n', '\x35', '\x3', '\x35', '\x3', '\x35', '\x5', '\x35', '\x2FF', 
+		'\n', '\x35', '\x5', '\x35', '\x301', '\n', '\x35', '\x3', '\x36', '\x3', 
+		'\x36', '\x5', '\x36', '\x305', '\n', '\x36', '\x3', '\x37', '\x3', '\x37', 
+		'\x3', '\x37', '\x3', '\x37', '\x3', '\x37', '\x5', '\x37', '\x30C', '\n', 
+		'\x37', '\x3', '\x38', '\x3', '\x38', '\x5', '\x38', '\x310', '\n', '\x38', 
 		'\x3', '\x39', '\x3', '\x39', '\x3', '\x39', '\x3', '\x39', '\x3', ':', 
 		'\x3', ':', '\x3', ':', '\x3', ':', '\x3', ':', '\x2', '\xF', '\b', '\x38', 
 		':', '<', '>', '@', '\x42', '\x44', '\x46', 'H', 'J', 'L', 'P', ';', '\x2', 
@@ -5481,7 +5464,7 @@ public partial class OxideParser : Parser {
 		'\x30', '\x32', '\x34', '\x36', '\x38', ':', '<', '>', '@', '\x42', '\x44', 
 		'\x46', 'H', 'J', 'L', 'N', 'P', 'R', 'T', 'V', 'X', 'Z', '\\', '^', '`', 
 		'\x62', '\x64', '\x66', 'h', 'j', 'l', 'n', 'p', 'r', '\x2', '\x3', '\x3', 
-		'\x2', '\x18', '\x1A', '\x2', '\x36A', '\x2', 't', '\x3', '\x2', '\x2', 
+		'\x2', '\x18', '\x1A', '\x2', '\x35E', '\x2', 't', '\x3', '\x2', '\x2', 
 		'\x2', '\x4', '\x83', '\x3', '\x2', '\x2', '\x2', '\x6', '\x8A', '\x3', 
 		'\x2', '\x2', '\x2', '\b', '\x8C', '\x3', '\x2', '\x2', '\x2', '\n', '\x9D', 
 		'\x3', '\x2', '\x2', '\x2', '\f', '\x9F', '\x3', '\x2', '\x2', '\x2', 
@@ -5510,12 +5493,12 @@ public partial class OxideParser : Parser {
 		'\x2', '\x2', 'X', '\x2B5', '\x3', '\x2', '\x2', '\x2', 'Z', '\x2B9', 
 		'\x3', '\x2', '\x2', '\x2', '\\', '\x2BC', '\x3', '\x2', '\x2', '\x2', 
 		'^', '\x2D0', '\x3', '\x2', '\x2', '\x2', '`', '\x2D2', '\x3', '\x2', 
-		'\x2', '\x2', '\x62', '\x2E1', '\x3', '\x2', '\x2', '\x2', '\x64', '\x2E3', 
-		'\x3', '\x2', '\x2', '\x2', '\x66', '\x2E8', '\x3', '\x2', '\x2', '\x2', 
-		'h', '\x308', '\x3', '\x2', '\x2', '\x2', 'j', '\x30C', '\x3', '\x2', 
-		'\x2', '\x2', 'l', '\x313', '\x3', '\x2', '\x2', '\x2', 'n', '\x317', 
-		'\x3', '\x2', '\x2', '\x2', 'p', '\x319', '\x3', '\x2', '\x2', '\x2', 
-		'r', '\x31D', '\x3', '\x2', '\x2', '\x2', 't', 'x', '\x5', '\x4', '\x3', 
+		'\x2', '\x2', '\x62', '\x2E1', '\x3', '\x2', '\x2', '\x2', '\x64', '\x2EA', 
+		'\x3', '\x2', '\x2', '\x2', '\x66', '\x2EC', '\x3', '\x2', '\x2', '\x2', 
+		'h', '\x300', '\x3', '\x2', '\x2', '\x2', 'j', '\x304', '\x3', '\x2', 
+		'\x2', '\x2', 'l', '\x30B', '\x3', '\x2', '\x2', '\x2', 'n', '\x30F', 
+		'\x3', '\x2', '\x2', '\x2', 'p', '\x311', '\x3', '\x2', '\x2', '\x2', 
+		'r', '\x315', '\x3', '\x2', '\x2', '\x2', 't', 'x', '\x5', '\x4', '\x3', 
 		'\x2', 'u', 'w', '\x5', '\f', '\a', '\x2', 'v', 'u', '\x3', '\x2', '\x2', 
 		'\x2', 'w', 'z', '\x3', '\x2', '\x2', '\x2', 'x', 'v', '\x3', '\x2', '\x2', 
 		'\x2', 'x', 'y', '\x3', '\x2', '\x2', '\x2', 'y', '~', '\x3', '\x2', '\x2', 
@@ -5965,67 +5948,59 @@ public partial class OxideParser : Parser {
 		'\x2', '\x2DF', '\x2E0', '\a', '\'', '\x2', '\x2', '\x2E0', '\x61', '\x3', 
 		'\x2', '\x2', '\x2', '\x2E1', '\x2E2', '\a', '>', '\x2', '\x2', '\x2E2', 
 		'\x63', '\x3', '\x2', '\x2', '\x2', '\x2E3', '\x2E4', '\x5', 'h', '\x35', 
-		'\x2', '\x2E4', '\x2E6', '\x5', '\x6', '\x4', '\x2', '\x2E5', '\x2E7', 
-		'\x5', '\x66', '\x34', '\x2', '\x2E6', '\x2E5', '\x3', '\x2', '\x2', '\x2', 
-		'\x2E6', '\x2E7', '\x3', '\x2', '\x2', '\x2', '\x2E7', '\x65', '\x3', 
-		'\x2', '\x2', '\x2', '\x2E8', '\x2E9', '\a', '!', '\x2', '\x2', '\x2E9', 
-		'\x2EE', '\x5', '\x64', '\x33', '\x2', '\x2EA', '\x2EB', '\a', '+', '\x2', 
-		'\x2', '\x2EB', '\x2ED', '\x5', '\x64', '\x33', '\x2', '\x2EC', '\x2EA', 
-		'\x3', '\x2', '\x2', '\x2', '\x2ED', '\x2F0', '\x3', '\x2', '\x2', '\x2', 
-		'\x2EE', '\x2EC', '\x3', '\x2', '\x2', '\x2', '\x2EE', '\x2EF', '\x3', 
-		'\x2', '\x2', '\x2', '\x2EF', '\x2F1', '\x3', '\x2', '\x2', '\x2', '\x2F0', 
-		'\x2EE', '\x3', '\x2', '\x2', '\x2', '\x2F1', '\x2F2', '\a', '\"', '\x2', 
-		'\x2', '\x2F2', 'g', '\x3', '\x2', '\x2', '\x2', '\x2F3', '\x2F5', '\a', 
-		'\x15', '\x2', '\x2', '\x2F4', '\x2F3', '\x3', '\x2', '\x2', '\x2', '\x2F4', 
-		'\x2F5', '\x3', '\x2', '\x2', '\x2', '\x2F5', '\x2F6', '\x3', '\x2', '\x2', 
-		'\x2', '\x2F6', '\x309', '\t', '\x2', '\x2', '\x2', '\x2F7', '\x2F9', 
-		'\a', '\x15', '\x2', '\x2', '\x2F8', '\x2F7', '\x3', '\x2', '\x2', '\x2', 
-		'\x2F8', '\x2F9', '\x3', '\x2', '\x2', '\x2', '\x2F9', '\x2FA', '\x3', 
-		'\x2', '\x2', '\x2', '\x2FA', '\x2FC', '\a', ')', '\x2', '\x2', '\x2FB', 
-		'\x2FD', '\a', '\v', '\x2', '\x2', '\x2FC', '\x2FB', '\x3', '\x2', '\x2', 
-		'\x2', '\x2FC', '\x2FD', '\x3', '\x2', '\x2', '\x2', '\x2FD', '\x309', 
-		'\x3', '\x2', '\x2', '\x2', '\x2FE', '\x300', '\a', '\x15', '\x2', '\x2', 
-		'\x2FF', '\x2FE', '\x3', '\x2', '\x2', '\x2', '\x2FF', '\x300', '\x3', 
-		'\x2', '\x2', '\x2', '\x300', '\x301', '\x3', '\x2', '\x2', '\x2', '\x301', 
-		'\x303', '\a', '\x31', '\x2', '\x2', '\x302', '\x304', '\a', '\v', '\x2', 
-		'\x2', '\x303', '\x302', '\x3', '\x2', '\x2', '\x2', '\x303', '\x304', 
-		'\x3', '\x2', '\x2', '\x2', '\x304', '\x309', '\x3', '\x2', '\x2', '\x2', 
-		'\x305', '\x307', '\a', '\x15', '\x2', '\x2', '\x306', '\x305', '\x3', 
-		'\x2', '\x2', '\x2', '\x306', '\x307', '\x3', '\x2', '\x2', '\x2', '\x307', 
-		'\x309', '\x3', '\x2', '\x2', '\x2', '\x308', '\x2F4', '\x3', '\x2', '\x2', 
-		'\x2', '\x308', '\x2F8', '\x3', '\x2', '\x2', '\x2', '\x308', '\x2FF', 
-		'\x3', '\x2', '\x2', '\x2', '\x308', '\x306', '\x3', '\x2', '\x2', '\x2', 
-		'\x309', 'i', '\x3', '\x2', '\x2', '\x2', '\x30A', '\x30D', '\a', '\b', 
-		'\x2', '\x2', '\x30B', '\x30D', '\a', '\t', '\x2', '\x2', '\x30C', '\x30A', 
-		'\x3', '\x2', '\x2', '\x2', '\x30C', '\x30B', '\x3', '\x2', '\x2', '\x2', 
-		'\x30D', 'k', '\x3', '\x2', '\x2', '\x2', '\x30E', '\x314', '\x5', 'n', 
-		'\x38', '\x2', '\x30F', '\x314', '\a', '?', '\x2', '\x2', '\x310', '\x314', 
-		'\a', '@', '\x2', '\x2', '\x311', '\x314', '\a', '\x41', '\x2', '\x2', 
-		'\x312', '\x314', '\a', '\x43', '\x2', '\x2', '\x313', '\x30E', '\x3', 
-		'\x2', '\x2', '\x2', '\x313', '\x30F', '\x3', '\x2', '\x2', '\x2', '\x313', 
-		'\x310', '\x3', '\x2', '\x2', '\x2', '\x313', '\x311', '\x3', '\x2', '\x2', 
-		'\x2', '\x313', '\x312', '\x3', '\x2', '\x2', '\x2', '\x314', 'm', '\x3', 
-		'\x2', '\x2', '\x2', '\x315', '\x318', '\a', '<', '\x2', '\x2', '\x316', 
-		'\x318', '\a', '=', '\x2', '\x2', '\x317', '\x315', '\x3', '\x2', '\x2', 
-		'\x2', '\x317', '\x316', '\x3', '\x2', '\x2', '\x2', '\x318', 'o', '\x3', 
-		'\x2', '\x2', '\x2', '\x319', '\x31A', '\a', '!', '\x2', '\x2', '\x31A', 
-		'\x31B', '\a', '!', '\x2', '\x2', '\x31B', '\x31C', '\x6', '\x39', '\x18', 
-		'\x3', '\x31C', 'q', '\x3', '\x2', '\x2', '\x2', '\x31D', '\x31E', '\a', 
-		'\"', '\x2', '\x2', '\x31E', '\x31F', '\a', '\"', '\x2', '\x2', '\x31F', 
-		'\x320', '\x6', ':', '\x19', '\x3', '\x320', 's', '\x3', '\x2', '\x2', 
-		'\x2', 'l', 'x', '~', '\x8A', '\x94', '\x9D', '\xA3', '\xA8', '\xAD', 
-		'\xB3', '\xBE', '\xC4', '\xC7', '\xCF', '\xD4', '\xDA', '\xE0', '\xE6', 
-		'\xED', '\xF4', '\xFA', '\x102', '\x108', '\x110', '\x114', '\x118', '\x11E', 
-		'\x129', '\x133', '\x137', '\x13C', '\x142', '\x148', '\x14D', '\x154', 
-		'\x157', '\x15C', '\x164', '\x167', '\x16C', '\x177', '\x17B', '\x181', 
-		'\x185', '\x190', '\x1A0', '\x1A2', '\x1A7', '\x1A9', '\x1B3', '\x1BE', 
-		'\x1C9', '\x1D4', '\x1DF', '\x1EB', '\x1ED', '\x1FF', '\x201', '\x20C', 
-		'\x21A', '\x21C', '\x228', '\x22A', '\x239', '\x23B', '\x247', '\x24B', 
-		'\x253', '\x257', '\x25E', '\x261', '\x265', '\x26A', '\x271', '\x275', 
-		'\x27B', '\x27F', '\x286', '\x288', '\x28C', '\x290', '\x298', '\x29A', 
-		'\x2A3', '\x2A5', '\x2A7', '\x2AE', '\x2B2', '\x2B5', '\x2BE', '\x2C4', 
-		'\x2D0', '\x2D4', '\x2D9', '\x2DD', '\x2E6', '\x2EE', '\x2F4', '\x2F8', 
-		'\x2FC', '\x2FF', '\x303', '\x306', '\x308', '\x30C', '\x313', '\x317',
+		'\x2', '\x2E4', '\x2E5', '\x5', '\x64', '\x33', '\x2', '\x2E5', '\x2EB', 
+		'\x3', '\x2', '\x2', '\x2', '\x2E6', '\x2E8', '\x5', '\x6', '\x4', '\x2', 
+		'\x2E7', '\x2E9', '\x5', '\x66', '\x34', '\x2', '\x2E8', '\x2E7', '\x3', 
+		'\x2', '\x2', '\x2', '\x2E8', '\x2E9', '\x3', '\x2', '\x2', '\x2', '\x2E9', 
+		'\x2EB', '\x3', '\x2', '\x2', '\x2', '\x2EA', '\x2E3', '\x3', '\x2', '\x2', 
+		'\x2', '\x2EA', '\x2E6', '\x3', '\x2', '\x2', '\x2', '\x2EB', '\x65', 
+		'\x3', '\x2', '\x2', '\x2', '\x2EC', '\x2ED', '\a', '!', '\x2', '\x2', 
+		'\x2ED', '\x2F2', '\x5', '\x64', '\x33', '\x2', '\x2EE', '\x2EF', '\a', 
+		'+', '\x2', '\x2', '\x2EF', '\x2F1', '\x5', '\x64', '\x33', '\x2', '\x2F0', 
+		'\x2EE', '\x3', '\x2', '\x2', '\x2', '\x2F1', '\x2F4', '\x3', '\x2', '\x2', 
+		'\x2', '\x2F2', '\x2F0', '\x3', '\x2', '\x2', '\x2', '\x2F2', '\x2F3', 
+		'\x3', '\x2', '\x2', '\x2', '\x2F3', '\x2F5', '\x3', '\x2', '\x2', '\x2', 
+		'\x2F4', '\x2F2', '\x3', '\x2', '\x2', '\x2', '\x2F5', '\x2F6', '\a', 
+		'\"', '\x2', '\x2', '\x2F6', 'g', '\x3', '\x2', '\x2', '\x2', '\x2F7', 
+		'\x301', '\t', '\x2', '\x2', '\x2', '\x2F8', '\x2FA', '\a', ')', '\x2', 
+		'\x2', '\x2F9', '\x2FB', '\a', '\v', '\x2', '\x2', '\x2FA', '\x2F9', '\x3', 
+		'\x2', '\x2', '\x2', '\x2FA', '\x2FB', '\x3', '\x2', '\x2', '\x2', '\x2FB', 
+		'\x301', '\x3', '\x2', '\x2', '\x2', '\x2FC', '\x2FE', '\a', '\x31', '\x2', 
+		'\x2', '\x2FD', '\x2FF', '\a', '\v', '\x2', '\x2', '\x2FE', '\x2FD', '\x3', 
+		'\x2', '\x2', '\x2', '\x2FE', '\x2FF', '\x3', '\x2', '\x2', '\x2', '\x2FF', 
+		'\x301', '\x3', '\x2', '\x2', '\x2', '\x300', '\x2F7', '\x3', '\x2', '\x2', 
+		'\x2', '\x300', '\x2F8', '\x3', '\x2', '\x2', '\x2', '\x300', '\x2FC', 
+		'\x3', '\x2', '\x2', '\x2', '\x301', 'i', '\x3', '\x2', '\x2', '\x2', 
+		'\x302', '\x305', '\a', '\b', '\x2', '\x2', '\x303', '\x305', '\a', '\t', 
+		'\x2', '\x2', '\x304', '\x302', '\x3', '\x2', '\x2', '\x2', '\x304', '\x303', 
+		'\x3', '\x2', '\x2', '\x2', '\x305', 'k', '\x3', '\x2', '\x2', '\x2', 
+		'\x306', '\x30C', '\x5', 'n', '\x38', '\x2', '\x307', '\x30C', '\a', '?', 
+		'\x2', '\x2', '\x308', '\x30C', '\a', '@', '\x2', '\x2', '\x309', '\x30C', 
+		'\a', '\x41', '\x2', '\x2', '\x30A', '\x30C', '\a', '\x43', '\x2', '\x2', 
+		'\x30B', '\x306', '\x3', '\x2', '\x2', '\x2', '\x30B', '\x307', '\x3', 
+		'\x2', '\x2', '\x2', '\x30B', '\x308', '\x3', '\x2', '\x2', '\x2', '\x30B', 
+		'\x309', '\x3', '\x2', '\x2', '\x2', '\x30B', '\x30A', '\x3', '\x2', '\x2', 
+		'\x2', '\x30C', 'm', '\x3', '\x2', '\x2', '\x2', '\x30D', '\x310', '\a', 
+		'<', '\x2', '\x2', '\x30E', '\x310', '\a', '=', '\x2', '\x2', '\x30F', 
+		'\x30D', '\x3', '\x2', '\x2', '\x2', '\x30F', '\x30E', '\x3', '\x2', '\x2', 
+		'\x2', '\x310', 'o', '\x3', '\x2', '\x2', '\x2', '\x311', '\x312', '\a', 
+		'!', '\x2', '\x2', '\x312', '\x313', '\a', '!', '\x2', '\x2', '\x313', 
+		'\x314', '\x6', '\x39', '\x18', '\x3', '\x314', 'q', '\x3', '\x2', '\x2', 
+		'\x2', '\x315', '\x316', '\a', '\"', '\x2', '\x2', '\x316', '\x317', '\a', 
+		'\"', '\x2', '\x2', '\x317', '\x318', '\x6', ':', '\x19', '\x3', '\x318', 
+		's', '\x3', '\x2', '\x2', '\x2', 'i', 'x', '~', '\x8A', '\x94', '\x9D', 
+		'\xA3', '\xA8', '\xAD', '\xB3', '\xBE', '\xC4', '\xC7', '\xCF', '\xD4', 
+		'\xDA', '\xE0', '\xE6', '\xED', '\xF4', '\xFA', '\x102', '\x108', '\x110', 
+		'\x114', '\x118', '\x11E', '\x129', '\x133', '\x137', '\x13C', '\x142', 
+		'\x148', '\x14D', '\x154', '\x157', '\x15C', '\x164', '\x167', '\x16C', 
+		'\x177', '\x17B', '\x181', '\x185', '\x190', '\x1A0', '\x1A2', '\x1A7', 
+		'\x1A9', '\x1B3', '\x1BE', '\x1C9', '\x1D4', '\x1DF', '\x1EB', '\x1ED', 
+		'\x1FF', '\x201', '\x20C', '\x21A', '\x21C', '\x228', '\x22A', '\x239', 
+		'\x23B', '\x247', '\x24B', '\x253', '\x257', '\x25E', '\x261', '\x265', 
+		'\x26A', '\x271', '\x275', '\x27B', '\x27F', '\x286', '\x288', '\x28C', 
+		'\x290', '\x298', '\x29A', '\x2A3', '\x2A5', '\x2A7', '\x2AE', '\x2B2', 
+		'\x2B5', '\x2BE', '\x2C4', '\x2D0', '\x2D4', '\x2D9', '\x2DD', '\x2E8', 
+		'\x2EA', '\x2F2', '\x2FA', '\x2FE', '\x300', '\x304', '\x30B', '\x30F',
 	};
 
 	public static readonly ATN _ATN =

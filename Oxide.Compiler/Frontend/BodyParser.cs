@@ -4,8 +4,9 @@ using System.Collections.Immutable;
 using System.Linq;
 using Oxide.Compiler.IR;
 using Oxide.Compiler.IR.Instructions;
+using Oxide.Compiler.IR.TypeRefs;
+using Oxide.Compiler.IR.Types;
 using Oxide.Compiler.Parser;
-using Object = System.Object;
 
 namespace Oxide.Compiler.Frontend
 {
@@ -20,7 +21,7 @@ namespace Oxide.Compiler.Frontend
         private int _lastScopeId;
         private Scope CurrentScope { get; set; }
 
-        private int _lastVariableId;
+        private int _lastSlotId;
 
         public Dictionary<int, Block> Blocks { get; private set; }
         private int _lastBlockId;
@@ -39,7 +40,7 @@ namespace Oxide.Compiler.Frontend
             Blocks = new Dictionary<int, Block>();
             _lastScopeId = 0;
             _lastBlockId = 0;
-            _lastVariableId = 0;
+            _lastSlotId = 0;
         }
 
         public int ParseBody(OxideParser.BlockContext ctx)
@@ -54,9 +55,9 @@ namespace Oxide.Compiler.Frontend
                     throw new NotImplementedException("This params are not supported");
                 }
 
-                scope.DefineVariable(new VariableDeclaration
+                scope.DefineSlot(new SlotDeclaration
                 {
-                    Id = ++_lastVariableId,
+                    Id = ++_lastSlotId,
                     Name = paramDef.Name,
                     Type = paramDef.Type,
                     Mutable = false,
@@ -248,9 +249,9 @@ namespace Oxide.Compiler.Frontend
 
                     if (finalOp.HasValue)
                     {
-                        var resultDec = originalScope.DefineVariable(new VariableDeclaration
+                        var resultDec = originalScope.DefineSlot(new SlotDeclaration
                         {
-                            Id = ++_lastVariableId,
+                            Id = ++_lastSlotId,
                             Name = null,
                             Type = finalOp.ValueType,
                             Mutable = false
@@ -348,9 +349,9 @@ namespace Oxide.Compiler.Frontend
                             throw new NotImplementedException("Incompatible if block true and false path values");
                         }
 
-                        var resultDec = originalScope.DefineVariable(new VariableDeclaration
+                        var resultDec = originalScope.DefineSlot(new SlotDeclaration
                         {
-                            Id = ++_lastVariableId,
+                            Id = ++_lastSlotId,
                             Name = null,
                             Type = trueOp.ValueType,
                             Mutable = false
@@ -448,9 +449,9 @@ namespace Oxide.Compiler.Frontend
                 throw new Exception($"Unable to resolve type for variable {name}");
             }
 
-            var varDec = CurrentScope.DefineVariable(new VariableDeclaration
+            var varDec = CurrentScope.DefineSlot(new SlotDeclaration
             {
-                Id = ++_lastVariableId,
+                Id = ++_lastSlotId,
                 Name = name,
                 Type = type,
                 Mutable = mutable
@@ -886,18 +887,11 @@ namespace Oxide.Compiler.Frontend
 
             var structDef = Lookup<Struct>(structName);
 
-            var varDec = CurrentScope.DefineVariable(new VariableDeclaration
+            var varDec = CurrentScope.DefineSlot(new SlotDeclaration
             {
-                Id = ++_lastVariableId,
+                Id = ++_lastSlotId,
                 Name = null,
-                Type = new TypeRef
-                {
-                    Category = TypeCategory.Direct,
-                    MutableRef = false,
-                    GenericParams = ImmutableArray<TypeRef>.Empty,
-                    Source = structSource,
-                    Name = structName
-                },
+                Type = new DirectTypeRef(structName, structSource, ImmutableArray<TypeRef>.Empty),
                 Mutable = true
             });
 
@@ -1049,9 +1043,9 @@ namespace Oxide.Compiler.Frontend
 
             if (functionDef.ReturnType != null)
             {
-                var resultDec = CurrentScope.DefineVariable(new VariableDeclaration
+                var resultDec = CurrentScope.DefineSlot(new SlotDeclaration
                 {
-                    Id = ++_lastVariableId,
+                    Id = ++_lastSlotId,
                     Name = null,
                     Type = functionDef.ReturnType,
                     Mutable = false
@@ -1092,7 +1086,7 @@ namespace Oxide.Compiler.Frontend
             });
         }
 
-        private VariableDeclaration ResolveQn(OxideParser.Qualified_nameContext[] qns,
+        private SlotDeclaration ResolveQn(OxideParser.Qualified_nameContext[] qns,
             OxideParser.Type_generic_paramsContext typeGenericParams)
         {
             if (typeGenericParams != null)
