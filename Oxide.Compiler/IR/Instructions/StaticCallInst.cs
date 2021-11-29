@@ -18,8 +18,11 @@ namespace Oxide.Compiler.IR.Instructions
         {
             writer.Write("staticcall ");
             writer.WriteQn(TargetMethod);
-            writer.Write($" ({string.Join(", ", Arguments.Select(x => $"%{x}"))}) -> ");
-            writer.Write($"${ResultLocal}");
+            writer.Write($" ({string.Join(", ", Arguments.Select(x => $"%{x}"))})");
+            if (ResultLocal.HasValue)
+            {
+                writer.Write($"-> ${ResultLocal}");   
+            }
         }
     }
 }

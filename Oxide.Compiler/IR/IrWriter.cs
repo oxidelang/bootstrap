@@ -126,7 +126,11 @@ namespace Oxide.Compiler.IR
             foreach (var instruction in block.Instructions)
             {
                 BeginLine();
-                Write($"%{instruction.Id} = ");
+                if (instruction.HasValue)
+                {
+                    Write($"%{instruction.Id} = ");
+                }
+
                 instruction.WriteIr(this);
                 EndLine();
             }
