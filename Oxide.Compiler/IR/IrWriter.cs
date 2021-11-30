@@ -85,16 +85,16 @@ namespace Oxide.Compiler.IR
             WriteLine($"scope @{scope.Id} {{");
             _indentLevel++;
 
-            foreach (var varDec in scope.Slots.Values)
+            foreach (var slotDec in scope.Slots.Values)
             {
                 BeginLine();
-                Write($"var ${varDec.Id} {(varDec.Mutable ? "mut" : "readonly")} ");
-                Write(varDec.Name ?? "[internal]");
+                Write($"slot ${slotDec.Id} {(slotDec.Mutable ? "mut" : "readonly")} ");
+                Write(slotDec.Name ?? "@internal");
                 Write(" ");
-                WriteType(varDec.Type);
-                if (varDec.ParameterSource.HasValue)
+                WriteType(slotDec.Type);
+                if (slotDec.ParameterSource.HasValue)
                 {
-                    Write($" = param:{varDec.ParameterSource}");
+                    Write($" = param:{slotDec.ParameterSource}");
                 }
 
                 EndLine();
@@ -128,11 +128,6 @@ namespace Oxide.Compiler.IR
             foreach (var instruction in block.Instructions)
             {
                 BeginLine();
-                if (instruction.HasValue)
-                {
-                    Write($"%{instruction.Id} = ");
-                }
-
                 instruction.WriteIr(this);
                 EndLine();
             }

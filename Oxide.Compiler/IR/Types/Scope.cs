@@ -44,5 +44,15 @@ namespace Oxide.Compiler.IR.Types
 
             return ParentScope?.ResolveVariable(name);
         }
+
+        public bool CanAccessSlot(int slot)
+        {
+            if (Slots.ContainsKey(slot))
+            {
+                return true;
+            }
+
+            return ParentScope?.CanAccessSlot(slot) ?? false;
+        }
     }
 }

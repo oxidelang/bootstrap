@@ -1,5 +1,4 @@
 using System;
-using Oxide.Compiler.IR.TypeRefs;
 
 namespace Oxide.Compiler.IR.Instructions
 {
@@ -11,9 +10,7 @@ namespace Oxide.Compiler.IR.Instructions
             Minus
         }
 
-        public override bool HasValue => true;
-        public override TypeRef ValueType => OutputType;
-        public TypeRef OutputType { get; init; }
+        public int ResultSlot { get; init; }
         public int LhsValue { get; init; }
         public int RhsValue { get; init; }
         public Operation Op { get; init; }
@@ -27,7 +24,7 @@ namespace Oxide.Compiler.IR.Instructions
                 _ => throw new ArgumentOutOfRangeException()
             };
 
-            writer.Write($"arithmetic {op} %{LhsValue} %{RhsValue}");
+            writer.Write($"arithmetic ${ResultSlot} {op} ${LhsValue} ${RhsValue}");
         }
     }
 }

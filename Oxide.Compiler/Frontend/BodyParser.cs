@@ -21,14 +21,14 @@ namespace Oxide.Compiler.Frontend
         private int _lastScopeId;
         private Scope CurrentScope { get; set; }
 
-        private int _lastSlotId;
+        public int LastSlotId { get; set; }
 
         public Dictionary<int, Block> Blocks { get; private set; }
         private int _lastBlockId;
         private int _currentBlockId;
         private Block CurrentBlock => Blocks[_currentBlockId];
 
-        private int _lastInstId;
+        public int LastInstId { get; set; }
 
         public BodyParser(IrStore store, IrUnit unit, FileParser fileParser, Function function)
         {
@@ -40,7 +40,7 @@ namespace Oxide.Compiler.Frontend
             Blocks = new Dictionary<int, Block>();
             _lastScopeId = 0;
             _lastBlockId = 0;
-            _lastSlotId = 0;
+            LastSlotId = 0;
         }
 
         public int ParseBody(OxideParser.BlockContext ctx)
@@ -57,7 +57,7 @@ namespace Oxide.Compiler.Frontend
 
                 scope.DefineSlot(new SlotDeclaration
                 {
-                    Id = ++_lastSlotId,
+                    Id = ++LastSlotId,
                     Name = paramDef.Name,
                     Type = paramDef.Type,
                     Mutable = false,
@@ -83,14 +83,14 @@ namespace Oxide.Compiler.Frontend
 
                 CurrentBlock.AddInstruction(new ReturnInst
                 {
-                    Id = ++_lastInstId
+                    Id = ++LastInstId
                 });
             }
 
             return block.Id;
         }
 
-        private Instruction ParseBlock(OxideParser.BlockContext ctx)
+        private UnrealisedAccess ParseBlock(OxideParser.BlockContext ctx)
         {
             if (ctx.statement() != null)
             {
@@ -129,18 +129,18 @@ namespace Oxide.Compiler.Frontend
 
         private void ParseAssignStatement(OxideParser.Assign_statementContext assignStatementContext)
         {
-            var exp = ParseExpression(assignStatementContext.expression());
-            if (!exp.HasValue)
+            var exp = ParseExpression(assignStatementContext.expression()).GenerateMove(this, CurrentBlock);
+            if (exp == null)
             {
-                throw new Exception($"No value returned by {exp.Id}");
+                throw new Exception($"No value returned");
             }
 
-            if (exp.ValueType.Source != TypeSource.Concrete)
+            if (exp.Type.Source != TypeSource.Concrete)
             {
                 throw new NotImplementedException("Non concrete types not implemented");
             }
 
-            if (exp.ValueType.GenericParams != null && exp.ValueType.GenericParams.Length > 0)
+            if (exp.Type.GenericParams != null && exp.Type.GenericParams.Length > 0)
             {
                 throw new NotImplementedException("Generics");
             }
@@ -151,41 +151,42 @@ namespace Oxide.Compiler.Frontend
                 {
                     var fieldName = fieldAssignTargetContext.name().GetText();
                     var tgt = ParseBaseExpression(fieldAssignTargetContext.base_expression());
-                    if (!tgt.HasValue)
+                    if (tgt == null)
                     {
                         throw new Exception($"Cannot access {fieldName} on value with no type");
                     }
 
-                    if (tgt.ValueType.Source != TypeSource.Concrete)
+                    if (tgt.Type.Source != TypeSource.Concrete)
                     {
                         throw new NotImplementedException("Non concrete types not implemented");
                     }
 
-                    if (tgt.ValueType.GenericParams != null && tgt.ValueType.GenericParams.Length > 0)
+                    if (tgt.Type.GenericParams != null && tgt.Type.GenericParams.Length > 0)
                     {
                         throw new NotImplementedException("Generics");
                     }
 
-                    var structDef = Lookup<Struct>(tgt.ValueType.Name);
+                    var structDef = Lookup<Struct>(tgt.Type.Name);
                     if (structDef == null)
                     {
-                        throw new Exception($"Failed to find {tgt.ValueType.Name}");
+                        throw new Exception($"Failed to find {tgt.Type.Name}");
                     }
 
                     var fieldDef = structDef.Fields.Single(x => x.Name == fieldName);
 
-                    if (!exp.ValueType.Equals(fieldDef.Type))
+                    if (!exp.Type.Equals(fieldDef.Type))
                     {
-                        throw new Exception($"Cannot assign {exp.ValueType} to {fieldDef.Type}");
+                        throw new Exception($"Cannot assign {exp.Type} to {fieldDef.Type}");
                     }
 
-                    CurrentBlock.AddInstruction(new StoreFieldInst
+                    var fieldTgt = new FieldUnrealisedAccess(tgt, fieldDef);
+                    var fieldSlot = fieldTgt.GenerateRef(this, CurrentBlock, true);
+
+                    CurrentBlock.AddInstruction(new StoreIndirectInst
                     {
-                        Id = ++_lastInstId,
-                        TargetId = tgt.Id,
-                        TargetField = fieldName,
-                        TargetType = structDef.Name,
-                        ValueId = exp.Id
+                        Id = ++LastInstId,
+                        TargetSlot = fieldSlot.Id,
+                        ValueSlot = exp.Id
                     });
                     break;
                 }
@@ -194,16 +195,16 @@ namespace Oxide.Compiler.Frontend
                     var varDec = ResolveQn(qualifiedAssignTargetContext.qualified_name(),
                         qualifiedAssignTargetContext.type_generic_params());
 
-                    if (!exp.ValueType.Equals(varDec.Type))
+                    if (!exp.Type.Equals(varDec.Type))
                     {
-                        throw new Exception($"Cannot assign {exp.ValueType} to {varDec.Type}");
+                        throw new Exception($"Cannot assign {exp.Type} to {varDec.Type}");
                     }
 
-                    CurrentBlock.AddInstruction(new StoreLocalInst
+                    CurrentBlock.AddInstruction(new MoveInst
                     {
-                        Id = ++_lastInstId,
-                        LocalId = varDec.Id,
-                        ValueId = exp.Id
+                        Id = ++LastInstId,
+                        DestSlot = varDec.Id,
+                        SrcSlot = exp.Id
                     });
                     break;
                 }
@@ -212,7 +213,7 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        private Instruction ParseBlockExpression(OxideParser.Block_expressionContext ctx)
+        private UnrealisedAccess ParseBlockExpression(OxideParser.Block_expressionContext ctx)
         {
             switch (ctx)
             {
@@ -232,11 +233,11 @@ namespace Oxide.Compiler.Frontend
 
                     originalBlock.AddInstruction(new JumpInst
                     {
-                        Id = ++_lastInstId,
+                        Id = ++LastInstId,
                         TargetBlock = block.Id
                     });
 
-                    var finalOp = ParseBlock(child.block());
+                    var finalOpSlot = ParseBlock(child.block());
 
                     var finalBlock = CurrentBlock;
                     if (finalBlock.HasTerminated)
@@ -247,38 +248,35 @@ namespace Oxide.Compiler.Frontend
                     var returnBlock = NewBlock(originalScope);
                     MakeCurrent(returnBlock);
 
-                    if (finalOp.HasValue)
+                    if (finalOpSlot != null)
                     {
+                        var slot = finalOpSlot.GenerateMove(this, finalBlock);
+
                         var resultDec = originalScope.DefineSlot(new SlotDeclaration
                         {
-                            Id = ++_lastSlotId,
+                            Id = ++LastSlotId,
                             Name = null,
-                            Type = finalOp.ValueType,
+                            Type = slot.Type,
                             Mutable = false
                         });
 
-                        finalBlock.AddInstruction(new StoreLocalInst
+                        finalBlock.AddInstruction(new MoveInst
                         {
-                            Id = ++_lastInstId,
-                            LocalId = resultDec.Id,
-                            ValueId = finalOp.Id
+                            Id = ++LastInstId,
+                            SrcSlot = slot.Id,
+                            DestSlot = resultDec.Id
                         });
                         finalBlock.AddInstruction(new JumpInst
                         {
-                            Id = ++_lastInstId,
+                            Id = ++LastInstId,
                             TargetBlock = returnBlock.Id
                         });
-                        return returnBlock.AddInstruction(new LoadLocalInst
-                        {
-                            Id = ++_lastInstId,
-                            LocalId = resultDec.Id,
-                            LocalType = resultDec.Type,
-                        });
+                        return new SlotUnrealisedAccess(resultDec);
                     }
 
                     finalBlock.AddInstruction(new JumpInst
                     {
-                        Id = ++_lastInstId,
+                        Id = ++LastInstId,
                         TargetBlock = returnBlock.Id
                     });
                     return null;
@@ -290,13 +288,17 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        private Instruction ParseIfExpression(OxideParser.If_expressionContext ctx)
+        private UnrealisedAccess ParseIfExpression(OxideParser.If_expressionContext ctx)
         {
             switch (ctx)
             {
                 case OxideParser.Simple_if_expressionContext child:
                 {
-                    var condInst = ParseExpression(child.expression());
+                    var condSlot = ParseExpression(child.expression()).GenerateMove(this, CurrentBlock);
+                    if (!Equals(condSlot.Type, PrimitiveType.BoolRef))
+                    {
+                        throw new Exception("Non-bool value");
+                    }
 
                     var originalScope = CurrentScope;
                     var originalBlock = CurrentBlock;
@@ -311,28 +313,28 @@ namespace Oxide.Compiler.Frontend
                     var falseBlock = hasElse ? NewBlock(CurrentScope) : null;
                     originalBlock.AddInstruction(new JumpInst
                     {
-                        Id = ++_lastInstId,
-                        ConditionValue = condInst.Id,
+                        Id = ++LastInstId,
+                        ConditionSlot = condSlot.Id,
                         TargetBlock = trueBlock.Id,
                         ElseBlock = hasElse ? falseBlock.Id : returnBlock.Id
                     });
 
                     MakeCurrent(trueBlock);
-                    var trueOp = ParseBlock(child.body);
+                    var trueSlot = ParseBlock(child.body)?.GenerateMove(this, CurrentBlock);
                     var trueFinalBlock = CurrentBlock;
                     if (trueFinalBlock.HasTerminated)
                     {
                         throw new NotImplementedException("TODO");
                     }
 
-                    Instruction falseOp = null;
+                    SlotDeclaration falseSlot = null;
                     Block falseFinalBlock = null;
                     if (hasElse)
                     {
                         MakeCurrent(falseBlock);
-                        falseOp = child.else_block != null
+                        falseSlot = (child.else_block != null
                             ? ParseBlock(child.else_block)
-                            : ParseIfExpression(child.else_if);
+                            : ParseIfExpression(child.else_if))?.GenerateMove(this, CurrentBlock);
                         falseFinalBlock = CurrentBlock;
                         if (falseFinalBlock.HasTerminated)
                         {
@@ -342,63 +344,58 @@ namespace Oxide.Compiler.Frontend
 
                     MakeCurrent(returnBlock);
 
-                    if (hasElse && trueOp.HasValue && falseOp.HasValue)
+                    if (hasElse && trueSlot != null && falseSlot != null)
                     {
-                        if (!Equals(trueOp.ValueType, falseOp.ValueType))
+                        if (!Equals(trueSlot.Type, falseSlot.Type))
                         {
                             throw new NotImplementedException("Incompatible if block true and false path values");
                         }
 
                         var resultDec = originalScope.DefineSlot(new SlotDeclaration
                         {
-                            Id = ++_lastSlotId,
+                            Id = ++LastSlotId,
                             Name = null,
-                            Type = trueOp.ValueType,
+                            Type = trueSlot.Type,
                             Mutable = false
                         });
 
-                        trueFinalBlock.AddInstruction(new StoreLocalInst
+                        trueFinalBlock.AddInstruction(new MoveInst
                         {
-                            Id = ++_lastInstId,
-                            LocalId = resultDec.Id,
-                            ValueId = trueOp.Id
+                            Id = ++LastInstId,
+                            SrcSlot = trueSlot.Id,
+                            DestSlot = resultDec.Id,
                         });
                         trueFinalBlock.AddInstruction(new JumpInst
                         {
-                            Id = ++_lastInstId,
+                            Id = ++LastInstId,
                             TargetBlock = returnBlock.Id
                         });
 
-                        falseFinalBlock.AddInstruction(new StoreLocalInst
+                        falseFinalBlock.AddInstruction(new MoveInst
                         {
-                            Id = ++_lastInstId,
-                            LocalId = resultDec.Id,
-                            ValueId = falseOp.Id
+                            Id = ++LastInstId,
+                            SrcSlot = falseSlot.Id,
+                            DestSlot = resultDec.Id
                         });
                         falseFinalBlock.AddInstruction(new JumpInst
                         {
-                            Id = ++_lastInstId,
+                            Id = ++LastInstId,
                             TargetBlock = returnBlock.Id
                         });
 
-                        return returnBlock.AddInstruction(new LoadLocalInst
-                        {
-                            Id = ++_lastInstId,
-                            LocalId = resultDec.Id,
-                            LocalType = resultDec.Type,
-                        });
+                        return new SlotUnrealisedAccess(resultDec);
                     }
 
                     trueFinalBlock.AddInstruction(new JumpInst
                     {
-                        Id = ++_lastInstId,
+                        Id = ++LastInstId,
                         TargetBlock = returnBlock.Id
                     });
                     if (hasElse)
                     {
                         falseFinalBlock.AddInstruction(new JumpInst
                         {
-                            Id = ++_lastInstId,
+                            Id = ++LastInstId,
                             TargetBlock = returnBlock.Id
                         });
                     }
@@ -417,27 +414,26 @@ namespace Oxide.Compiler.Frontend
             var name = ctx.name().GetText();
             var type = ctx.type() != null ? ParseType(ctx.type()) : null;
             var mutable = ctx.MUT() != null;
-            int? valueId = null;
+            int? valueSlot = null;
 
             if (ctx.expression() != null)
             {
-                var inst = ParseExpression(ctx.expression());
-
-                if (!inst.HasValue)
+                var exp = ParseExpression(ctx.expression())?.GenerateMove(this, CurrentBlock);
+                if (exp == null)
                 {
-                    throw new Exception($"No value returned by {inst.Id}");
+                    throw new Exception($"No value returned");
                 }
 
                 if (type == null)
                 {
-                    type = inst.ValueType;
+                    type = exp.Type;
                 }
                 else
                 {
                     throw new NotImplementedException("Type compatability checking not implemented");
                 }
 
-                valueId = inst.Id;
+                valueSlot = exp.Id;
             }
             else if (ctx.type() == null)
             {
@@ -451,24 +447,24 @@ namespace Oxide.Compiler.Frontend
 
             var varDec = CurrentScope.DefineSlot(new SlotDeclaration
             {
-                Id = ++_lastSlotId,
+                Id = ++LastSlotId,
                 Name = name,
                 Type = type,
                 Mutable = mutable
             });
 
-            if (valueId.HasValue)
+            if (valueSlot.HasValue)
             {
-                CurrentBlock.AddInstruction(new StoreLocalInst
+                CurrentBlock.AddInstruction(new MoveInst
                 {
-                    Id = ++_lastInstId,
-                    LocalId = varDec.Id,
-                    ValueId = valueId.Value
+                    Id = ++LastInstId,
+                    SrcSlot = valueSlot.Value,
+                    DestSlot = varDec.Id
                 });
             }
         }
 
-        private Instruction ParseExpression(OxideParser.ExpressionContext ctx)
+        private UnrealisedAccess ParseExpression(OxideParser.ExpressionContext ctx)
         {
             switch (ctx)
             {
@@ -477,20 +473,21 @@ namespace Oxide.Compiler.Frontend
                 case OxideParser.Return_expressionContext returnExpressionContext:
                 {
                     var result = returnExpressionContext.or_expression() != null
-                        ? (int?)ParseOrExpression(returnExpressionContext.or_expression()).Id
+                        ? (int?)ParseOrExpression(returnExpressionContext.or_expression()).GenerateMove(this, CurrentBlock).Id
                         : null;
-                    return CurrentBlock.AddInstruction(new ReturnInst
+                    CurrentBlock.AddInstruction(new ReturnInst
                     {
-                        Id = ++_lastInstId,
-                        ResultValue = result
+                        Id = ++LastInstId,
+                        ReturnSlot = result
                     });
+                    return null;
                 }
                 default:
                     throw new ArgumentOutOfRangeException(nameof(ctx));
             }
         }
 
-        private Instruction ParseOrExpression(OxideParser.Or_expressionContext ctx)
+        private UnrealisedAccess ParseOrExpression(OxideParser.Or_expressionContext ctx)
         {
             switch (ctx)
             {
@@ -504,7 +501,7 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        private Instruction ParseAndExpression(OxideParser.And_expressionContext ctx)
+        private UnrealisedAccess ParseAndExpression(OxideParser.And_expressionContext ctx)
         {
             switch (ctx)
             {
@@ -518,7 +515,7 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        private Instruction ParseIncOrExpression(OxideParser.Inc_or_expressionContext ctx)
+        private UnrealisedAccess ParseIncOrExpression(OxideParser.Inc_or_expressionContext ctx)
         {
             switch (ctx)
             {
@@ -532,7 +529,7 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        private Instruction ParseExOrExpression(OxideParser.Ex_or_expressionContext ctx)
+        private UnrealisedAccess ParseExOrExpression(OxideParser.Ex_or_expressionContext ctx)
         {
             switch (ctx)
             {
@@ -546,7 +543,7 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        private Instruction ParseBitAndExpression(OxideParser.Bit_and_expressionContext ctx)
+        private UnrealisedAccess ParseBitAndExpression(OxideParser.Bit_and_expressionContext ctx)
         {
             switch (ctx)
             {
@@ -560,131 +557,98 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        private Instruction ParseEqualExpression(OxideParser.Equal_expressionContext ctx)
+        private UnrealisedAccess ParseEqualExpression(OxideParser.Equal_expressionContext ctx)
         {
+            UnrealisedAccess left;
+            UnrealisedAccess right;
+            ComparisonInst.Operation op;
+
             switch (ctx)
             {
                 case OxideParser.Pass_equal_expressionContext passEqualExpressionContext:
                     return ParseComparisonExpression(passEqualExpressionContext.comparison_expression());
                 case OxideParser.Eq_equal_expressionContext child:
-                {
-                    var left = ParseEqualExpression(child.equal_expression());
-                    var right = ParseComparisonExpression(child.comparison_expression());
-                    if (!left.ValueType.Equals(right.ValueType))
-                    {
-                        throw new NotImplementedException("Comparison of different types not implemented");
-                    }
-
-                    return CurrentBlock.AddInstruction(new ComparisonInst
-                    {
-                        Id = ++_lastInstId,
-                        LhsValue = left.Id,
-                        RhsValue = right.Id,
-                        Op = ComparisonInst.Operation.Eq
-                    });
-                }
+                    left = ParseEqualExpression(child.equal_expression());
+                    right = ParseComparisonExpression(child.comparison_expression());
+                    op = ComparisonInst.Operation.Eq;
+                    break;
                 case OxideParser.Ne_equal_expressionContext child:
-                {
-                    var left = ParseEqualExpression(child.equal_expression());
-                    var right = ParseComparisonExpression(child.comparison_expression());
-                    if (!left.ValueType.Equals(right.ValueType))
-                    {
-                        throw new NotImplementedException("Comparison of different types not implemented");
-                    }
-
-                    return CurrentBlock.AddInstruction(new ComparisonInst
-                    {
-                        Id = ++_lastInstId,
-                        LhsValue = left.Id,
-                        RhsValue = right.Id,
-                        Op = ComparisonInst.Operation.NEq
-                    });
-                }
+                    left = ParseEqualExpression(child.equal_expression());
+                    right = ParseComparisonExpression(child.comparison_expression());
+                    op = ComparisonInst.Operation.NEq;
+                    break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(ctx));
             }
+
+            return CreateComparison(left, right, op);
         }
 
-        private Instruction ParseComparisonExpression(OxideParser.Comparison_expressionContext ctx)
+        private UnrealisedAccess ParseComparisonExpression(OxideParser.Comparison_expressionContext ctx)
         {
+            UnrealisedAccess left;
+            UnrealisedAccess right;
+            ComparisonInst.Operation op;
             switch (ctx)
             {
                 case OxideParser.Pass_comparison_expressionContext passComparisonExpressionContext:
                     return ParseCastExpression(passComparisonExpressionContext.cast_expression());
                 case OxideParser.Geq_comparison_expressionContext child:
-                {
-                    var left = ParseComparisonExpression(child.comparison_expression());
-                    var right = ParseCastExpression(child.cast_expression());
-                    if (!left.ValueType.Equals(right.ValueType))
-                    {
-                        throw new NotImplementedException("Comparison of different types not implemented");
-                    }
-
-                    return CurrentBlock.AddInstruction(new ComparisonInst
-                    {
-                        Id = ++_lastInstId,
-                        LhsValue = left.Id,
-                        RhsValue = right.Id,
-                        Op = ComparisonInst.Operation.GEq
-                    });
-                }
+                    left = ParseComparisonExpression(child.comparison_expression());
+                    right = ParseCastExpression(child.cast_expression());
+                    op = ComparisonInst.Operation.GEq;
+                    break;
                 case OxideParser.Gt_comparison_expressionContext child:
-                {
-                    var left = ParseComparisonExpression(child.comparison_expression());
-                    var right = ParseCastExpression(child.cast_expression());
-                    if (!left.ValueType.Equals(right.ValueType))
-                    {
-                        throw new NotImplementedException("Comparison of different types not implemented");
-                    }
-
-                    return CurrentBlock.AddInstruction(new ComparisonInst
-                    {
-                        Id = ++_lastInstId,
-                        LhsValue = left.Id,
-                        RhsValue = right.Id,
-                        Op = ComparisonInst.Operation.Gt
-                    });
-                }
+                    left = ParseComparisonExpression(child.comparison_expression());
+                    right = ParseCastExpression(child.cast_expression());
+                    op = ComparisonInst.Operation.Gt;
+                    break;
                 case OxideParser.Leq_comparison_expressionContext child:
-                {
-                    var left = ParseComparisonExpression(child.comparison_expression());
-                    var right = ParseCastExpression(child.cast_expression());
-                    if (!left.ValueType.Equals(right.ValueType))
-                    {
-                        throw new NotImplementedException("Comparison of different types not implemented");
-                    }
-
-                    return CurrentBlock.AddInstruction(new ComparisonInst
-                    {
-                        Id = ++_lastInstId,
-                        LhsValue = left.Id,
-                        RhsValue = right.Id,
-                        Op = ComparisonInst.Operation.LEq
-                    });
-                }
+                    left = ParseComparisonExpression(child.comparison_expression());
+                    right = ParseCastExpression(child.cast_expression());
+                    op = ComparisonInst.Operation.LEq;
+                    break;
                 case OxideParser.Lt_comparison_expressionContext child:
-                {
-                    var left = ParseComparisonExpression(child.comparison_expression());
-                    var right = ParseCastExpression(child.cast_expression());
-                    if (!left.ValueType.Equals(right.ValueType))
-                    {
-                        throw new NotImplementedException("Comparison of different types not implemented");
-                    }
-
-                    return CurrentBlock.AddInstruction(new ComparisonInst
-                    {
-                        Id = ++_lastInstId,
-                        LhsValue = left.Id,
-                        RhsValue = right.Id,
-                        Op = ComparisonInst.Operation.Lt
-                    });
-                }
+                    left = ParseComparisonExpression(child.comparison_expression());
+                    right = ParseCastExpression(child.cast_expression());
+                    op = ComparisonInst.Operation.Lt;
+                    break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(ctx));
             }
+
+            return CreateComparison(left, right, op);
         }
 
-        private Instruction ParseCastExpression(OxideParser.Cast_expressionContext ctx)
+        private UnrealisedAccess CreateComparison(UnrealisedAccess left, UnrealisedAccess right,
+            ComparisonInst.Operation op)
+        {
+            if (!left.Type.Equals(right.Type))
+            {
+                throw new NotImplementedException("Comparison of different types not implemented");
+            }
+
+            var leftSlot = left.GenerateMove(this, CurrentBlock);
+            var rightSlot = right.GenerateMove(this, CurrentBlock);
+
+            var resultSlot = CurrentScope.DefineSlot(new SlotDeclaration
+            {
+                Id = ++LastSlotId,
+                Type = PrimitiveType.BoolRef
+            });
+
+            CurrentBlock.AddInstruction(new ComparisonInst
+            {
+                Id = ++LastInstId,
+                LhsValue = leftSlot.Id,
+                RhsValue = rightSlot.Id,
+                ResultSlot = resultSlot.Id,
+                Op = op
+            });
+            return new SlotUnrealisedAccess(resultSlot);
+        }
+
+        private UnrealisedAccess ParseCastExpression(OxideParser.Cast_expressionContext ctx)
         {
             switch (ctx)
             {
@@ -698,7 +662,7 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        private Instruction ParseShiftExpression(OxideParser.Shift_expressionContext ctx)
+        private UnrealisedAccess ParseShiftExpression(OxideParser.Shift_expressionContext ctx)
         {
             switch (ctx)
             {
@@ -715,54 +679,57 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        private Instruction ParseAddExpression(OxideParser.Add_expressionContext ctx)
+        private UnrealisedAccess ParseAddExpression(OxideParser.Add_expressionContext ctx)
         {
+            UnrealisedAccess left;
+            UnrealisedAccess right;
+            ArithmeticInst.Operation op;
+
             switch (ctx)
             {
                 case OxideParser.Pass_add_expressionContext passAddExpressionContext:
                     return ParseMultiplyExpression(passAddExpressionContext.multiply_expression());
                 case OxideParser.Minus_add_expressionContext minusAddExpressionContext:
-                {
-                    var left = ParseAddExpression(minusAddExpressionContext.add_expression());
-                    var right = ParseMultiplyExpression(minusAddExpressionContext.multiply_expression());
-                    if (!left.ValueType.Equals(right.ValueType))
-                    {
-                        throw new NotImplementedException("Arithmetic of different types not implemented");
-                    }
-
-                    return CurrentBlock.AddInstruction(new ArithmeticInst
-                    {
-                        Id = ++_lastInstId,
-                        LhsValue = left.Id,
-                        RhsValue = right.Id,
-                        OutputType = left.ValueType,
-                        Op = ArithmeticInst.Operation.Minus
-                    });
-                }
+                    left = ParseAddExpression(minusAddExpressionContext.add_expression());
+                    right = ParseMultiplyExpression(minusAddExpressionContext.multiply_expression());
+                    op = ArithmeticInst.Operation.Minus;
+                    break;
                 case OxideParser.Plus_add_expressionContext plusAddExpressionContext:
-                {
-                    var left = ParseAddExpression(plusAddExpressionContext.add_expression());
-                    var right = ParseMultiplyExpression(plusAddExpressionContext.multiply_expression());
-                    if (!left.ValueType.Equals(right.ValueType))
-                    {
-                        throw new NotImplementedException("Arithmetic of different types not implemented");
-                    }
-
-                    return CurrentBlock.AddInstruction(new ArithmeticInst
-                    {
-                        Id = ++_lastInstId,
-                        LhsValue = left.Id,
-                        RhsValue = right.Id,
-                        OutputType = left.ValueType,
-                        Op = ArithmeticInst.Operation.Add
-                    });
-                }
+                    left = ParseAddExpression(plusAddExpressionContext.add_expression());
+                    right = ParseMultiplyExpression(plusAddExpressionContext.multiply_expression());
+                    op = ArithmeticInst.Operation.Add;
+                    break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(ctx));
             }
+
+            if (!left.Type.Equals(right.Type))
+            {
+                throw new NotImplementedException("Arithmetic of different types not implemented");
+            }
+
+            var leftSlot = left.GenerateMove(this, CurrentBlock);
+            var rightSlot = right.GenerateMove(this, CurrentBlock);
+
+            var resultSlot = CurrentScope.DefineSlot(new SlotDeclaration
+            {
+                Id = ++LastSlotId,
+                Type = left.Type
+            });
+
+            CurrentBlock.AddInstruction(new ArithmeticInst
+            {
+                Id = ++LastInstId,
+                LhsValue = leftSlot.Id,
+                RhsValue = rightSlot.Id,
+                ResultSlot = resultSlot.Id,
+                Op = ArithmeticInst.Operation.Minus
+            });
+
+            return new SlotUnrealisedAccess(resultSlot);
         }
 
-        private Instruction ParseMultiplyExpression(OxideParser.Multiply_expressionContext ctx)
+        private UnrealisedAccess ParseMultiplyExpression(OxideParser.Multiply_expressionContext ctx)
         {
             switch (ctx)
             {
@@ -782,7 +749,7 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        private Instruction ParseUnaryExpression(OxideParser.Unary_expressionContext ctx)
+        private UnrealisedAccess ParseUnaryExpression(OxideParser.Unary_expressionContext ctx)
         {
             switch (ctx)
             {
@@ -805,7 +772,7 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        private Instruction ParseBaseExpression(OxideParser.Base_expressionContext ctx)
+        private UnrealisedAccess ParseBaseExpression(OxideParser.Base_expressionContext ctx)
         {
             switch (ctx)
             {
@@ -827,52 +794,44 @@ namespace Oxide.Compiler.Frontend
                 case OxideParser.Struct_base_expressionContext structBaseExpressionContext:
                     return ParseStructInitialiser(structBaseExpressionContext.struct_initialiser());
                 case OxideParser.This_base_expressionContext thisBaseExpressionContext:
-                    throw new NotImplementedException("This expression");
+                    throw new NotImplementedException("This expressions");
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(ctx));
             }
         }
 
-        private Instruction ParseAccessExpression(OxideParser.Access_base_expressionContext ctx)
+        private FieldUnrealisedAccess ParseAccessExpression(OxideParser.Access_base_expressionContext ctx)
         {
             var fieldName = ctx.name().GetText();
 
             var exp = ParseBaseExpression(ctx.base_expression());
-            if (!exp.HasValue)
+            if (exp == null)
             {
                 throw new Exception($"Cannot access {fieldName} on value with no type");
             }
 
-            if (exp.ValueType.Source != TypeSource.Concrete)
+            if (exp.Type.Source != TypeSource.Concrete)
             {
                 throw new NotImplementedException("Non concrete types not implemented");
             }
 
-            if (exp.ValueType.GenericParams != null && exp.ValueType.GenericParams.Length > 0)
+            if (exp.Type.GenericParams != null && exp.Type.GenericParams.Length > 0)
             {
                 throw new NotImplementedException("Generics");
             }
 
-            var structDef = Lookup<Struct>(exp.ValueType.Name);
+            var structDef = Lookup<Struct>(exp.Type.Name);
             if (structDef == null)
             {
-                throw new Exception($"Failed to find {exp.ValueType.Name}");
+                throw new Exception($"Failed to find {exp.Type.Name}");
             }
 
             var fieldDef = structDef.Fields.Single(x => x.Name == fieldName);
-
-            return CurrentBlock.AddInstruction(new LoadFieldInst
-            {
-                Id = ++_lastInstId,
-                TargetId = exp.Id,
-                TargetField = fieldName,
-                TargetType = structDef.Name,
-                TargetFieldType = fieldDef.Type
-            });
+            return new FieldUnrealisedAccess(exp, fieldDef);
         }
 
-        private Instruction ParseStructInitialiser(OxideParser.Struct_initialiserContext ctx)
+        private UnrealisedAccess ParseStructInitialiser(OxideParser.Struct_initialiserContext ctx)
         {
             if (ctx.type_generic_params() != null)
             {
@@ -887,9 +846,9 @@ namespace Oxide.Compiler.Frontend
 
             var structDef = Lookup<Struct>(structName);
 
-            var varDec = CurrentScope.DefineSlot(new SlotDeclaration
+            var structSlot = CurrentScope.DefineSlot(new SlotDeclaration
             {
-                Id = ++_lastSlotId,
+                Id = ++LastSlotId,
                 Name = null,
                 Type = new DirectTypeRef(structName, structSource, ImmutableArray<TypeRef>.Empty),
                 Mutable = true
@@ -897,91 +856,101 @@ namespace Oxide.Compiler.Frontend
 
             CurrentBlock.AddInstruction(new AllocStructInst
             {
-                Id = ++_lastInstId,
-                LocalId = varDec.Id,
+                Id = ++LastInstId,
+                SlotId = structSlot.Id,
                 StructName = structName
             });
 
-            var loadInst = CurrentBlock.AddInstruction(new LoadLocalInst
+            var accessSlot = CurrentScope.DefineSlot(new SlotDeclaration
             {
-                Id = ++_lastInstId,
-                LocalId = varDec.Id,
-                LocalType = varDec.Type
+                Id = ++LastSlotId,
+                Name = null,
+                Type = new BorrowTypeRef(structSlot.Type, true),
+                Mutable = false
+            });
+
+            CurrentBlock.AddInstruction(new SlotBorrowInst
+            {
+                Id = ++LastInstId,
+                BaseSlot = structSlot.Id,
+                Mutable = true,
+                TargetSlot = accessSlot.Id
             });
 
             foreach (var fieldInit in ctx.field_initialiser())
             {
+                string fieldName;
+                UnrealisedAccess fieldValue;
+
                 switch (fieldInit)
                 {
                     case OxideParser.Label_field_initialiserContext labelFieldInitialiserContext:
                     {
-                        var fieldName = labelFieldInitialiserContext.label().Parse();
-
-                        var fieldValue = ParseExpression(labelFieldInitialiserContext.expression());
-                        if (!fieldValue.HasValue)
-                        {
-                            throw new Exception($"Cannot assign {fieldName} to no value");
-                        }
-
-                        var fieldDef = structDef.Fields.Single(x => x.Name == fieldName);
-                        if (!fieldDef.Type.Equals(fieldValue.ValueType))
-                        {
-                            throw new Exception($"Incompatible types for {fieldName}");
-                        }
-
-                        CurrentBlock.AddInstruction(new StoreFieldInst
-                        {
-                            Id = ++_lastInstId,
-                            ValueId = fieldValue.Id,
-                            TargetId = loadInst.Id,
-                            TargetField = fieldName,
-                            TargetType = structDef.Name,
-                        });
+                        fieldName = labelFieldInitialiserContext.label().Parse();
+                        fieldValue = ParseExpression(labelFieldInitialiserContext.expression());
                         break;
                     }
                     case OxideParser.Var_field_initialiserContext varFieldInitialiserContext:
                     {
-                        var fieldName = varFieldInitialiserContext.name().GetText();
-                        var sourceDec = CurrentScope.ResolveVariable(fieldName);
-                        if (sourceDec == null)
+                        fieldName = varFieldInitialiserContext.name().GetText();
+
+                        var sourceSlot = CurrentScope.ResolveVariable(fieldName);
+                        if (sourceSlot == null)
                         {
                             throw new Exception($"Unknown local {fieldName}");
                         }
 
-                        var fieldDef = structDef.Fields.Single(x => x.Name == fieldName);
-                        if (!fieldDef.Type.Equals(sourceDec.Type))
-                        {
-                            throw new Exception($"Incompatible types for {fieldName}");
-                        }
-
-                        var loadSource = CurrentBlock.AddInstruction(new LoadLocalInst
-                        {
-                            Id = ++_lastInstId,
-                            LocalId = sourceDec.Id,
-                            LocalType = sourceDec.Type
-                        });
-
-                        CurrentBlock.AddInstruction(new StoreFieldInst
-                        {
-                            Id = ++_lastInstId,
-                            ValueId = loadSource.Id,
-                            TargetId = loadInst.Id,
-                            TargetField = fieldName,
-                            TargetType = structDef.Name,
-                        });
+                        fieldValue = new SlotUnrealisedAccess(sourceSlot);
                         break;
                     }
                     default:
                         throw new ArgumentOutOfRangeException(nameof(fieldInit));
                 }
 
-                // TODO: Check the user provided each field at least once and no more
+                if (fieldValue == null)
+                {
+                    throw new Exception($"Cannot assign {fieldName} to no value");
+                }
+
+                var fieldSlot = fieldValue.GenerateMove(this, CurrentBlock);
+
+                var fieldDef = structDef.Fields.Single(x => x.Name == fieldName);
+                if (!fieldDef.Type.Equals(fieldSlot.Type))
+                {
+                    throw new Exception($"Incompatible types for {fieldName}");
+                }
+
+                var accessFieldSlot = CurrentScope.DefineSlot(new SlotDeclaration
+                {
+                    Id = ++LastSlotId,
+                    Name = null,
+                    Type = new BorrowTypeRef(fieldDef.Type, true),
+                    Mutable = false
+                });
+
+                CurrentBlock.AddInstruction(new FieldBorrowInst
+                {
+                    Id = ++LastInstId,
+                    BaseSlot = accessSlot.Id,
+                    Mutable = true,
+                    TargetSlot = accessFieldSlot.Id,
+                    TargetField = fieldName,
+                });
+
+                CurrentBlock.AddInstruction(new StoreIndirectInst
+                {
+                    Id = ++LastInstId,
+                    TargetSlot = accessFieldSlot.Id,
+                    ValueSlot = fieldSlot.Id
+                });
             }
 
-            return loadInst;
+            // TODO: Check the user provided each field at least once and no more
+
+            return new SlotUnrealisedAccess(structSlot);
         }
 
-        private Instruction ParseFunctionCall(OxideParser.Function_call_base_expressionContext ctx)
+        private UnrealisedAccess ParseFunctionCall(OxideParser.Function_call_base_expressionContext ctx)
         {
             if (ctx.qn_generics != null)
             {
@@ -1027,25 +996,27 @@ namespace Oxide.Compiler.Frontend
                     throw new NotImplementedException("Argument labels are not implemented");
                 }
 
-                var inst = ParseExpression(argument.expression());
-                if (!inst.HasValue)
+                var exp = ParseExpression(argument.expression());
+                if (exp == null)
                 {
                     throw new Exception("Argument does not return a value");
                 }
 
-                if (!inst.ValueType.Equals(parameter.Type))
+                var expSlot = exp.GenerateMove(this, CurrentBlock);
+
+                if (!expSlot.Type.Equals(parameter.Type))
                 {
-                    throw new Exception($"Parameter type mismatch {inst.ValueType} != {parameter.Type}");
+                    throw new Exception($"Parameter type mismatch {exp.Type} != {parameter.Type}");
                 }
 
-                argIds.Add(inst.Id);
+                argIds.Add(expSlot.Id);
             }
 
             if (functionDef.ReturnType != null)
             {
                 var resultDec = CurrentScope.DefineSlot(new SlotDeclaration
                 {
-                    Id = ++_lastSlotId,
+                    Id = ++LastSlotId,
                     Name = null,
                     Type = functionDef.ReturnType,
                     Mutable = false
@@ -1053,37 +1024,27 @@ namespace Oxide.Compiler.Frontend
 
                 CurrentBlock.AddInstruction(new StaticCallInst
                 {
-                    Id = ++_lastInstId,
+                    Id = ++LastInstId,
                     TargetMethod = functionDef.Name,
                     Arguments = argIds.ToImmutableList(),
-                    ResultLocal = resultDec.Id
+                    ResultSlot = resultDec.Id
                 });
 
-                return CurrentBlock.AddInstruction(new LoadLocalInst
-                {
-                    Id = ++_lastInstId,
-                    LocalId = resultDec.Id,
-                    LocalType = resultDec.Type,
-                });
+                return new SlotUnrealisedAccess(resultDec);
             }
 
-            return CurrentBlock.AddInstruction(new StaticCallInst
+            CurrentBlock.AddInstruction(new StaticCallInst
             {
-                Id = ++_lastInstId,
+                Id = ++LastInstId,
                 TargetMethod = functionDef.Name,
                 Arguments = argIds.ToImmutableList(),
             });
+            return null;
         }
 
-        private Instruction ParseQnExpression(OxideParser.Qualified_base_expressionContext ctx)
+        private UnrealisedAccess ParseQnExpression(OxideParser.Qualified_base_expressionContext ctx)
         {
-            var varDec = ResolveQn(ctx.qualified_name(), ctx.type_generic_params());
-            return CurrentBlock.AddInstruction(new LoadLocalInst
-            {
-                Id = ++_lastInstId,
-                LocalId = varDec.Id,
-                LocalType = varDec.Type
-            });
+            return new SlotUnrealisedAccess(ResolveQn(ctx.qualified_name(), ctx.type_generic_params()));
         }
 
         private SlotDeclaration ResolveQn(OxideParser.Qualified_nameContext[] qns,
@@ -1115,8 +1076,11 @@ namespace Oxide.Compiler.Frontend
             return varDec;
         }
 
-        private Instruction ParseLiteral(OxideParser.LiteralContext ctx)
+        private SlotUnrealisedAccess ParseLiteral(OxideParser.LiteralContext ctx)
         {
+            var targetSlot = ++LastSlotId;
+            TypeRef slotType;
+
             switch (ctx)
             {
                 case OxideParser.Binary_literalContext binaryLiteralContext:
@@ -1128,39 +1092,61 @@ namespace Oxide.Compiler.Frontend
                 case OxideParser.Int_literalContext intLiteralContext:
                 {
                     var val = int.Parse(intLiteralContext.GetText());
-                    return CurrentBlock.AddInstruction(new ConstInst
+                    CurrentBlock.AddInstruction(new ConstInst
                     {
-                        Id = ++_lastInstId,
+                        Id = ++LastInstId,
+                        TargetSlot = targetSlot,
                         ConstType = PrimitiveKind.I32,
                         Value = val
                     });
+                    slotType = PrimitiveType.I32Ref;
+                    break;
                 }
                 case OxideParser.Outer_bool_literalContext outerBoolLiteralContext:
+                {
                     switch (outerBoolLiteralContext.boolean_literal())
                     {
                         case OxideParser.True_boolean_literalContext:
-                            return CurrentBlock.AddInstruction(new ConstInst
+                        {
+                            CurrentBlock.AddInstruction(new ConstInst
                             {
-                                Id = ++_lastInstId,
+                                Id = ++LastInstId,
                                 ConstType = PrimitiveKind.Bool,
                                 Value = true
                             });
+                            slotType = PrimitiveType.BoolRef;
+                            break;
+                        }
                         case OxideParser.False_boolean_literalContext:
-                            return CurrentBlock.AddInstruction(new ConstInst
+                        {
+                            CurrentBlock.AddInstruction(new ConstInst
                             {
-                                Id = ++_lastInstId,
+                                Id = ++LastInstId,
                                 ConstType = PrimitiveKind.Bool,
                                 Value = false
                             });
+                            slotType = PrimitiveType.BoolRef;
+                            break;
+                        }
                         default:
                             throw new ArgumentOutOfRangeException();
                     }
+
+                    break;
+                }
                 case OxideParser.String_literalContext stringLiteralContext:
                     throw new NotImplementedException("String literal");
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(ctx));
             }
+
+            var slotDec = CurrentScope.DefineSlot(new SlotDeclaration
+            {
+                Id = targetSlot,
+                Type = slotType,
+            });
+            return new SlotUnrealisedAccess(slotDec);
         }
 
         private Scope PushScope()
@@ -1214,12 +1200,12 @@ namespace Oxide.Compiler.Frontend
             return _fileParser.ResolveQnWithGenerics(qn, _function.GenericParams);
         }
 
-        private OxObj Lookup(QualifiedName qn)
+        public OxObj Lookup(QualifiedName qn)
         {
             return _unit.Lookup(qn) ?? _store.Lookup(qn);
         }
 
-        private T Lookup<T>(QualifiedName qn) where T : OxObj
+        public T Lookup<T>(QualifiedName qn) where T : OxObj
         {
             return _unit.Lookup<T>(qn) ?? _store.Lookup<T>(qn);
         }

@@ -1,6 +1,4 @@
 using System;
-using Oxide.Compiler.IR.TypeRefs;
-using Oxide.Compiler.IR.Types;
 
 namespace Oxide.Compiler.IR.Instructions
 {
@@ -16,8 +14,7 @@ namespace Oxide.Compiler.IR.Instructions
             Lt
         }
 
-        public override bool HasValue => true;
-        public override TypeRef ValueType => PrimitiveType.BoolRef;
+        public int ResultSlot { get; init; }
         public int LhsValue { get; init; }
         public int RhsValue { get; init; }
         public Operation Op { get; init; }
@@ -35,7 +32,7 @@ namespace Oxide.Compiler.IR.Instructions
                 _ => throw new ArgumentOutOfRangeException()
             };
 
-            writer.Write($"comparison {op} %{LhsValue} %{RhsValue}");
+            writer.Write($"comparison ${ResultSlot} {op} ${LhsValue} ${RhsValue}");
         }
     }
 }

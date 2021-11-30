@@ -1,29 +1,15 @@
 using System;
-using Oxide.Compiler.IR.TypeRefs;
 using Oxide.Compiler.IR.Types;
 
 namespace Oxide.Compiler.IR.Instructions
 {
     public class ConstInst : Instruction
     {
+        public int TargetSlot { get; init; }
+        
         public PrimitiveKind ConstType { get; init; }
 
         public object Value { get; init; }
-
-        public override bool HasValue => true;
-
-        public override TypeRef ValueType
-        {
-            get
-            {
-                return ConstType switch
-                {
-                    PrimitiveKind.I32 => PrimitiveType.I32Ref,
-                    PrimitiveKind.Bool => PrimitiveType.BoolRef,
-                    _ => throw new ArgumentOutOfRangeException()
-                };
-            }
-        }
 
         public override void WriteIr(IrWriter writer)
         {
@@ -34,7 +20,7 @@ namespace Oxide.Compiler.IR.Instructions
                 _ => throw new ArgumentOutOfRangeException()
             };
 
-            writer.Write($"const {type} {Value}");
+            writer.Write($"const ${TargetSlot} {type} {Value}");
         }
     }
 }
