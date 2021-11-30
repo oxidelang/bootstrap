@@ -226,6 +226,7 @@ assign_statement
 assign_target
     : base_expression PERIOD name #field_assign_target
     | qualified_name (type_generic_params DCOLON qualified_name)? #qualified_assign_target
+    | STAR unary_expression #deref_assign_target
     ;
 
 expression
@@ -300,7 +301,8 @@ unary_expression
 	: base_expression #pass_unary_expression
 	| MINUS unary_expression #minus_unary_expression
 	| NOT unary_expression #not_unary_expression
-	| AMP unary_expression #ref_unary_expression
+	| AMP MUT? unary_expression #ref_unary_expression
+	| STAR unary_expression #deref_unary_expression
 //	| LBRACK type RBRACK unary_expression #cast_unary_expression
 	| BOX unary_expression #box_unary_expression
 	;

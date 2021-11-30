@@ -147,6 +147,47 @@ namespace Oxide.Compiler.Frontend
 
             switch (assignStatementContext.assign_target())
             {
+                case OxideParser.Deref_assign_targetContext derefAssignTargetContext:
+                {
+                    var addr = ParseUnaryExpression(derefAssignTargetContext.unary_expression());
+                    if (addr == null)
+                    {
+                        throw new Exception($"Cannot store into no value");
+                    }
+
+                    var addrSlot = addr.GenerateMove(this, CurrentBlock);
+                    switch (addrSlot.Type)
+                    {
+                        case BorrowTypeRef borrowTypeRef:
+                            if (!borrowTypeRef.MutableRef)
+                            {
+                                throw new Exception("Cannot store into non-mutable pointer");
+                            }
+
+                            break;
+                        case PointerTypeRef pointerTypeRef:
+                            if (!pointerTypeRef.MutableRef)
+                            {
+                                throw new Exception("Cannot store into non-mutable pointer");
+                            }
+
+                            break;
+                        case DirectTypeRef:
+                            throw new Exception("Cannot store into direct type");
+                        case ReferenceTypeRef:
+                            throw new Exception("Cannot store into reference type");
+                        default:
+                            throw new ArgumentOutOfRangeException();
+                    }
+
+                    CurrentBlock.AddInstruction(new StoreIndirectInst
+                    {
+                        Id = ++LastInstId,
+                        TargetSlot = addrSlot.Id,
+                        ValueSlot = exp.Id
+                    });
+                    break;
+                }
                 case OxideParser.Field_assign_targetContext fieldAssignTargetContext:
                 {
                     var fieldName = fieldAssignTargetContext.name().GetText();
@@ -156,22 +197,7 @@ namespace Oxide.Compiler.Frontend
                         throw new Exception($"Cannot access {fieldName} on value with no type");
                     }
 
-                    if (tgt.Type.Source != TypeSource.Concrete)
-                    {
-                        throw new NotImplementedException("Non concrete types not implemented");
-                    }
-
-                    if (tgt.Type.GenericParams != null && tgt.Type.GenericParams.Length > 0)
-                    {
-                        throw new NotImplementedException("Generics");
-                    }
-
-                    var structDef = Lookup<Struct>(tgt.Type.Name);
-                    if (structDef == null)
-                    {
-                        throw new Exception($"Failed to find {tgt.Type.Name}");
-                    }
-
+                    var structDef = ResolveBaseType(tgt.Type) as Struct;
                     var fieldDef = structDef.Fields.Single(x => x.Name == fieldName);
 
                     if (!exp.Type.Equals(fieldDef.Type))
@@ -424,7 +450,7 @@ namespace Oxide.Compiler.Frontend
                     throw new Exception($"No value returned");
                 }
 
-                if (type == null)
+                if (type == null || Equals(type, exp.Type))
                 {
                     type = exp.Type;
                 }
@@ -473,7 +499,8 @@ namespace Oxide.Compiler.Frontend
                 case OxideParser.Return_expressionContext returnExpressionContext:
                 {
                     var result = returnExpressionContext.or_expression() != null
-                        ? (int?)ParseOrExpression(returnExpressionContext.or_expression()).GenerateMove(this, CurrentBlock).Id
+                        ? (int?)ParseOrExpression(returnExpressionContext.or_expression())
+                            .GenerateMove(this, CurrentBlock).Id
                         : null;
                     CurrentBlock.AddInstruction(new ReturnInst
                     {
@@ -723,7 +750,7 @@ namespace Oxide.Compiler.Frontend
                 LhsValue = leftSlot.Id,
                 RhsValue = rightSlot.Id,
                 ResultSlot = resultSlot.Id,
-                Op = ArithmeticInst.Operation.Minus
+                Op = op
             });
 
             return new SlotUnrealisedAccess(resultSlot);
@@ -765,11 +792,80 @@ namespace Oxide.Compiler.Frontend
                     throw new NotImplementedException("Not expression");
                     break;
                 case OxideParser.Ref_unary_expressionContext refUnaryExpressionContext:
-                    throw new NotImplementedException("Ref expression");
-                    break;
+                    return ParseRefExpression(refUnaryExpressionContext);
+                case OxideParser.Deref_unary_expressionContext derefUnaryExpressionContext:
+                    return ParseDerefExpression(derefUnaryExpressionContext);
                 default:
                     throw new ArgumentOutOfRangeException(nameof(ctx));
             }
+        }
+
+        private UnrealisedAccess ParseRefExpression(OxideParser.Ref_unary_expressionContext ctx)
+        {
+            var exp = ParseUnaryExpression(ctx.unary_expression());
+            if (exp == null)
+            {
+                throw new Exception("No value to create borrow from");
+            }
+
+            if (exp.Type.Category == TypeCategory.WeakReference)
+            {
+                throw new NotImplementedException("Cannot borrow weak ref");
+            }
+
+            var slot = exp.GenerateRef(this, CurrentBlock, ctx.MUT() != null);
+            return new SlotUnrealisedAccess(slot);
+        }
+
+        private UnrealisedAccess ParseDerefExpression(OxideParser.Deref_unary_expressionContext ctx)
+        {
+            var exp = ParseUnaryExpression(ctx.unary_expression());
+            if (exp == null)
+            {
+                throw new Exception("No value to create borrow from");
+            }
+
+            if (exp.Type.Category != TypeCategory.Borrow && exp.Type.Category != TypeCategory.Pointer)
+            {
+                throw new NotImplementedException("Can only load borrows or pointers");
+            }
+
+            var slot = exp.GenerateMove(this, CurrentBlock);
+
+            TypeRef innerTypeRef;
+            switch (slot.Type)
+            {
+                case BorrowTypeRef borrowTypeRef:
+                    innerTypeRef = borrowTypeRef.InnerType;
+                    break;
+                case PointerTypeRef pointerTypeRef:
+                    innerTypeRef = pointerTypeRef.InnerType;
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+
+            if (!IsCopyType(innerTypeRef))
+            {
+                throw new Exception("Cannot deref non-copyable type");
+            }
+
+            var resultSlot = CurrentScope.DefineSlot(new SlotDeclaration
+            {
+                Id = ++LastSlotId,
+                Name = null,
+                Type = innerTypeRef,
+                Mutable = false
+            });
+
+            CurrentBlock.AddInstruction(new LoadIndirectInst
+            {
+                Id = ++LastInstId,
+                AddressSlot = slot.Id,
+                TargetSlot = resultSlot.Id
+            });
+
+            return new SlotUnrealisedAccess(resultSlot);
         }
 
         private UnrealisedAccess ParseBaseExpression(OxideParser.Base_expressionContext ctx)
@@ -1210,6 +1306,32 @@ namespace Oxide.Compiler.Frontend
         public T Lookup<T>(QualifiedName qn) where T : OxObj
         {
             return _unit.Lookup<T>(qn) ?? _store.Lookup<T>(qn);
+        }
+
+        private bool IsCopyType(TypeRef type)
+        {
+            return true;
+        }
+
+        private OxType ResolveBaseType(TypeRef typeRef)
+        {
+            if (typeRef.Source != TypeSource.Concrete)
+            {
+                throw new NotImplementedException("Non concrete types not implemented");
+            }
+
+            if (typeRef.GenericParams != null && typeRef.GenericParams.Length > 0)
+            {
+                throw new NotImplementedException("Generics");
+            }
+
+            var obj = Lookup(typeRef.Name);
+            if (obj == null)
+            {
+                throw new Exception($"Failed to find {typeRef}");
+            }
+
+            return obj as OxType;
         }
     }
 }

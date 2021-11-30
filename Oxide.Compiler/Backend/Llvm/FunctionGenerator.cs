@@ -236,6 +236,9 @@ namespace Oxide.Compiler.Backend.Llvm
                 case StoreIndirectInst storeIndirectInst:
                     CompileStoreIndirectInst(storeIndirectInst);
                     break;
+                case LoadIndirectInst loadIndirectInst:
+                    CompileLoadIndirectInst(loadIndirectInst);
+                    break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(instruction));
             }
@@ -721,6 +724,35 @@ namespace Oxide.Compiler.Backend.Llvm
             }
 
             Builder.BuildStore(val, tgt);
+        }
+
+        private void CompileLoadIndirectInst(LoadIndirectInst inst)
+        {
+            var (addrType, addr) = LoadSlot(inst.AddressSlot, $"inst_{inst.Id}_addr");
+
+            TypeRef innerTypeRef;
+            switch (addrType)
+            {
+                case DirectTypeRef:
+                    throw new Exception("Direct type is not valid ptr");
+                    break;
+                case BorrowTypeRef borrowTypeRef:
+                    innerTypeRef = borrowTypeRef.InnerType;
+                    break;
+                case PointerTypeRef:
+                case ReferenceTypeRef:
+                    throw new NotImplementedException();
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(addr));
+            }
+
+            if (!IsCopyType(innerTypeRef))
+            {
+                throw new Exception("Cannot deref non-copyable type");
+            }
+
+            var value = Builder.BuildLoad(addr, $"inst_{inst.Id}_load");
+            StoreSlot(inst.TargetSlot, value, innerTypeRef);
         }
 
         private bool IsIntegerBacked(TypeRef typeRef)
