@@ -1111,6 +1111,7 @@ namespace Oxide.Compiler.Frontend
                             CurrentBlock.AddInstruction(new ConstInst
                             {
                                 Id = ++LastInstId,
+                                TargetSlot = targetSlot,
                                 ConstType = PrimitiveKind.Bool,
                                 Value = true
                             });
@@ -1122,6 +1123,7 @@ namespace Oxide.Compiler.Frontend
                             CurrentBlock.AddInstruction(new ConstInst
                             {
                                 Id = ++LastInstId,
+                                TargetSlot = targetSlot,
                                 ConstType = PrimitiveKind.Bool,
                                 Value = false
                             });

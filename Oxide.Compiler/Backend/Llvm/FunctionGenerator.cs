@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Diagnostics;
 using System.Linq;
-using System.Reflection;
 using LLVMSharp.Interop;
 using Oxide.Compiler.IR;
 using Oxide.Compiler.IR.Instructions;
@@ -26,12 +24,11 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private LLVMValueRef _funcRef;
 
-        private Dictionary<int, LLVMValueRef> _valueMap;
         private Dictionary<int, LLVMValueRef> _slotMap;
         private Dictionary<int, SlotDeclaration> _slotDefs;
         private Dictionary<int, LLVMBasicBlockRef> _blockMap;
         private Dictionary<int, LLVMBasicBlockRef> _scopeReturnMap;
-        private LLVMValueRef? _returnSlot;
+        private int? _returnSlot;
 
         private Block CurrentBlock { get; set; }
 
@@ -69,17 +66,24 @@ namespace Oxide.Compiler.Backend.Llvm
             // Generate entry block
             Builder.PositionAtEnd(entryBlock);
 
+            // Create slots
+            _slotMap = new Dictionary<int, LLVMValueRef>();
+            _slotDefs = new Dictionary<int, SlotDeclaration>();
+
             // Create storage slot for return value
             if (_func.ReturnType != null)
             {
                 var varName = $"return_value";
                 var varType = Backend.ConvertType(func.ReturnType);
-                _returnSlot = Builder.BuildAlloca(varType, varName);
+                _returnSlot = -1;
+                _slotMap.Add(_returnSlot.Value, Builder.BuildAlloca(varType, varName));
+                _slotDefs.Add(_returnSlot.Value, new SlotDeclaration
+                {
+                    Id = _returnSlot.Value,
+                    Mutable = true,
+                    Type = _func.ReturnType
+                });
             }
-
-            // Create slots for locals
-            _slotMap = new Dictionary<int, LLVMValueRef>();
-            _slotDefs = new Dictionary<int, SlotDeclaration>();
 
             // TODO: Reuse variable slots
             foreach (var scope in func.Scopes)
@@ -145,7 +149,12 @@ namespace Oxide.Compiler.Backend.Llvm
             {
                 if (_returnSlot.HasValue)
                 {
-                    var retVal = Builder.BuildLoad(_returnSlot.Value, "loaded_return_value");
+                    var (retType, retVal) = LoadSlot(_returnSlot.Value, "loaded_return_value", true);
+                    if (!Equals(retType, _func.ReturnType))
+                    {
+                        throw new Exception("Incompatible return type");
+                    }
+
                     Builder.BuildRet(retVal);
                 }
                 else
@@ -179,8 +188,6 @@ namespace Oxide.Compiler.Backend.Llvm
             var mainBlock = _blockMap[block.Id];
             Builder.PositionAtEnd(mainBlock);
 
-            _valueMap = new Dictionary<int, LLVMValueRef>();
-
             foreach (var instruction in block.Instructions)
             {
                 CompileInstruction(instruction);
@@ -193,14 +200,11 @@ namespace Oxide.Compiler.Backend.Llvm
         {
             switch (instruction)
             {
+                case MoveInst moveInst:
+                    CompileMoveInst(moveInst);
+                    break;
                 case ConstInst constInst:
                     CompileConstInst(constInst);
-                    break;
-                case StoreLocalInst storeLocalInst:
-                    CompileStoreLocalInst(storeLocalInst);
-                    break;
-                case LoadLocalInst loadLocalInst:
-                    CompileLoadLocalInst(loadLocalInst);
                     break;
                 case ArithmeticInst arithmeticInst:
                     CompileArithmeticInstruction(arithmeticInst);
@@ -220,211 +224,197 @@ namespace Oxide.Compiler.Backend.Llvm
                 case AllocStructInst allocStructInst:
                     CompileAllocStructInst(allocStructInst);
                     break;
-                case StoreFieldInst storeFieldInst:
-                    CompileStoreFieldInst(storeFieldInst);
+                case SlotBorrowInst slotBorrowInst:
+                    CompileSlotBorrowInst(slotBorrowInst);
                     break;
-                case LoadFieldInst loadFieldInst:
-                    CompileLoadFieldInst(loadFieldInst);
+                case FieldMoveInst fieldMoveInst:
+                    CompileFieldMoveInst(fieldMoveInst);
+                    break;
+                case FieldBorrowInst fieldBorrowInst:
+                    CompileFieldBorrowInst(fieldBorrowInst);
+                    break;
+                case StoreIndirectInst storeIndirectInst:
+                    CompileStoreIndirectInst(storeIndirectInst);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(instruction));
             }
         }
 
-        private void CompileLoadFieldInst(LoadFieldInst inst)
+        private SlotDeclaration GetSlot(int slot)
         {
-            var structDef = Store.Lookup<Struct>(inst.TargetType);
-            if (structDef == null)
+            if (!CurrentBlock.Scope.CanAccessSlot(slot))
             {
-                throw new Exception($"Cannot find struct {inst.TargetType}");
+                throw new Exception($"Slot is not accessible from {CurrentBlock.Id}");
             }
 
-            var index = structDef.Fields.FindIndex(x => x.Name == inst.TargetField);
-            var fieldDef = structDef.Fields[index];
-            var addr = Builder.BuildInBoundsGEP(
-                _valueMap[inst.TargetId],
-                new[]
-                {
-                    LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0),
-                    LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong)index)
-                },
-                $"inst_{inst.Id}_addr"
-            );
-
-            _valueMap.Add(inst.Id, CreateLoad(addr, fieldDef.Type, $"inst_{inst.Id}_load"));
+            return _slotDefs[slot];
         }
 
-        private void CompileLoadLocalInst(LoadLocalInst inst)
+        private void StoreSlot(int slot, LLVMValueRef value, TypeRef type, bool ignoreChecks = false)
         {
-            // TODO: Check local type
-            _valueMap.Add(inst.Id, CreateLoad(_slotMap[inst.LocalId], inst.LocalType, $"inst_{inst.Id}"));
+            if (!ignoreChecks && !CurrentBlock.Scope.CanAccessSlot(slot))
+            {
+                throw new Exception($"Slot is not accessible from {CurrentBlock.Id}");
+            }
+
+            if (!Equals(type, _slotDefs[slot].Type))
+            {
+                throw new Exception("Tried to store incompatible type");
+            }
+
+            Builder.BuildStore(value, _slotMap[slot]);
         }
 
-        private LLVMValueRef CreateLoad(LLVMValueRef ptr, TypeRef typeRef, string name)
+        private (TypeRef type, LLVMValueRef value) LoadSlot(int slot, string name, bool ignoreChecks = false)
         {
-            if (typeRef is not DirectTypeRef)
+            if (!ignoreChecks && !CurrentBlock.Scope.CanAccessSlot(slot))
             {
-                throw new NotImplementedException("Non direct types");
+                throw new Exception($"Slot is not accessible from {CurrentBlock.Id}");
             }
 
-            if (typeRef.Source != TypeSource.Concrete)
-            {
-                throw new NotImplementedException("Non concrete types not implemented");
-            }
-
-            if (typeRef.GenericParams != null && typeRef.GenericParams.Length > 0)
-            {
-                throw new NotImplementedException("Generics");
-            }
-
-            var obj = Store.Lookup(typeRef.Name);
-            if (obj == null)
-            {
-                throw new Exception($"Failed to find {typeRef}");
-            }
-
-            return CreateLoad(ptr, obj, name);
+            return (_slotDefs[slot].Type, Builder.BuildLoad(_slotMap[slot], name));
         }
 
-        private LLVMValueRef CreateLoad(LLVMValueRef ptr, OxObj type, string name)
+        private (TypeRef type, LLVMValueRef value) GetSlotRef(int slot, bool ignoreChecks = false)
+        {
+            if (!ignoreChecks && !CurrentBlock.Scope.CanAccessSlot(slot))
+            {
+                throw new Exception($"Slot is not accessible from {CurrentBlock.Id}");
+            }
+
+            return (_slotDefs[slot].Type, _slotMap[slot]);
+        }
+
+        private void CompileMoveInst(MoveInst inst)
+        {
+            var (type, value) = LoadSlot(inst.SrcSlot, $"inst_{inst.Id}_load");
+            if (!IsCopyType(type))
+            {
+                throw new NotImplementedException("TODO");
+            }
+
+            StoreSlot(inst.DestSlot, value, type);
+        }
+
+        private void CompileConstInst(ConstInst inst)
         {
             LLVMValueRef value;
-            switch (type)
+            TypeRef valType;
+            switch (inst.ConstType)
             {
-                case PrimitiveType:
-                    value = Builder.BuildLoad(ptr, name);
+                case PrimitiveKind.I32:
+                    value = LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong)(int)inst.Value, true);
+                    valType = PrimitiveType.I32Ref;
                     break;
-                case Struct:
-                    value = Builder.BuildInBoundsGEP(
-                        ptr,
-                        new[] { LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0) },
-                        name
-                    );
+                case PrimitiveKind.Bool:
+                    value = LLVMValueRef.CreateConstInt(LLVMTypeRef.Int1, (ulong)((bool)inst.Value ? 1 : 0), true);
+                    valType = PrimitiveType.BoolRef;
                     break;
-                case Function function:
-                case Interface iface:
-                case Variant variant:
-                    throw new NotImplementedException();
                 default:
-                    throw new ArgumentOutOfRangeException(nameof(type));
+                    throw new ArgumentOutOfRangeException();
             }
 
-            return value;
+            StoreSlot(inst.TargetSlot, value, valType);
         }
 
-        private void CompileStoreFieldInst(StoreFieldInst inst)
+        private void CompileArithmeticInstruction(ArithmeticInst inst)
         {
-            var structDef = Store.Lookup<Struct>(inst.TargetType);
-            if (structDef == null)
+            var name = $"inst_{inst.Id}";
+            var (leftType, left) = LoadSlot(inst.LhsValue, $"{name}_left");
+            var (rightType, right) = LoadSlot(inst.RhsValue, $"{name}_right");
+            LLVMValueRef value;
+
+            if (!Equals(leftType, rightType))
             {
-                throw new Exception($"Cannot find struct {inst.TargetType}");
+                throw new Exception("Lhs and rhs have different type");
             }
 
-            var index = structDef.Fields.FindIndex(x => x.Name == inst.TargetField);
-            var fieldDef = structDef.Fields[index];
-            var addr = Builder.BuildInBoundsGEP(
-                _valueMap[inst.TargetId],
-                new[]
-                {
-                    LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0),
-                    LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong)index)
-                },
-                $"inst_{inst.Id}_addr"
-            );
-
-            CreateStore(addr, _valueMap[inst.ValueId], fieldDef.Type, $"inst_{inst.Id}");
-        }
-
-        private void CompileStoreLocalInst(StoreLocalInst inst)
-        {
-            // TODO: Check local type
-            CreateStore(_slotMap[inst.LocalId], _valueMap[inst.ValueId], _slotDefs[inst.LocalId].Type,
-                $"inst_{inst.Id}");
-        }
-
-        private void CreateStore(LLVMValueRef ptr, LLVMValueRef value, TypeRef typeRef, string name)
-        {
-            if (typeRef is not DirectTypeRef)
+            var integer = IsIntegerBacked(leftType);
+            if (!integer)
             {
-                throw new NotImplementedException("Non direct types");
+                throw new NotImplementedException("Arithmetic of non-integers not implemented");
             }
 
-            if (typeRef.Source != TypeSource.Concrete)
+            switch (inst.Op)
             {
-                throw new NotImplementedException("Non concrete types not implemented");
-            }
-
-            if (typeRef.GenericParams != null && typeRef.GenericParams.Length > 0)
-            {
-                throw new NotImplementedException("Generics");
-            }
-
-            var obj = Store.Lookup(typeRef.Name);
-            if (obj == null)
-            {
-                throw new Exception($"Failed to find {typeRef}");
-            }
-
-            CreateStore(ptr, value, obj, name);
-        }
-
-        private void CreateStore(LLVMValueRef ptr, LLVMValueRef value, OxObj type, string name)
-        {
-            switch (type)
-            {
-                case PrimitiveType:
-                    Builder.BuildStore(value, ptr);
+                case ArithmeticInst.Operation.Add:
+                    value = Builder.BuildAdd(left, right, name);
                     break;
-                case Struct stct:
-                {
-                    for (var i = 0; i < stct.Fields.Count; i++)
-                    {
-                        var field = stct.Fields[i];
-
-                        var sourceAddr = Builder.BuildInBoundsGEP(
-                            value,
-                            new[]
-                            {
-                                LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0),
-                                LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong)i)
-                            },
-                            $"{name}_{field.Name}_saddr"
-                        );
-
-                        var source = CreateLoad(sourceAddr, field.Type, $"{name}_{field.Name}_load");
-
-                        var destAddr = Builder.BuildInBoundsGEP(
-                            ptr,
-                            new[]
-                            {
-                                LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0),
-                                LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong)i)
-                            },
-                            $"{name}_{field.Name}_daddr"
-                        );
-
-                        CreateStore(destAddr, source, field.Type, $"{name}_{field.Name}_store");
-                    }
-
+                case ArithmeticInst.Operation.Minus:
+                    value = Builder.BuildSub(left, right, name);
                     break;
-                }
-                case Function function:
-                case Interface iface:
-                case Variant variant:
-                    throw new NotImplementedException();
                 default:
-                    throw new ArgumentOutOfRangeException(nameof(type));
+                    throw new ArgumentOutOfRangeException();
             }
+
+            StoreSlot(inst.ResultSlot, value, leftType);
+        }
+
+        private void CompileComparisonInst(ComparisonInst inst)
+        {
+            var name = $"inst_{inst.Id}";
+            var (leftType, left) = LoadSlot(inst.LhsValue, $"{name}_left");
+            var (rightType, right) = LoadSlot(inst.RhsValue, $"{name}_right");
+            LLVMValueRef value;
+
+            if (!Equals(leftType, rightType))
+            {
+                throw new Exception("Lhs and rhs have different type");
+            }
+
+            var integer = IsIntegerBacked(leftType);
+            if (!integer)
+            {
+                throw new NotImplementedException("Comparison of non-integers not implemented");
+            }
+
+            var signed = IsSignedInteger(leftType);
+
+            switch (inst.Op)
+            {
+                case ComparisonInst.Operation.Eq:
+                    value = Builder.BuildICmp(LLVMIntPredicate.LLVMIntEQ, left, right, name);
+                    break;
+                case ComparisonInst.Operation.NEq:
+                    value = Builder.BuildICmp(LLVMIntPredicate.LLVMIntNE, left, right, name);
+                    break;
+                case ComparisonInst.Operation.GEq:
+                    value = Builder.BuildICmp(signed ? LLVMIntPredicate.LLVMIntSGE : LLVMIntPredicate.LLVMIntUGE,
+                        left,
+                        right, name);
+                    break;
+                case ComparisonInst.Operation.LEq:
+                    value = Builder.BuildICmp(signed ? LLVMIntPredicate.LLVMIntSLE : LLVMIntPredicate.LLVMIntULE,
+                        left,
+                        right, name);
+                    break;
+                case ComparisonInst.Operation.Gt:
+                    value = Builder.BuildICmp(signed ? LLVMIntPredicate.LLVMIntSGT : LLVMIntPredicate.LLVMIntUGT,
+                        left,
+                        right, name);
+                    break;
+                case ComparisonInst.Operation.Lt:
+                    value = Builder.BuildICmp(signed ? LLVMIntPredicate.LLVMIntSLT : LLVMIntPredicate.LLVMIntULT,
+                        left,
+                        right, name);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+
+            StoreSlot(inst.ResultSlot, value, PrimitiveType.BoolRef);
         }
 
         private void CompileAllocStructInst(AllocStructInst inst)
         {
-            var structConst = ZeroInit(new DirectTypeRef(
+            var type = new DirectTypeRef(
                 inst.StructName,
                 TypeSource.Concrete,
                 ImmutableArray<TypeRef>.Empty
-            ));
-            Builder.BuildStore(structConst, _slotMap[inst.LocalId]);
+            );
+
+            StoreSlot(inst.SlotId, ZeroInit(type), type);
         }
 
         private LLVMValueRef ZeroInit(TypeRef tref)
@@ -459,7 +449,6 @@ namespace Oxide.Compiler.Backend.Llvm
 
                     return LLVMValueRef.CreateConstNamedStruct(baseType, consts.ToArray());
                 }
-                case Function function:
                 case Interface @interface:
                 case Variant variant:
                     throw new NotImplementedException($"Zero init not implemented for {val}");
@@ -468,146 +457,25 @@ namespace Oxide.Compiler.Backend.Llvm
             }
         }
 
-        private void CompileJumpInst(JumpInst jumpInst)
+        private void CompileJumpInst(JumpInst inst)
         {
-            if (jumpInst.ConditionValue.HasValue)
+            if (inst.ConditionSlot.HasValue)
             {
-                Builder.BuildCondBr(_valueMap[jumpInst.ConditionValue.Value], _blockMap[jumpInst.TargetBlock],
-                    _blockMap[jumpInst.ElseBlock]);
+                var (condType, cond) = LoadSlot(inst.ConditionSlot.Value, $"inst_{inst.Id}_cond");
+                if (!Equals(condType, PrimitiveType.BoolRef))
+                {
+                    throw new Exception("Invalid condition type");
+                }
+
+                Builder.BuildCondBr(cond, _blockMap[inst.TargetBlock], _blockMap[inst.ElseBlock]);
             }
             else
             {
-                Builder.BuildBr(_blockMap[jumpInst.TargetBlock]);
+                Builder.BuildBr(_blockMap[inst.TargetBlock]);
             }
 
             // TODO: Real cleanup
             // throw new NotImplementedException("Jump inst");
-        }
-
-        private void CompileConstInst(ConstInst inst)
-        {
-            LLVMValueRef value;
-            switch (inst.ConstType)
-            {
-                case PrimitiveKind.I32:
-                    value = LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong)(int)inst.Value, true);
-                    break;
-                case PrimitiveKind.Bool:
-                    value = LLVMValueRef.CreateConstInt(LLVMTypeRef.Int1, (ulong)((bool)inst.Value ? 1 : 0), true);
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
-
-            _valueMap.Add(inst.Id, value);
-        }
-
-        private void CompileArithmeticInstruction(ArithmeticInst inst)
-        {
-            var leftInst = GetInst(inst.LhsValue);
-            var left = _valueMap[inst.LhsValue];
-            var rightInst = GetInst(inst.RhsValue);
-            var right = _valueMap[inst.RhsValue];
-            var name = $"inst_{inst.Id}";
-            LLVMValueRef value;
-
-            if (!Equals(leftInst.ValueType, rightInst.ValueType))
-            {
-                throw new Exception("Lhs and rhs have different type");
-            }
-
-            var integer = IsIntegerBacked(leftInst.ValueType);
-            if (!integer)
-            {
-                throw new NotImplementedException("Arithmetic of non-integers not implemented");
-            }
-
-            switch (inst.Op)
-            {
-                case ArithmeticInst.Operation.Add:
-                    value = Builder.BuildAdd(left, right, name);
-                    break;
-                case ArithmeticInst.Operation.Minus:
-                    value = Builder.BuildSub(left, right, name);
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
-
-            _valueMap.Add(inst.Id, value);
-        }
-
-        private void CompileComparisonInst(ComparisonInst inst)
-        {
-            var leftInst = GetInst(inst.LhsValue);
-            var left = _valueMap[inst.LhsValue];
-            var rightInst = GetInst(inst.RhsValue);
-            var right = _valueMap[inst.RhsValue];
-            var name = $"inst_{inst.Id}";
-            LLVMValueRef value;
-
-            if (!Equals(leftInst.ValueType, rightInst.ValueType))
-            {
-                throw new Exception("Lhs and rhs have different type");
-            }
-
-            var integer = IsIntegerBacked(leftInst.ValueType);
-            if (!integer)
-            {
-                throw new NotImplementedException("Comparison of non-integers not implemented");
-            }
-
-            var signed = IsSignedInteger(leftInst.ValueType);
-
-            switch (inst.Op)
-            {
-                case ComparisonInst.Operation.Eq:
-                    value = Builder.BuildICmp(LLVMIntPredicate.LLVMIntEQ, left, right, name);
-                    break;
-                case ComparisonInst.Operation.NEq:
-                    value = Builder.BuildICmp(LLVMIntPredicate.LLVMIntNE, left, right, name);
-                    break;
-                case ComparisonInst.Operation.GEq:
-                    value = Builder.BuildICmp(signed ? LLVMIntPredicate.LLVMIntSGE : LLVMIntPredicate.LLVMIntUGE, left,
-                        right, name);
-                    break;
-                case ComparisonInst.Operation.LEq:
-                    value = Builder.BuildICmp(signed ? LLVMIntPredicate.LLVMIntSLE : LLVMIntPredicate.LLVMIntULE, left,
-                        right, name);
-                    break;
-                case ComparisonInst.Operation.Gt:
-                    value = Builder.BuildICmp(signed ? LLVMIntPredicate.LLVMIntSGT : LLVMIntPredicate.LLVMIntUGT, left,
-                        right, name);
-                    break;
-                case ComparisonInst.Operation.Lt:
-                    value = Builder.BuildICmp(signed ? LLVMIntPredicate.LLVMIntSLT : LLVMIntPredicate.LLVMIntULT, left,
-                        right, name);
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
-
-            _valueMap.Add(inst.Id, value);
-        }
-
-        private bool IsIntegerBacked(TypeRef typeRef)
-        {
-            if (typeRef is not DirectTypeRef)
-            {
-                throw new NotImplementedException("Non direct types");
-            }
-
-            return Equals(typeRef.Name, PrimitiveType.I32.Name) || Equals(typeRef.Name, PrimitiveType.Bool.Name);
-        }
-
-        private bool IsSignedInteger(TypeRef typeRef)
-        {
-            if (typeRef is not DirectTypeRef)
-            {
-                throw new NotImplementedException("Non direct types");
-            }
-
-            return Equals(typeRef.Name, PrimitiveType.I32.Name) || Equals(typeRef.Name, PrimitiveType.Bool.Name);
         }
 
         private void CompileStaticCallInst(StaticCallInst inst)
@@ -627,97 +495,35 @@ namespace Oxide.Compiler.Backend.Llvm
             for (var i = 0; i < funcDef.Parameters.Count; i++)
             {
                 var param = funcDef.Parameters[i];
-                var arg = inst.Arguments[i];
+                var (argType, argVal) = LoadSlot(inst.Arguments[i], $"{name}_param_{param.Name}");
+                if (!Equals(argType, param.Type))
+                {
+                    throw new Exception($"Argument does not match parameter type for {param.Name}");
+                }
 
-                args.Add(LoadParameter(param, arg, name));
+                args.Add(argVal);
             }
 
-            if (inst.ResultLocal != null)
+            if (inst.ResultSlot != null)
             {
+                if (funcDef.ReturnType == null)
+                {
+                    throw new Exception("Function does not return a value");
+                }
+
                 var value = Builder.BuildCall(funcRef, args.ToArray(), $"{name}_ret");
-                // TODO: Check local type
-                StoreCallResult(funcDef.ReturnType, value, inst.ResultLocal.Value, name);
+                StoreSlot(inst.ResultSlot.Value, value, funcDef.ReturnType);
             }
             else
             {
+                if (funcDef.ReturnType != null)
+                {
+                    throw new Exception("Function returns a value which is unused");
+                }
+
                 Builder.BuildCall(funcRef, args.ToArray());
             }
         }
-
-        private void StoreCallResult(TypeRef returnType, LLVMValueRef returnValue, int destLocal, string name)
-        {
-            var slotPtr = _slotMap[destLocal];
-
-            if ((returnType.GenericParams != null && !returnType.GenericParams.IsEmpty) ||
-                returnType.Source != TypeSource.Concrete)
-            {
-                throw new NotImplementedException("Generic type support is not implemented");
-            }
-
-            if (returnType is not DirectTypeRef)
-            {
-                throw new NotImplementedException("Only direct parameters implemented");
-            }
-
-            var baseType = Store.Lookup(returnType.Name);
-
-            switch (baseType)
-            {
-                case PrimitiveType:
-                    Builder.BuildStore(returnValue, slotPtr);
-                    return;
-                case Struct @struct:
-                    // TODO: Deep copy / import
-                    Builder.BuildStore(returnValue, slotPtr);
-                    return;
-                case Function function:
-                case Interface @interface:
-                case Variant variant:
-                    throw new NotImplementedException();
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(baseType));
-            }
-        }
-
-        private LLVMValueRef LoadParameter(Parameter parameter, int arg, string name)
-        {
-            var argVal = _valueMap[arg];
-            // TODO: Check param vs arg type
-
-            if (parameter.IsThis)
-            {
-                throw new NotImplementedException("This support not implemented");
-            }
-
-            if ((parameter.Type.GenericParams != null && !parameter.Type.GenericParams.IsEmpty) ||
-                parameter.Type.Source != TypeSource.Concrete)
-            {
-                throw new NotImplementedException("Generic type support is not implemented");
-            }
-
-            if (parameter.Type.Category != TypeCategory.Direct)
-            {
-                throw new NotImplementedException("Only direct parameters implemented");
-            }
-
-            var baseType = Store.Lookup(parameter.Type.Name);
-
-            switch (baseType)
-            {
-                case PrimitiveType:
-                    return argVal;
-                case Struct @struct:
-                    // TODO: Deep copy
-                    return Builder.BuildLoad(argVal, $"{name}_param_{parameter.Name}");
-                case Function function:
-                case Interface @interface:
-                case Variant variant:
-                    throw new NotImplementedException();
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(baseType));
-            }
-        }
-
 
         public LLVMValueRef GetFunctionRef(Function func)
         {
@@ -750,24 +556,217 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private void CompileReturnInst(ReturnInst inst)
         {
-            if (inst.ResultValue.HasValue != _returnSlot.HasValue)
+            if (inst.ReturnSlot.HasValue != _returnSlot.HasValue)
             {
                 throw new Exception("Invalid return expression");
             }
 
-            if (inst.ResultValue.HasValue)
+            if (inst.ReturnSlot.HasValue)
             {
-                // TODO: Check return type
-                var value = _valueMap[inst.ResultValue.Value];
-                CreateStore(_returnSlot.Value, value, _func.ReturnType, $"inst_{inst.Id}");
+                var (retType, retValue) = LoadSlot(inst.ReturnSlot.Value, $"inst_{inst.Id}_load");
+                if (!Equals(retType, _func.ReturnType))
+                {
+                    throw new Exception("Invalid return type");
+                }
+
+                StoreSlot(_returnSlot.Value, retValue, retType, true);
             }
 
             Builder.BuildBr(_scopeReturnMap[CurrentBlock.Scope.Id]);
         }
 
-        private Instruction GetInst(int id)
+        private void CompileSlotBorrowInst(SlotBorrowInst inst)
         {
-            return _func.Blocks.SelectMany(block => block.Instructions).FirstOrDefault(inst => inst.Id == id);
+            var slotRef = _slotMap[inst.BaseSlot];
+            var slotDef = GetSlot(inst.BaseSlot);
+            StoreSlot(inst.TargetSlot, slotRef, new BorrowTypeRef(slotDef.Type, inst.Mutable));
+        }
+
+        private void CompileFieldMoveInst(FieldMoveInst inst)
+        {
+            var slotDec = GetSlot(inst.BaseSlot);
+
+            LLVMValueRef baseAddr;
+            DirectTypeRef innerTypeRef;
+            bool isDirect;
+            switch (slotDec.Type)
+            {
+                case BorrowTypeRef borrowTypeRef:
+                    (_, baseAddr) = LoadSlot(inst.BaseSlot, $"inst_{inst.Id}_base");
+                    isDirect = false;
+
+                    if (borrowTypeRef.InnerType is not DirectTypeRef directTypeRef)
+                    {
+                        throw new Exception("Cannot borrow field from non borrowed direct type");
+                    }
+
+                    innerTypeRef = directTypeRef;
+                    break;
+                case DirectTypeRef:
+                    (_, baseAddr) = GetSlotRef(inst.BaseSlot);
+                    isDirect = true;
+                    throw new NotImplementedException("direct field moves");
+                case PointerTypeRef:
+                case ReferenceTypeRef:
+                    throw new NotImplementedException();
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(slotDec.Type));
+            }
+
+            var structDef = ResolveBaseType(innerTypeRef) as Struct;
+            var index = structDef.Fields.FindIndex(x => x.Name == inst.TargetField);
+            var fieldDef = structDef.Fields[index];
+            var addr = Builder.BuildInBoundsGEP(
+                baseAddr,
+                new[]
+                {
+                    LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0),
+                    LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong)index)
+                },
+                $"inst_{inst.Id}_faddr"
+            );
+
+            if (fieldDef.Type.Category != TypeCategory.Direct || !Equals(fieldDef.Type, PrimitiveType.I32Ref))
+            {
+                throw new NotImplementedException("Field moves");
+                // TODO: moves
+            }
+
+            if (IsCopyType(fieldDef.Type))
+            {
+                var value = Builder.BuildLoad(addr, $"inst_{inst.Id}_copy");
+                StoreSlot(inst.TargetSlot, value, fieldDef.Type);
+            }
+            else if (!isDirect)
+            {
+                throw new Exception("Cannot move non-copyable field from a reference");
+            }
+            else
+            {
+                throw new NotImplementedException("Field moves");
+            }
+        }
+
+        private void CompileFieldBorrowInst(FieldBorrowInst inst)
+        {
+            var (slotType, slotVal) = LoadSlot(inst.BaseSlot, $"inst_{inst.Id}_base");
+
+            DirectTypeRef innerTypeRef;
+            switch (slotType)
+            {
+                case BorrowTypeRef borrowTypeRef:
+                    if (borrowTypeRef.InnerType is not DirectTypeRef directTypeRef)
+                    {
+                        throw new Exception("Cannot borrow field from non borrowed direct type");
+                    }
+
+                    if (!borrowTypeRef.MutableRef && inst.Mutable)
+                    {
+                        throw new Exception("Cannot mutably borrow from non-mutable borrow");
+                    }
+
+                    innerTypeRef = directTypeRef;
+                    break;
+                case DirectTypeRef:
+                    throw new Exception("Cannot borrow field from direct type");
+                case PointerTypeRef:
+                case ReferenceTypeRef:
+                    throw new NotImplementedException();
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(slotType));
+            }
+
+            var structDef = ResolveBaseType(innerTypeRef) as Struct;
+            var index = structDef.Fields.FindIndex(x => x.Name == inst.TargetField);
+            var fieldDef = structDef.Fields[index];
+            var addr = Builder.BuildInBoundsGEP(
+                slotVal,
+                new[]
+                {
+                    LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0),
+                    LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong)index)
+                },
+                $"inst_{inst.Id}_addr"
+            );
+            StoreSlot(inst.TargetSlot, addr, new BorrowTypeRef(fieldDef.Type, inst.Mutable));
+        }
+
+        private void CompileStoreIndirectInst(StoreIndirectInst inst)
+        {
+            var (tgtType, tgt) = LoadSlot(inst.TargetSlot, $"inst_{inst.Id}_tgt");
+            var (valType, val) = LoadSlot(inst.ValueSlot, $"inst_{inst.Id}_value");
+
+            switch (tgtType)
+            {
+                case DirectTypeRef:
+                    throw new Exception("Direct type is not valid ptr");
+                    break;
+                case BorrowTypeRef borrowTypeRef:
+                    if (!borrowTypeRef.MutableRef)
+                    {
+                        throw new Exception("Cannot store into a non-mutable borrow");
+                    }
+
+                    if (!Equals(borrowTypeRef.InnerType, valType))
+                    {
+                        throw new Exception("Value type does not match borrowed type");
+                    }
+
+                    break;
+                case PointerTypeRef:
+                case ReferenceTypeRef:
+                    throw new NotImplementedException();
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(tgtType));
+            }
+
+            Builder.BuildStore(val, tgt);
+        }
+
+        private bool IsIntegerBacked(TypeRef typeRef)
+        {
+            if (typeRef is not DirectTypeRef)
+            {
+                throw new NotImplementedException("Non direct types");
+            }
+
+            return Equals(typeRef.Name, PrimitiveType.I32.Name) || Equals(typeRef.Name, PrimitiveType.Bool.Name);
+        }
+
+        private bool IsSignedInteger(TypeRef typeRef)
+        {
+            if (typeRef is not DirectTypeRef)
+            {
+                throw new NotImplementedException("Non direct types");
+            }
+
+            return Equals(typeRef.Name, PrimitiveType.I32.Name) || Equals(typeRef.Name, PrimitiveType.Bool.Name);
+        }
+
+        private bool IsCopyType(TypeRef type)
+        {
+            return true;
+        }
+
+        private OxType ResolveBaseType(TypeRef typeRef)
+        {
+            if (typeRef.Source != TypeSource.Concrete)
+            {
+                throw new NotImplementedException("Non concrete types not implemented");
+            }
+
+            if (typeRef.GenericParams != null && typeRef.GenericParams.Length > 0)
+            {
+                throw new NotImplementedException("Generics");
+            }
+
+            var obj = Store.Lookup(typeRef.Name);
+            if (obj == null)
+            {
+                throw new Exception($"Failed to find {typeRef}");
+            }
+
+            return obj as OxType;
         }
     }
 }

@@ -55,32 +55,28 @@ namespace Oxide.Compiler.Backend.Llvm
                 return LLVMTypeRef.Void;
             }
 
-            if ((typeRef.GenericParams != null && !typeRef.GenericParams.IsEmpty) ||
-                typeRef.Source != TypeSource.Concrete)
+            switch (typeRef)
             {
-                throw new NotImplementedException("Generic type support is not implemented");
-            }
+                case DirectTypeRef directTypeRef:
+                {
+                    if ((directTypeRef.GenericParams != null && !directTypeRef.GenericParams.IsEmpty) ||
+                        directTypeRef.Source != TypeSource.Concrete)
+                    {
+                        throw new NotImplementedException("Generic type support is not implemented");
+                    }
 
-            var baseType = ResolveBaseType(typeRef.Name);
-
-            switch (typeRef.Category)
-            {
-                case TypeCategory.Direct:
-                    return baseType;
-                case TypeCategory.Pointer:
+                    return ResolveBaseType(directTypeRef.Name);
+                }
+                case BorrowTypeRef borrowTypeRef:
+                    return LLVMTypeRef.CreatePointer(ConvertType(borrowTypeRef.InnerType), 0);
+                case PointerTypeRef pointerTypeRef:
                     throw new NotImplementedException("Pointer types not implemented");
                     break;
-                case TypeCategory.Borrow:
-                    throw new NotImplementedException("Borrow types not implemented");
-                    break;
-                case TypeCategory.StrongReference:
-                    throw new NotImplementedException("Strong reference types not implemented");
-                    break;
-                case TypeCategory.WeakReference:
-                    throw new NotImplementedException("Weak reference types not implemented");
+                case ReferenceTypeRef referenceTypeRef:
+                    throw new NotImplementedException("Reference types not implemented");
                     break;
                 default:
-                    throw new ArgumentOutOfRangeException();
+                    throw new ArgumentOutOfRangeException(nameof(typeRef));
             }
         }
 
