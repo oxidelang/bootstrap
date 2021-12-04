@@ -1310,7 +1310,34 @@ namespace Oxide.Compiler.Frontend
 
         private bool IsCopyType(TypeRef type)
         {
-            return true;
+            switch (type)
+            {
+                case BorrowTypeRef:
+                case PointerTypeRef:
+                    return true;
+                case ReferenceTypeRef:
+                    return false;
+                case DirectTypeRef directTypeRef:
+                {
+                    var baseType = ResolveBaseType(directTypeRef);
+
+                    switch (baseType)
+                    {
+                        case PrimitiveType primitiveType:
+                            return true;
+                        case Struct @struct:
+                            // TODO
+                            return false;
+                        case Interface @interface:
+                        case Variant variant:
+                            throw new NotImplementedException();
+                        default:
+                            throw new ArgumentOutOfRangeException(nameof(baseType));
+                    }
+                }
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(type));
+            }
         }
 
         private OxType ResolveBaseType(TypeRef typeRef)

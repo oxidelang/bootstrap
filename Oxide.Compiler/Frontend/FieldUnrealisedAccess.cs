@@ -21,6 +21,19 @@ namespace Oxide.Compiler.Frontend
 
         public override SlotDeclaration GenerateMove(BodyParser parser, Block block)
         {
+            switch (BaseAccess.Type)
+            {
+                case DirectTypeRef:
+                    break;
+                case BorrowTypeRef borrowTypeRef:
+                case PointerTypeRef pointerTypeRef:
+                    throw new NotImplementedException();
+                case ReferenceTypeRef referenceTypeRef:
+                    throw new Exception("Unsupported");
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+
             if (Field.Type.Source != TypeSource.Concrete)
             {
                 throw new NotImplementedException("Non concrete types not implemented");
@@ -72,7 +85,36 @@ namespace Oxide.Compiler.Frontend
 
         public override SlotDeclaration GenerateRef(BodyParser parser, Block block, bool mutable)
         {
-            var baseSlot = BaseAccess.GenerateRef(parser, block, mutable);
+            SlotDeclaration baseSlot;
+            switch (BaseAccess.Type)
+            {
+                case DirectTypeRef:
+                {
+                    baseSlot = BaseAccess.GenerateRef(parser, block, mutable);
+                    break;
+                }
+                case BorrowTypeRef borrowTypeRef:
+                {
+                    if (mutable && !borrowTypeRef.MutableRef)
+                    {
+                        throw new Exception("Cannot mutably borrow field from non-mutable borrow");
+                    }
+
+                    if (borrowTypeRef.InnerType is not DirectTypeRef)
+                    {
+                        throw new Exception("Cannot borrow field from deeply borrowed variable");
+                    }
+
+                    baseSlot = BaseAccess.GenerateMove(parser, block);
+                    break;
+                }
+                case PointerTypeRef pointerTypeRef:
+                    throw new NotImplementedException();
+                case ReferenceTypeRef referenceTypeRef:
+                    throw new Exception("Unsupported");
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
 
             var varSlot = block.Scope.DefineSlot(new SlotDeclaration
             {
