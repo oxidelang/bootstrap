@@ -170,7 +170,7 @@ tuple_item_def
     ;
 
 impl_stmt
-    : IMPL (qualified_name FOR)? type where? (SEMI | impl_body)
+    : IMPL (iface_name=qualified_name iface_generics=type_generic_params? FOR)? tgt_name=qualified_name tgt_generics=type_generic_params? where? (SEMI | impl_body)
     ;
 
 impl_body

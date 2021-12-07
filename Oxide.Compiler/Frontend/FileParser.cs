@@ -17,7 +17,8 @@ namespace Oxide.Compiler.Frontend
         public Dictionary<QualifiedName, Variant> Variants { get; private set; }
         public Dictionary<QualifiedName, Interface> Interfaces { get; private set; }
         public Dictionary<QualifiedName, Function> Functions { get; private set; }
-        public Dictionary<QualifiedName, OxideParser.BlockContext> UnparsedBodies { get; private set; }
+        public Dictionary<QualifiedName, List<Implementation>> Implementations { get; private set; }
+        public Dictionary<Function, OxideParser.BlockContext> UnparsedBodies { get; private set; }
 
         public void Parse(OxideParser.Compilation_unitContext cu)
         {
@@ -69,6 +70,8 @@ namespace Oxide.Compiler.Frontend
                 }
             }
 
+            UnparsedBodies = new Dictionary<Function, OxideParser.BlockContext>();
+
             // Parse alias
             foreach (var ctx in aliasDefs)
             {
@@ -93,30 +96,31 @@ namespace Oxide.Compiler.Frontend
             Interfaces = new Dictionary<QualifiedName, Interface>();
             foreach (var ctx in ifaceDefs)
             {
-                throw new NotImplementedException("Interfaces");
+                ParseInterface(ctx);
             }
 
             // Parse impls
+            Implementations = new Dictionary<QualifiedName, List<Implementation>>();
             foreach (var ctx in implBlocks)
             {
-                throw new NotImplementedException("Impl block");
+                ParseImpl(ctx);
             }
 
             // Parse top level funcs
             Functions = new Dictionary<QualifiedName, Function>();
-            UnparsedBodies = new Dictionary<QualifiedName, OxideParser.BlockContext>();
             foreach (var ctx in funcsDefs)
             {
-                ParseFunc(ctx);
+                var func = ParseFunc(ctx, Package, null);
+                Functions.Add(func.Name, func);
             }
         }
 
-        private void ParseFunc(OxideParser.Func_defContext ctx)
+        private Function ParseFunc(OxideParser.Func_defContext ctx, QualifiedName owner, TypeRef thisType)
         {
             var vis = ctx.visibility().Parse();
             var funcName = ctx.name().GetText();
             var genericParams = ctx.generic_def().Parse().ToImmutableList();
-            var parameters = ParseParameters(ctx.parameter(), false, genericParams);
+            var parameters = ParseParameters(ctx.parameter(), thisType, genericParams);
             var returnType = ctx.type() != null ? ParseType(ctx.type(), genericParams) : null;
             OxideParser.BlockContext body = null;
 
@@ -131,24 +135,30 @@ namespace Oxide.Compiler.Frontend
                     throw new ArgumentOutOfRangeException();
             }
 
-            var qn = new QualifiedName(true, Package.Parts.Add(funcName));
-            Functions.Add(qn, new Function
+            var name = owner != null
+                ? new QualifiedName(owner.IsAbsolute, owner.Parts.Add(funcName))
+                : new QualifiedName(false, new[] { funcName });
+
+            var func = new Function
             {
-                Name = qn,
+                Name = name,
                 Visibility = vis,
                 Parameters = parameters.ToImmutableList(),
                 GenericParams = genericParams.ToImmutableList(),
                 ReturnType = returnType,
                 IsExtern = ctx.EXTERN() != null,
                 HasBody = body != null,
-            });
+            };
+
             if (body != null)
             {
-                UnparsedBodies.Add(qn, body);
+                UnparsedBodies.Add(func, body);
             }
+
+            return func;
         }
 
-        private List<Parameter> ParseParameters(OxideParser.ParameterContext[] paramCtxs, bool allowThis,
+        private List<Parameter> ParseParameters(OxideParser.ParameterContext[] paramCtxs, TypeRef thisType,
             ImmutableList<string> genericTypes)
         {
             var parameters = new List<Parameter>();
@@ -170,7 +180,7 @@ namespace Oxide.Compiler.Frontend
                     }
                     case OxideParser.This_parameterContext thisParameterContext:
                     {
-                        if (!allowThis)
+                        if (thisType == null)
                         {
                             throw new Exception("This parameters are not allowed in this context");
                         }
@@ -181,18 +191,20 @@ namespace Oxide.Compiler.Frontend
                         }
 
                         var (category, mutable) = thisParameterContext.type_flags().Parse();
-
-                        // parameters.Add(new Parameter
-                        // {
-                        //     Name = "this",
-                        //     IsThis = true,
-                        //     Type = new TypeRef
-                        //     {
-                        //         Category = category,
-                        //         MutableRef = mutable,
-                        //     },
-                        // });
-                        throw new NotImplementedException("This parameters not implemented");
+                        parameters.Add(new Parameter
+                        {
+                            Name = "this",
+                            IsThis = true,
+                            Type = category switch
+                            {
+                                TypeCategory.Direct => thisType,
+                                TypeCategory.Pointer => new PointerTypeRef(thisType, mutable),
+                                TypeCategory.Borrow => new BorrowTypeRef(thisType, mutable),
+                                TypeCategory.StrongReference => new ReferenceTypeRef(thisType, true),
+                                TypeCategory.WeakReference => new ReferenceTypeRef(thisType, false),
+                                _ => throw new ArgumentOutOfRangeException()
+                            },
+                        });
                         break;
                     }
                     default:
@@ -328,8 +340,55 @@ namespace Oxide.Compiler.Frontend
         private void ParseInterface(OxideParser.Iface_defContext ctx)
         {
             var vis = ctx.visibility().Parse();
-            var structName = new QualifiedName(true, Package.Parts.Add(ctx.name().GetText()));
+            var interfaceName = new QualifiedName(true, Package.Parts.Add(ctx.name().GetText()));
             var genericParams = ctx.generic_def()?.Parse() ?? new List<string>();
+
+            var functions = new List<Function>();
+            var thisRef = new DirectTypeRef(interfaceName, TypeSource.Concrete, ImmutableArray<TypeRef>.Empty);
+            foreach (var funcDef in ctx.func_def())
+            {
+                functions.Add(ParseFunc(funcDef, null, thisRef));
+            }
+
+            Interfaces.Add(
+                interfaceName,
+                new Interface(interfaceName, vis, genericParams.ToImmutableList(), functions.ToImmutableList())
+            );
+        }
+
+        private void ParseImpl(OxideParser.Impl_stmtContext ctx)
+        {
+            if (ctx.tgt_generics != null || ctx.iface_generics != null)
+            {
+                throw new NotImplementedException("Generics not implemented");
+            }
+
+            if (ctx.where() != null)
+            {
+                throw new NotImplementedException("Where statements not implemented");
+            }
+
+            var target = ResolveQN(ctx.tgt_name.Parse());
+            var iface = ctx.iface_name != null ? ResolveQN(ctx.iface_name.Parse()) : null;
+
+            if (!Implementations.TryGetValue(target, out var ifaces))
+            {
+                ifaces = new List<Implementation>();
+                Implementations.Add(target, ifaces);
+            }
+
+            var functions = new List<Function>();
+            var thisRef = new DirectTypeRef(target, TypeSource.Concrete, ImmutableArray<TypeRef>.Empty);
+
+            if (ctx.impl_body() != null)
+            {
+                foreach (var funcDef in ctx.impl_body().func_def())
+                {
+                    functions.Add(ParseFunc(funcDef, null, thisRef));
+                }
+            }
+
+            ifaces.Add(new Implementation(target, iface, functions.ToImmutableArray()));
         }
 
         public TypeRef ParseType(OxideParser.TypeContext ctx, ImmutableList<string> genericTypes)

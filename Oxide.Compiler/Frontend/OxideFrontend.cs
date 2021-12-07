@@ -55,6 +55,14 @@ namespace Oxide.Compiler.Frontend
                 {
                     _unit.Add(def);
                 }
+
+                foreach (var imps in fp.Implementations.Values)
+                {
+                    foreach (var imp in imps)
+                    {
+                        _unit.AddImplementation(imp);
+                    }
+                }
             }
 
             foreach (var fp in _parsers)
@@ -66,11 +74,48 @@ namespace Oxide.Compiler.Frontend
                         continue;
                     }
 
-                    var unparsedBody = fp.UnparsedBodies[functionDef.Name];
+                    var unparsedBody = fp.UnparsedBodies[functionDef];
                     var bodyParser = new BodyParser(_store, _unit, fp, functionDef);
                     functionDef.EntryBlock = bodyParser.ParseBody(unparsedBody);
                     functionDef.Blocks = bodyParser.Blocks.Values.ToImmutableList();
                     functionDef.Scopes = bodyParser.Scopes.ToImmutableList();
+                }
+
+                foreach (var iface in fp.Interfaces.Values)
+                {
+                    foreach (var functionDef in iface.Functions)
+                    {
+                        if (!functionDef.HasBody)
+                        {
+                            continue;
+                        }
+
+                        var unparsedBody = fp.UnparsedBodies[functionDef];
+                        var bodyParser = new BodyParser(_store, _unit, fp, functionDef);
+                        functionDef.EntryBlock = bodyParser.ParseBody(unparsedBody);
+                        functionDef.Blocks = bodyParser.Blocks.Values.ToImmutableList();
+                        functionDef.Scopes = bodyParser.Scopes.ToImmutableList();
+                    }
+                }
+
+                foreach (var imps in fp.Implementations.Values)
+                {
+                    foreach (var imp in imps)
+                    {
+                        foreach (var functionDef in imp.Functions)
+                        {
+                            if (!functionDef.HasBody)
+                            {
+                                continue;
+                            }
+
+                            var unparsedBody = fp.UnparsedBodies[functionDef];
+                            var bodyParser = new BodyParser(_store, _unit, fp, functionDef);
+                            functionDef.EntryBlock = bodyParser.ParseBody(unparsedBody);
+                            functionDef.Blocks = bodyParser.Blocks.Values.ToImmutableList();
+                            functionDef.Scopes = bodyParser.Scopes.ToImmutableList();
+                        }
+                    }
                 }
             }
 
