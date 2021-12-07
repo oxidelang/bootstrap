@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Linq;
 using LLVMSharp.Interop;
 using Oxide.Compiler.IR;
 using Oxide.Compiler.IR.Instructions;
@@ -411,9 +410,8 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private void CompileAllocStructInst(AllocStructInst inst)
         {
-            var type = new DirectTypeRef(
+            var type = new ConcreteTypeRef(
                 inst.StructName,
-                TypeSource.Concrete,
                 ImmutableArray<TypeRef>.Empty
             );
 
@@ -422,12 +420,12 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private LLVMValueRef ZeroInit(TypeRef tref)
         {
-            if (tref is not DirectTypeRef)
+            if (tref is not ConcreteTypeRef concreteTypeRef)
             {
                 throw new NotImplementedException("Zero init of non direct type not implemented");
             }
 
-            var val = Store.Lookup(tref.Name);
+            var val = Store.Lookup(concreteTypeRef.Name);
             switch (val)
             {
                 case PrimitiveType primitiveType:
@@ -442,7 +440,7 @@ namespace Oxide.Compiler.Backend.Llvm
                     }
                 case Struct @struct:
                 {
-                    var baseType = Backend.ResolveBaseType(tref.Name);
+                    var baseType = Backend.ResolveBaseType(concreteTypeRef.Name);
 
                     var consts = new List<LLVMValueRef>();
                     foreach (var fieldDef in @struct.Fields)
@@ -483,6 +481,11 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private void CompileStaticCallInst(StaticCallInst inst)
         {
+            if (inst.TargetImplementation != null)
+            {
+                throw new NotImplementedException("Targeted calls");
+            }
+
             var name = $"inst_{inst.Id}";
             var funcDef = Store.Lookup<Function>(inst.TargetMethod) ??
                           throw new Exception($"Failed to find unit for {inst.TargetMethod}");
@@ -590,7 +593,7 @@ namespace Oxide.Compiler.Backend.Llvm
             var slotDec = GetSlot(inst.BaseSlot);
 
             LLVMValueRef baseAddr;
-            DirectTypeRef innerTypeRef;
+            BaseTypeRef innerTypeRef;
             bool isDirect;
             switch (slotDec.Type)
             {
@@ -598,14 +601,14 @@ namespace Oxide.Compiler.Backend.Llvm
                     (_, baseAddr) = LoadSlot(inst.BaseSlot, $"inst_{inst.Id}_base");
                     isDirect = false;
 
-                    if (borrowTypeRef.InnerType is not DirectTypeRef directTypeRef)
+                    if (borrowTypeRef.InnerType is not BaseTypeRef baseTypeRef)
                     {
                         throw new Exception("Cannot borrow field from non borrowed direct type");
                     }
 
-                    innerTypeRef = directTypeRef;
+                    innerTypeRef = baseTypeRef;
                     break;
-                case DirectTypeRef:
+                case BaseTypeRef:
                     (_, baseAddr) = GetSlotRef(inst.BaseSlot);
                     isDirect = true;
                     throw new NotImplementedException("direct field moves");
@@ -629,7 +632,7 @@ namespace Oxide.Compiler.Backend.Llvm
                 $"inst_{inst.Id}_faddr"
             );
 
-            if (fieldDef.Type.Category != TypeCategory.Direct || !Equals(fieldDef.Type, PrimitiveType.I32Ref))
+            if (!Equals(fieldDef.Type, PrimitiveType.I32Ref))
             {
                 throw new NotImplementedException("Field moves");
                 // TODO: moves
@@ -654,11 +657,11 @@ namespace Oxide.Compiler.Backend.Llvm
         {
             var (slotType, slotVal) = LoadSlot(inst.BaseSlot, $"inst_{inst.Id}_base");
 
-            DirectTypeRef innerTypeRef;
+            BaseTypeRef innerTypeRef;
             switch (slotType)
             {
                 case BorrowTypeRef borrowTypeRef:
-                    if (borrowTypeRef.InnerType is not DirectTypeRef directTypeRef)
+                    if (borrowTypeRef.InnerType is not BaseTypeRef baseTypeRef)
                     {
                         throw new Exception("Cannot borrow field from non borrowed direct type");
                     }
@@ -668,10 +671,10 @@ namespace Oxide.Compiler.Backend.Llvm
                         throw new Exception("Cannot mutably borrow from non-mutable borrow");
                     }
 
-                    innerTypeRef = directTypeRef;
+                    innerTypeRef = baseTypeRef;
                     break;
-                case DirectTypeRef:
-                    throw new Exception("Cannot borrow field from direct type");
+                case BaseTypeRef:
+                    throw new Exception("Cannot borrow field from base type");
                 case PointerTypeRef:
                 case ReferenceTypeRef:
                     throw new NotImplementedException();
@@ -701,8 +704,8 @@ namespace Oxide.Compiler.Backend.Llvm
 
             switch (tgtType)
             {
-                case DirectTypeRef:
-                    throw new Exception("Direct type is not valid ptr");
+                case BaseTypeRef:
+                    throw new Exception("Base type is not valid ptr");
                     break;
                 case BorrowTypeRef borrowTypeRef:
                     if (!borrowTypeRef.MutableRef)
@@ -733,8 +736,8 @@ namespace Oxide.Compiler.Backend.Llvm
             TypeRef innerTypeRef;
             switch (addrType)
             {
-                case DirectTypeRef:
-                    throw new Exception("Direct type is not valid ptr");
+                case BaseTypeRef:
+                    throw new Exception("Base type is not valid ptr");
                     break;
                 case BorrowTypeRef borrowTypeRef:
                     innerTypeRef = borrowTypeRef.InnerType;
@@ -757,22 +760,24 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private bool IsIntegerBacked(TypeRef typeRef)
         {
-            if (typeRef is not DirectTypeRef)
+            if (typeRef is not ConcreteTypeRef concreteTypeRef)
             {
                 throw new NotImplementedException("Non direct types");
             }
 
-            return Equals(typeRef.Name, PrimitiveType.I32.Name) || Equals(typeRef.Name, PrimitiveType.Bool.Name);
+            return Equals(concreteTypeRef.Name, PrimitiveType.I32.Name) ||
+                   Equals(concreteTypeRef.Name, PrimitiveType.Bool.Name);
         }
 
         private bool IsSignedInteger(TypeRef typeRef)
         {
-            if (typeRef is not DirectTypeRef)
+            if (typeRef is not ConcreteTypeRef concreteTypeRef)
             {
                 throw new NotImplementedException("Non direct types");
             }
 
-            return Equals(typeRef.Name, PrimitiveType.I32.Name) || Equals(typeRef.Name, PrimitiveType.Bool.Name);
+            return Equals(concreteTypeRef.Name, PrimitiveType.I32.Name) ||
+                   Equals(concreteTypeRef.Name, PrimitiveType.Bool.Name);
         }
 
         private bool IsCopyType(TypeRef type)
@@ -784,9 +789,9 @@ namespace Oxide.Compiler.Backend.Llvm
                     return true;
                 case ReferenceTypeRef:
                     return false;
-                case DirectTypeRef directTypeRef:
+                case BaseTypeRef baseTypeRef:
                 {
-                    var baseType = ResolveBaseType(directTypeRef);
+                    var baseType = ResolveBaseType(baseTypeRef);
 
                     switch (baseType)
                     {
@@ -807,25 +812,32 @@ namespace Oxide.Compiler.Backend.Llvm
             }
         }
 
-        private OxType ResolveBaseType(TypeRef typeRef)
+        private OxType ResolveBaseType(BaseTypeRef typeRef)
         {
-            if (typeRef.Source != TypeSource.Concrete)
+            switch (typeRef)
             {
-                throw new NotImplementedException("Non concrete types not implemented");
-            }
+                case ConcreteTypeRef concreteTypeRef:
+                    if (concreteTypeRef.GenericParams != null && concreteTypeRef.GenericParams.Length > 0)
+                    {
+                        throw new NotImplementedException("Generics");
+                    }
 
-            if (typeRef.GenericParams != null && typeRef.GenericParams.Length > 0)
-            {
-                throw new NotImplementedException("Generics");
-            }
+                    var obj = Store.Lookup(concreteTypeRef.Name);
+                    if (obj == null)
+                    {
+                        throw new Exception($"Failed to find {typeRef}");
+                    }
 
-            var obj = Store.Lookup(typeRef.Name);
-            if (obj == null)
-            {
-                throw new Exception($"Failed to find {typeRef}");
+                    return obj as OxType;
+                case DerivedTypeRef derivedTypeRef:
+                    throw new NotImplementedException("Resolving derived types");
+                case GenericTypeRef genericTypeRef:
+                    throw new NotImplementedException("Resolving generic types");
+                case ThisTypeRef thisTypeRef:
+                    throw new NotImplementedException("Resolving this types");
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(typeRef));
             }
-
-            return obj as OxType;
         }
     }
 }

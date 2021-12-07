@@ -57,16 +57,17 @@ namespace Oxide.Compiler.Backend.Llvm
 
             switch (typeRef)
             {
-                case DirectTypeRef directTypeRef:
+                case ConcreteTypeRef concreteTypeRef:
                 {
-                    if ((directTypeRef.GenericParams != null && !directTypeRef.GenericParams.IsEmpty) ||
-                        directTypeRef.Source != TypeSource.Concrete)
+                    if (concreteTypeRef.GenericParams != null && !concreteTypeRef.GenericParams.IsEmpty)
                     {
                         throw new NotImplementedException("Generic type support is not implemented");
                     }
 
-                    return ResolveBaseType(directTypeRef.Name);
+                    return ResolveBaseType(concreteTypeRef.Name);
                 }
+                case BaseTypeRef baseTypeRef:
+                    throw new NotImplementedException();
                 case BorrowTypeRef borrowTypeRef:
                     return LLVMTypeRef.CreatePointer(ConvertType(borrowTypeRef.InnerType), 0);
                 case PointerTypeRef pointerTypeRef:
