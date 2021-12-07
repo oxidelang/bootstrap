@@ -144,7 +144,7 @@ namespace Oxide.Compiler.Backend.Llvm
             unsafe
             {
                 LLVMPassManagerBuilderRef passManagerBuilder = LLVM.PassManagerBuilderCreate();
-                passManagerBuilder.SetOptLevel(1);
+                passManagerBuilder.SetOptLevel(3);
                 var passManager = LLVMPassManagerRef.Create();
                 passManagerBuilder.PopulateModulePassManager(passManager);
                 passManager.Run(Module);
@@ -167,19 +167,10 @@ namespace Oxide.Compiler.Backend.Llvm
                 throw new Exception($"Error: {error}");
             }
 
-            engine.AddGlobalMapping(
-                Module.GetNamedFunction("::std::debug_int"),
-                Marshal.GetFunctionPointerForDelegate<DebugInt>(DebugIntImp)
-            );
-            engine.AddGlobalMapping(
-                Module.GetNamedFunction("::std::debug_bool"),
-                Marshal.GetFunctionPointerForDelegate<DebugBool>(DebugBoolImp)
-            );
+            MapFunction<DebugInt>(engine, "::std::debug_int", DebugIntImp);
+            MapFunction<DebugBool>(engine, "::std::debug_bool", DebugBoolImp);
 
-            var funcRef = Module.GetNamedFunction("::examples::main");
-            var mainMethod =
-                (MainMethod)Marshal.GetDelegateForFunctionPointer(engine.GetPointerToGlobal(funcRef),
-                    typeof(MainMethod));
+            var mainMethod = GetFunction<MainMethod>(engine, "::examples::main");
 
             Console.WriteLine("Running...");
             Console.WriteLine("------------");
@@ -188,6 +179,34 @@ namespace Oxide.Compiler.Backend.Llvm
 
             engine.Dispose();
         }
+
+        public void MapFunction<TDelegate>(LLVMExecutionEngineRef engine, string target, TDelegate d)
+            where TDelegate : notnull
+        {
+            var funcRef = Module.GetNamedFunction(target);
+            if (funcRef.IsNull || funcRef.IsUndef || funcRef.Handle == IntPtr.Zero)
+            {
+                return;
+            }
+
+            engine.AddGlobalMapping(
+                funcRef,
+                Marshal.GetFunctionPointerForDelegate(d)
+            );
+        }
+
+        public TDelegate GetFunction<TDelegate>(LLVMExecutionEngineRef engine, string target)
+        {
+            var funcRef = Module.GetNamedFunction(target);
+            if (funcRef.IsNull || funcRef.IsUndef || funcRef.Handle == IntPtr.Zero)
+            {
+                throw new Exception($"Could not find {target}");
+            }
+
+            var globalRef = engine.GetPointerToGlobal(funcRef);
+            return Marshal.GetDelegateForFunctionPointer<TDelegate>(globalRef);
+        }
+
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate void MainMethod();
