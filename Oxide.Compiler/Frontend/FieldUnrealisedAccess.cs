@@ -1,4 +1,5 @@
 using System;
+using Oxide.Compiler.IR;
 using Oxide.Compiler.IR.Instructions;
 using Oxide.Compiler.IR.TypeRefs;
 using Oxide.Compiler.IR.Types;
@@ -23,7 +24,7 @@ namespace Oxide.Compiler.Frontend
         {
             switch (BaseAccess.Type)
             {
-                case DirectTypeRef:
+                case BaseTypeRef:
                     break;
                 case BorrowTypeRef borrowTypeRef:
                 case PointerTypeRef pointerTypeRef:
@@ -34,20 +35,31 @@ namespace Oxide.Compiler.Frontend
                     throw new ArgumentOutOfRangeException();
             }
 
-            if (Field.Type.Source != TypeSource.Concrete)
+            var baseFieldType = Field.Type.GetBaseType();
+            QualifiedName structName;
+            switch (baseFieldType)
             {
-                throw new NotImplementedException("Non concrete types not implemented");
+                case ConcreteTypeRef concreteTypeRef:
+                    if (concreteTypeRef.GenericParams != null && concreteTypeRef.GenericParams.Length > 0)
+                    {
+                        throw new NotImplementedException("Generics");
+                    }
+
+                    structName = concreteTypeRef.Name;
+                    break;
+                case DerivedTypeRef derivedTypeRef:
+                case ThisTypeRef thisTypeRef:
+                case GenericTypeRef genericTypeRef:
+                    throw new NotImplementedException();
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(baseFieldType));
             }
 
-            if (Field.Type.GenericParams != null && Field.Type.GenericParams.Length > 0)
-            {
-                throw new NotImplementedException("Generics");
-            }
 
-            var fieldType = parser.Lookup(Field.Type.Name);
+            var fieldType = parser.Lookup(structName);
             if (fieldType == null)
             {
-                throw new Exception($"Failed to find {Field.Type.Name}");
+                throw new Exception($"Failed to find {structName}");
             }
 
             switch (fieldType)
@@ -88,7 +100,7 @@ namespace Oxide.Compiler.Frontend
             SlotDeclaration baseSlot;
             switch (BaseAccess.Type)
             {
-                case DirectTypeRef:
+                case BaseTypeRef:
                 {
                     baseSlot = BaseAccess.GenerateRef(parser, block, mutable);
                     break;
@@ -100,7 +112,7 @@ namespace Oxide.Compiler.Frontend
                         throw new Exception("Cannot mutably borrow field from non-mutable borrow");
                     }
 
-                    if (borrowTypeRef.InnerType is not DirectTypeRef)
+                    if (!borrowTypeRef.InnerType.IsBaseType)
                     {
                         throw new Exception("Cannot borrow field from deeply borrowed variable");
                     }

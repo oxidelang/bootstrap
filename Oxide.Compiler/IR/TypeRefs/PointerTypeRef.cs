@@ -1,24 +1,22 @@
 using System;
-using System.Collections.Immutable;
 using System.Text;
 
 namespace Oxide.Compiler.IR.TypeRefs
 {
     public class PointerTypeRef : TypeRef
     {
-        public override TypeCategory Category => TypeCategory.Pointer;
-        public override QualifiedName Name => InnerType.Name;
-        public override TypeSource Source => InnerType.Source;
-        public override ImmutableArray<TypeRef> GenericParams => InnerType.GenericParams;
-
         public bool MutableRef { get; }
-
         public TypeRef InnerType { get; }
 
         public PointerTypeRef(TypeRef inner, bool mutableRef)
         {
             InnerType = inner;
             MutableRef = mutableRef;
+        }
+
+        public override BaseTypeRef GetBaseType()
+        {
+            return InnerType.GetBaseType();
         }
 
         protected bool Equals(PointerTypeRef other)
@@ -44,8 +42,9 @@ namespace Oxide.Compiler.IR.TypeRefs
             var sb = new StringBuilder();
             sb.Append("[p");
             sb.Append(MutableRef ? "m" : "r");
-            sb.Append("]");
+            sb.Append("#");
             sb.Append(InnerType);
+            sb.Append("]");
 
             return sb.ToString();
         }

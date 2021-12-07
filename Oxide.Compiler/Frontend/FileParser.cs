@@ -110,17 +110,17 @@ namespace Oxide.Compiler.Frontend
             Functions = new Dictionary<QualifiedName, Function>();
             foreach (var ctx in funcsDefs)
             {
-                var func = ParseFunc(ctx, Package, null);
+                var func = ParseFunc(ctx, Package, false);
                 Functions.Add(func.Name, func);
             }
         }
 
-        private Function ParseFunc(OxideParser.Func_defContext ctx, QualifiedName owner, TypeRef thisType)
+        private Function ParseFunc(OxideParser.Func_defContext ctx, QualifiedName owner, bool allowThis)
         {
             var vis = ctx.visibility().Parse();
             var funcName = ctx.name().GetText();
             var genericParams = ctx.generic_def().Parse().ToImmutableList();
-            var parameters = ParseParameters(ctx.parameter(), thisType, genericParams);
+            var parameters = ParseParameters(ctx.parameter(), allowThis, genericParams);
             var returnType = ctx.type() != null ? ParseType(ctx.type(), genericParams) : null;
             OxideParser.BlockContext body = null;
 
@@ -158,7 +158,7 @@ namespace Oxide.Compiler.Frontend
             return func;
         }
 
-        private List<Parameter> ParseParameters(OxideParser.ParameterContext[] paramCtxs, TypeRef thisType,
+        private List<Parameter> ParseParameters(OxideParser.ParameterContext[] paramCtxs, bool allowThis,
             ImmutableList<string> genericTypes)
         {
             var parameters = new List<Parameter>();
@@ -180,7 +180,7 @@ namespace Oxide.Compiler.Frontend
                     }
                     case OxideParser.This_parameterContext thisParameterContext:
                     {
-                        if (thisType == null)
+                        if (!allowThis)
                         {
                             throw new Exception("This parameters are not allowed in this context");
                         }
@@ -190,20 +190,27 @@ namespace Oxide.Compiler.Frontend
                             throw new Exception("This parameters can only occupy the first parameter slot");
                         }
 
-                        var (category, mutable) = thisParameterContext.type_flags().Parse();
+
+                        TypeRef type = new ThisTypeRef();
+
+                        if (thisParameterContext.type_flags() != null)
+                        {
+                            var (category, mutable) = thisParameterContext.type_flags().Parse();
+                            type = category switch
+                            {
+                                CommonParsers.TypeCategory.Borrow => new PointerTypeRef(type, mutable),
+                                CommonParsers.TypeCategory.Pointer => new BorrowTypeRef(type, mutable),
+                                CommonParsers.TypeCategory.StrongReference => new ReferenceTypeRef(type, true),
+                                CommonParsers.TypeCategory.WeakReference => new ReferenceTypeRef(type, false),
+                                _ => throw new ArgumentOutOfRangeException()
+                            };
+                        }
+
                         parameters.Add(new Parameter
                         {
                             Name = "this",
                             IsThis = true,
-                            Type = category switch
-                            {
-                                TypeCategory.Direct => thisType,
-                                TypeCategory.Pointer => new PointerTypeRef(thisType, mutable),
-                                TypeCategory.Borrow => new BorrowTypeRef(thisType, mutable),
-                                TypeCategory.StrongReference => new ReferenceTypeRef(thisType, true),
-                                TypeCategory.WeakReference => new ReferenceTypeRef(thisType, false),
-                                _ => throw new ArgumentOutOfRangeException()
-                            },
+                            Type = type,
                         });
                         break;
                     }
@@ -344,10 +351,9 @@ namespace Oxide.Compiler.Frontend
             var genericParams = ctx.generic_def()?.Parse() ?? new List<string>();
 
             var functions = new List<Function>();
-            var thisRef = new DirectTypeRef(interfaceName, TypeSource.Concrete, ImmutableArray<TypeRef>.Empty);
             foreach (var funcDef in ctx.func_def())
             {
-                functions.Add(ParseFunc(funcDef, null, thisRef));
+                functions.Add(ParseFunc(funcDef, null, true));
             }
 
             Interfaces.Add(
@@ -378,13 +384,11 @@ namespace Oxide.Compiler.Frontend
             }
 
             var functions = new List<Function>();
-            var thisRef = new DirectTypeRef(target, TypeSource.Concrete, ImmutableArray<TypeRef>.Empty);
-
             if (ctx.impl_body() != null)
             {
                 foreach (var funcDef in ctx.impl_body().func_def())
                 {
-                    functions.Add(ParseFunc(funcDef, null, thisRef));
+                    functions.Add(ParseFunc(funcDef, null, true));
                 }
             }
 
@@ -395,72 +399,60 @@ namespace Oxide.Compiler.Frontend
         {
             switch (ctx)
             {
-                case OxideParser.Direct_typeContext directTypeContext:
+                case OxideParser.Direct_type_baseContext directTypeBaseContext:
                 {
-                    var genericParams = new List<TypeRef>();
-                    if (directTypeContext.type_generic_params() != null)
-                    {
-                        genericParams.AddRange(directTypeContext.type_generic_params().type()
-                            .Select(x => ParseType(x, genericTypes)));
-                    }
-
-                    var rawQn = directTypeContext.qualified_name().Parse();
-
-                    TypeSource source;
-                    QualifiedName qn;
-                    if (!rawQn.IsAbsolute && genericTypes.Contains(rawQn.Parts[0]))
-                    {
-                        source = TypeSource.Generic;
-                        qn = rawQn;
-                    }
-                    else
-                    {
-                        source = TypeSource.Concrete;
-                        qn = ResolveQN(rawQn);
-                    }
-
-                    return new DirectTypeRef(qn, source, genericParams.ToImmutableArray());
+                    return ParseDirectType(directTypeBaseContext.direct_type(), genericTypes);
                 }
                 case OxideParser.Flagged_typeContext flaggedTypeContext:
                 {
                     var (category, mutable) = flaggedTypeContext.type_flags().Parse();
                     var inner = ParseType(flaggedTypeContext.type(), genericTypes);
 
-                    switch (category)
+                    return category switch
                     {
-                        case TypeCategory.Pointer:
-                            return new PointerTypeRef(inner, mutable);
-                        case TypeCategory.Borrow:
-                            return new BorrowTypeRef(inner, mutable);
-                        case TypeCategory.StrongReference:
-                        case TypeCategory.WeakReference:
-                            return new ReferenceTypeRef(inner, category == TypeCategory.StrongReference);
-                        default:
-                            throw new ArgumentOutOfRangeException();
-                    }
+                        CommonParsers.TypeCategory.Pointer => new PointerTypeRef(inner, mutable),
+                        CommonParsers.TypeCategory.Borrow => new BorrowTypeRef(inner, mutable),
+                        CommonParsers.TypeCategory.StrongReference => new ReferenceTypeRef(inner, true),
+                        CommonParsers.TypeCategory.WeakReference => new ReferenceTypeRef(inner, false),
+                        _ => throw new ArgumentOutOfRangeException()
+                    };
+                }
+                case OxideParser.Derived_typeContext derivedTypeContext:
+                {
+                    var baseRef = ParseType(derivedTypeContext.type(), genericTypes);
+                    var asType = ParseDirectType(derivedTypeContext.direct_type(), genericTypes) as ConcreteTypeRef;
+                    var name = derivedTypeContext.name().GetText();
+                    return new DerivedTypeRef(baseRef, asType, name);
                 }
                 default:
                     throw new ArgumentOutOfRangeException(nameof(ctx));
             }
         }
 
-        public (TypeSource source, QualifiedName qn) ResolveQnWithGenerics(QualifiedName rawQn,
-            ImmutableList<string> genericParams)
+        public TypeRef ParseDirectType(OxideParser.Direct_typeContext directTypeContext,
+            ImmutableList<string> genericTypes)
         {
-            TypeSource source;
-            QualifiedName qn;
-            if (!rawQn.IsAbsolute && genericParams.Contains(rawQn.Parts[0]))
+            var genericParams = new List<TypeRef>();
+            if (directTypeContext.type_generic_params() != null)
             {
-                source = TypeSource.Generic;
-                qn = rawQn;
-            }
-            else
-            {
-                source = TypeSource.Concrete;
-                qn = ResolveQN(rawQn);
+                genericParams.AddRange(directTypeContext.type_generic_params().type()
+                    .Select(x => ParseType(x, genericTypes)));
             }
 
-            return (source, qn);
+            var rawQn = directTypeContext.qualified_name().Parse();
+
+            if (!rawQn.IsAbsolute && genericTypes.Contains(rawQn.Parts[0]))
+            {
+                if (rawQn.Parts.Length > 1)
+                {
+                    throw new Exception("Generic params can not be directly derived");
+                }
+
+                return new GenericTypeRef(rawQn.Parts[0]);
+            }
+
+            var qn = ResolveQN(rawQn);
+            return new ConcreteTypeRef(qn, genericParams.ToImmutableArray());
         }
 
         public QualifiedName ResolveQN(QualifiedName qn)

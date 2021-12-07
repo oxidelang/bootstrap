@@ -13,7 +13,7 @@ namespace Oxide.Compiler.IR.Types
             Kind = PrimitiveKind.I32,
         };
 
-        public static DirectTypeRef I32Ref = new(I32.Name, TypeSource.Concrete, ImmutableArray<TypeRef>.Empty);
+        public static ConcreteTypeRef I32Ref = new(I32.Name, ImmutableArray<TypeRef>.Empty);
 
         public static PrimitiveType Bool = new()
         {
@@ -23,7 +23,7 @@ namespace Oxide.Compiler.IR.Types
             Kind = PrimitiveKind.Bool,
         };
 
-        public static DirectTypeRef BoolRef = new(Bool.Name, TypeSource.Concrete, ImmutableArray<TypeRef>.Empty);
+        public static ConcreteTypeRef BoolRef = new(Bool.Name, ImmutableArray<TypeRef>.Empty);
 
         public PrimitiveKind Kind { get; init; }
     }

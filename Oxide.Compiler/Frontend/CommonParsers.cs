@@ -95,6 +95,14 @@ namespace Oxide.Compiler.Frontend
             return (category, mutable);
         }
 
+        public enum TypeCategory
+        {
+            Borrow,
+            Pointer,
+            StrongReference,
+            WeakReference
+        }
+
         public static string Parse(this OxideParser.LabelContext ctx)
         {
             return ctx.name().GetText();

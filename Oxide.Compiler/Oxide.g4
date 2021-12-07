@@ -199,7 +199,7 @@ func_def
 
 parameter
     : name COLON type #standard_parameter
-    | type_flags THIS_FIELD #this_parameter
+    | type_flags? THIS_FIELD #this_parameter
     ;
 
 func_body
@@ -343,7 +343,7 @@ label
     ;
 
 struct_initialiser
-    : qualified_name type_generic_params? LBRACE field_initialiser* RBRACE
+    : direct_type LBRACE field_initialiser* RBRACE
     ;
 
 field_initialiser
@@ -361,7 +361,12 @@ name
 
 type
     : type_flags type #flagged_type
-    | qualified_name type_generic_params? #direct_type
+    | direct_type #direct_type_base
+    | LARROW type AS direct_type RARROW DCOLON name #derived_type
+    ;
+
+direct_type
+    : qualified_name type_generic_params?
     ;
 
 type_generic_params

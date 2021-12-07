@@ -1,24 +1,22 @@
 using System;
-using System.Collections.Immutable;
 using System.Text;
 
 namespace Oxide.Compiler.IR.TypeRefs
 {
     public class BorrowTypeRef : TypeRef
     {
-        public override TypeCategory Category => TypeCategory.Borrow;
-        public override QualifiedName Name => InnerType.Name;
-        public override TypeSource Source => InnerType.Source;
-        public override ImmutableArray<TypeRef> GenericParams => InnerType.GenericParams;
-
         public bool MutableRef { get; }
-
         public TypeRef InnerType { get; }
 
         public BorrowTypeRef(TypeRef inner, bool mutableRef)
         {
             InnerType = inner;
             MutableRef = mutableRef;
+        }
+
+        public override BaseTypeRef GetBaseType()
+        {
+            return InnerType.GetBaseType();
         }
 
         protected bool Equals(BorrowTypeRef other)
@@ -39,14 +37,14 @@ namespace Oxide.Compiler.IR.TypeRefs
             return HashCode.Combine(MutableRef, InnerType);
         }
 
-
         public override string ToString()
         {
             var sb = new StringBuilder();
             sb.Append("[b");
             sb.Append(MutableRef ? "m" : "r");
-            sb.Append("]");
+            sb.Append("#");
             sb.Append(InnerType);
+            sb.Append("]");
 
             return sb.ToString();
         }

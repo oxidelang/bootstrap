@@ -1,24 +1,22 @@
 using System;
-using System.Collections.Immutable;
 using System.Text;
 
 namespace Oxide.Compiler.IR.TypeRefs
 {
     public class ReferenceTypeRef : TypeRef
     {
-        public override TypeCategory Category => StrongRef ? TypeCategory.StrongReference : TypeCategory.WeakReference;
-        public override QualifiedName Name => InnerType.Name;
-        public override TypeSource Source => InnerType.Source;
-        public override ImmutableArray<TypeRef> GenericParams => InnerType.GenericParams;
-
         public bool StrongRef { get; }
-
         public TypeRef InnerType { get; }
 
         public ReferenceTypeRef(TypeRef inner, bool strongRef)
         {
             InnerType = inner;
             StrongRef = strongRef;
+        }
+
+        public override BaseTypeRef GetBaseType()
+        {
+            return InnerType.GetBaseType();
         }
 
         protected bool Equals(ReferenceTypeRef other)
@@ -39,14 +37,14 @@ namespace Oxide.Compiler.IR.TypeRefs
             return HashCode.Combine(StrongRef, InnerType);
         }
 
-
         public override string ToString()
         {
             var sb = new StringBuilder();
             sb.Append("[r");
             sb.Append(StrongRef ? "s" : "w");
-            sb.Append("]");
+            sb.Append("#");
             sb.Append(InnerType);
+            sb.Append("]");
 
             return sb.ToString();
         }

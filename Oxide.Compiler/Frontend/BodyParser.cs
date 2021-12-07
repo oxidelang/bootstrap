@@ -135,16 +135,6 @@ namespace Oxide.Compiler.Frontend
                 throw new Exception($"No value returned");
             }
 
-            if (exp.Type.Source != TypeSource.Concrete)
-            {
-                throw new NotImplementedException("Non concrete types not implemented");
-            }
-
-            if (exp.Type.GenericParams != null && exp.Type.GenericParams.Length > 0)
-            {
-                throw new NotImplementedException("Generics");
-            }
-
             switch (assignStatementContext.assign_target())
             {
                 case OxideParser.Deref_assign_targetContext derefAssignTargetContext:
@@ -172,10 +162,13 @@ namespace Oxide.Compiler.Frontend
                             }
 
                             break;
-                        case DirectTypeRef:
-                            throw new Exception("Cannot store into direct type");
-                        case ReferenceTypeRef:
+                        case ReferenceTypeRef referenceTypeRef:
                             throw new Exception("Cannot store into reference type");
+                        case ThisTypeRef thisTypeRef:
+                        case ConcreteTypeRef concreteTypeRef:
+                        case GenericTypeRef genericTypeRef:
+                        case DerivedTypeRef derivedTypeRef:
+                            throw new Exception("Cannot store into base type");
                         default:
                             throw new ArgumentOutOfRangeException();
                     }
@@ -197,7 +190,7 @@ namespace Oxide.Compiler.Frontend
                         throw new Exception($"Cannot access {fieldName} on value with no type");
                     }
 
-                    var structDef = ResolveBaseType(tgt.Type) as Struct;
+                    var structDef = ResolveBaseType(tgt.Type.GetBaseType()) as Struct;
                     var fieldDef = structDef.Fields.Single(x => x.Name == fieldName);
 
                     if (!exp.Type.Equals(fieldDef.Type))
@@ -808,7 +801,7 @@ namespace Oxide.Compiler.Frontend
                 throw new Exception("No value to create borrow from");
             }
 
-            if (exp.Type.Category == TypeCategory.WeakReference)
+            if (exp.Type is ReferenceTypeRef { StrongRef: false })
             {
                 throw new NotImplementedException("Cannot borrow weak ref");
             }
@@ -825,7 +818,7 @@ namespace Oxide.Compiler.Frontend
                 throw new Exception("No value to create borrow from");
             }
 
-            if (exp.Type.Category != TypeCategory.Borrow && exp.Type.Category != TypeCategory.Pointer)
+            if (exp.Type is not BorrowTypeRef && exp.Type is not PointerTypeRef)
             {
                 throw new NotImplementedException("Can only load borrows or pointers");
             }
@@ -907,20 +900,32 @@ namespace Oxide.Compiler.Frontend
                 throw new Exception($"Cannot access {fieldName} on value with no type");
             }
 
-            if (exp.Type.Source != TypeSource.Concrete)
+            var baseType = exp.Type.GetBaseType();
+            QualifiedName structName;
+            switch (baseType)
             {
-                throw new NotImplementedException("Non concrete types not implemented");
+                case ConcreteTypeRef concreteTypeRef:
+                    if (concreteTypeRef.GenericParams != null && concreteTypeRef.GenericParams.Length > 0)
+                    {
+                        throw new NotImplementedException("Generics");
+                    }
+
+                    structName = concreteTypeRef.Name;
+                    break;
+                case DerivedTypeRef derivedTypeRef:
+                    throw new NotImplementedException("Derived type field accesses");
+                case GenericTypeRef genericTypeRef:
+                    throw new NotImplementedException("Generic type field accesses");
+                case ThisTypeRef thisTypeRef:
+                    throw new NotImplementedException("This field accesses");
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(baseType));
             }
 
-            if (exp.Type.GenericParams != null && exp.Type.GenericParams.Length > 0)
-            {
-                throw new NotImplementedException("Generics");
-            }
-
-            var structDef = Lookup<Struct>(exp.Type.Name);
+            var structDef = Lookup<Struct>(structName);
             if (structDef == null)
             {
-                throw new Exception($"Failed to find {exp.Type.Name}");
+                throw new Exception($"Failed to find {structName}");
             }
 
             var fieldDef = structDef.Fields.Single(x => x.Name == fieldName);
@@ -929,24 +934,24 @@ namespace Oxide.Compiler.Frontend
 
         private UnrealisedAccess ParseStructInitialiser(OxideParser.Struct_initialiserContext ctx)
         {
-            if (ctx.type_generic_params() != null)
-            {
-                throw new NotImplementedException("Generic struct params");
-            }
-
-            var (structSource, structName) = ResolveQnWithGenerics(ctx.qualified_name().Parse());
-            if (structSource != TypeSource.Concrete)
+            var typeRef = ParseDirectType(ctx.direct_type());
+            if (typeRef is not ConcreteTypeRef concreteTypeRef)
             {
                 throw new NotImplementedException("Only concrete structs implemented");
             }
 
-            var structDef = Lookup<Struct>(structName);
+            if (concreteTypeRef.GenericParams.Length != 0)
+            {
+                throw new NotImplementedException("Generics");
+            }
+
+            var structDef = Lookup<Struct>(concreteTypeRef.Name);
 
             var structSlot = CurrentScope.DefineSlot(new SlotDeclaration
             {
                 Id = ++LastSlotId,
                 Name = null,
-                Type = new DirectTypeRef(structName, structSource, ImmutableArray<TypeRef>.Empty),
+                Type = concreteTypeRef,
                 Mutable = true
             });
 
@@ -954,7 +959,7 @@ namespace Oxide.Compiler.Frontend
             {
                 Id = ++LastInstId,
                 SlotId = structSlot.Id,
-                StructName = structName
+                StructName = concreteTypeRef.Name
             });
 
             var accessSlot = CurrentScope.DefineSlot(new SlotDeclaration
@@ -1293,11 +1298,6 @@ namespace Oxide.Compiler.Frontend
             return _fileParser.ResolveQN(qn);
         }
 
-        private (TypeSource source, QualifiedName qn) ResolveQnWithGenerics(QualifiedName qn)
-        {
-            return _fileParser.ResolveQnWithGenerics(qn, _function.GenericParams);
-        }
-
         public OxObj Lookup(QualifiedName qn)
         {
             return _unit.Lookup(qn) ?? _store.Lookup(qn);
@@ -1317,9 +1317,9 @@ namespace Oxide.Compiler.Frontend
                     return true;
                 case ReferenceTypeRef:
                     return false;
-                case DirectTypeRef directTypeRef:
+                case BaseTypeRef baseTypeRef:
                 {
-                    var baseType = ResolveBaseType(directTypeRef);
+                    var baseType = ResolveBaseType(baseTypeRef);
 
                     switch (baseType)
                     {
@@ -1340,25 +1340,37 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        private OxType ResolveBaseType(TypeRef typeRef)
+        private OxType ResolveBaseType(BaseTypeRef typeRef)
         {
-            if (typeRef.Source != TypeSource.Concrete)
+            switch (typeRef)
             {
-                throw new NotImplementedException("Non concrete types not implemented");
-            }
+                case ConcreteTypeRef concreteTypeRef:
+                    if (concreteTypeRef.GenericParams != null && concreteTypeRef.GenericParams.Length > 0)
+                    {
+                        throw new NotImplementedException("Generics");
+                    }
 
-            if (typeRef.GenericParams != null && typeRef.GenericParams.Length > 0)
-            {
-                throw new NotImplementedException("Generics");
-            }
+                    var obj = Lookup(concreteTypeRef.Name);
+                    if (obj == null)
+                    {
+                        throw new Exception($"Failed to find {typeRef}");
+                    }
 
-            var obj = Lookup(typeRef.Name);
-            if (obj == null)
-            {
-                throw new Exception($"Failed to find {typeRef}");
+                    return obj as OxType;
+                case DerivedTypeRef derivedTypeRef:
+                    throw new NotImplementedException("Resolving derived types");
+                case GenericTypeRef genericTypeRef:
+                    throw new NotImplementedException("Resolving generic types");
+                case ThisTypeRef thisTypeRef:
+                    throw new NotImplementedException("Resolving this types");
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(typeRef));
             }
+        }
 
-            return obj as OxType;
+        private TypeRef ParseDirectType(OxideParser.Direct_typeContext ctx)
+        {
+            return _fileParser.ParseDirectType(ctx, _function.GenericParams);
         }
     }
 }
