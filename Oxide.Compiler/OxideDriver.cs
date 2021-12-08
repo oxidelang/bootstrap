@@ -4,6 +4,7 @@ using Oxide.Compiler.Backend.Llvm;
 using Oxide.Compiler.Frontend;
 using Oxide.Compiler.IR;
 using Oxide.Compiler.IR.Types;
+using Oxide.Compiler.Middleware;
 
 namespace Oxide.Compiler
 {
@@ -41,7 +42,17 @@ namespace Oxide.Compiler
             var writer = new IrWriter();
             unit.WriteIr(writer);
             var ir = writer.Generate();
-            File.WriteAllText($"{path}/compiled.ir", ir);
+            File.WriteAllText($"{path}/compiled.preopt.ir", ir);
+
+            Console.WriteLine("Running middleware");
+            var middleware = new MiddlewareManager(_store);
+            middleware.Process(unit);
+
+            Console.WriteLine("Dumping IR");
+            writer = new IrWriter();
+            unit.WriteIr(writer);
+            ir = writer.Generate();
+            File.WriteAllText($"{path}/compiled.opt.ir", ir);
 
             Console.WriteLine("Compiling");
             var backend = new LlvmBackend(_store);

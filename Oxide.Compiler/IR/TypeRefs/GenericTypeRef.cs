@@ -27,7 +27,7 @@ namespace Oxide.Compiler.IR.TypeRefs
 
         public override int GetHashCode()
         {
-            return HashCode.Combine(Name);
+            return HashCode.Combine("generic", Name);
         }
 
         public override string ToString()

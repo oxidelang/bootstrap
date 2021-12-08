@@ -31,7 +31,7 @@ namespace Oxide.Compiler.IR.TypeRefs
 
         public override int GetHashCode()
         {
-            return HashCode.Combine(BaseRef, CastType, Target);
+            return HashCode.Combine("derived", BaseRef, CastType, Target);
         }
 
         public override string ToString()

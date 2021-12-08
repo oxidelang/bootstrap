@@ -1,3 +1,4 @@
+using System;
 using System.Text;
 
 namespace Oxide.Compiler.IR.TypeRefs
@@ -19,7 +20,7 @@ namespace Oxide.Compiler.IR.TypeRefs
 
         public override int GetHashCode()
         {
-            return 0;
+            return HashCode.Combine("this");
         }
 
         public override string ToString()

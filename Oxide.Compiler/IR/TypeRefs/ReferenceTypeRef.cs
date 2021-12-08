@@ -34,7 +34,7 @@ namespace Oxide.Compiler.IR.TypeRefs
 
         public override int GetHashCode()
         {
-            return HashCode.Combine(StrongRef, InnerType);
+            return HashCode.Combine("reference", StrongRef, InnerType);
         }
 
         public override string ToString()

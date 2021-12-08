@@ -33,7 +33,7 @@ namespace Oxide.Compiler.IR.TypeRefs
 
         public override int GetHashCode()
         {
-            return HashCode.Combine(Name,
+            return HashCode.Combine("concrete", Name,
                 ((IStructuralEquatable)GenericParams).GetHashCode(EqualityComparer<TypeRef>.Default));
         }
 

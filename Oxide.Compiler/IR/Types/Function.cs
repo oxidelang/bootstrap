@@ -11,6 +11,8 @@ namespace Oxide.Compiler.IR.Types
 
         public bool IsExtern { get; init; }
 
+        public bool IsExported { get; set; }
+
         public bool HasBody { get; init; }
 
         public ImmutableList<Scope> Scopes { get; set; }

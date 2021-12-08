@@ -34,7 +34,7 @@ namespace Oxide.Compiler.IR.TypeRefs
 
         public override int GetHashCode()
         {
-            return HashCode.Combine(MutableRef, InnerType);
+            return HashCode.Combine("pointer", MutableRef, InnerType);
         }
 
         public override string ToString()
