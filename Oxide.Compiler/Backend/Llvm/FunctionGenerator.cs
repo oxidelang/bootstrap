@@ -6,6 +6,7 @@ using Oxide.Compiler.IR;
 using Oxide.Compiler.IR.Instructions;
 using Oxide.Compiler.IR.TypeRefs;
 using Oxide.Compiler.IR.Types;
+using Oxide.Compiler.Middleware;
 
 namespace Oxide.Compiler.Backend.Llvm
 {
@@ -30,6 +31,8 @@ namespace Oxide.Compiler.Backend.Llvm
         private int? _returnSlot;
 
         private Block CurrentBlock { get; set; }
+
+        private GenericContext GenericContext { get; }
 
         public FunctionGenerator(LlvmBackend backend)
         {
@@ -73,7 +76,7 @@ namespace Oxide.Compiler.Backend.Llvm
             if (_func.ReturnType != null)
             {
                 var varName = $"return_value";
-                var varType = Backend.ConvertType(func.ReturnType);
+                var varType = Backend.ConvertType(func.ReturnType, GenericContext);
                 _returnSlot = -1;
                 _slotMap.Add(_returnSlot.Value, Builder.BuildAlloca(varType, varName));
                 _slotDefs.Add(_returnSlot.Value, new SlotDeclaration
@@ -90,7 +93,7 @@ namespace Oxide.Compiler.Backend.Llvm
                 foreach (var slotDef in scope.Slots.Values)
                 {
                     var varName = $"scope_{scope.Id}_slot_{slotDef.Id}_{slotDef.Name ?? "autogen"}";
-                    var varType = Backend.ConvertType(slotDef.Type);
+                    var varType = Backend.ConvertType(slotDef.Type, GenericContext);
                     _slotMap.Add(slotDef.Id, Builder.BuildAlloca(varType, varName));
                     _slotDefs.Add(slotDef.Id, slotDef);
                 }
@@ -410,12 +413,7 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private void CompileAllocStructInst(AllocStructInst inst)
         {
-            var type = new ConcreteTypeRef(
-                inst.StructName,
-                ImmutableArray<TypeRef>.Empty
-            );
-
-            StoreSlot(inst.SlotId, ZeroInit(type), type);
+            StoreSlot(inst.SlotId, ZeroInit(inst.StructType), inst.StructType);
         }
 
         private LLVMValueRef ZeroInit(TypeRef tref)
@@ -440,12 +438,13 @@ namespace Oxide.Compiler.Backend.Llvm
                     }
                 case Struct @struct:
                 {
-                    var baseType = Backend.ResolveBaseType(concreteTypeRef.Name);
+                    var baseType = Backend.ConvertType(concreteTypeRef, GenericContext);
+                    var structContext = new GenericContext(null, @struct.GenericParams, concreteTypeRef.GenericParams);
 
                     var consts = new List<LLVMValueRef>();
                     foreach (var fieldDef in @struct.Fields)
                     {
-                        consts.Add(ZeroInit(fieldDef.Type));
+                        consts.Add(ZeroInit(structContext.ResolveRef(fieldDef.Type)));
                     }
 
                     return LLVMValueRef.CreateConstNamedStruct(baseType, consts.ToArray());
@@ -550,10 +549,10 @@ namespace Oxide.Compiler.Backend.Llvm
                     throw new NotImplementedException("This parameter support is not implemented");
                 }
 
-                paramTypes.Add(Backend.ConvertType(paramDef.Type));
+                paramTypes.Add(Backend.ConvertType(paramDef.Type, GenericContext));
             }
 
-            var returnType = Backend.ConvertType(func.ReturnType);
+            var returnType = Backend.ConvertType(func.ReturnType, GenericContext);
             var funcType = LLVMTypeRef.CreateFunction(returnType, paramTypes.ToArray());
             funcRef = Module.AddFunction(funcName, funcType);
 
@@ -593,7 +592,7 @@ namespace Oxide.Compiler.Backend.Llvm
             var slotDec = GetSlot(inst.BaseSlot);
 
             LLVMValueRef baseAddr;
-            BaseTypeRef innerTypeRef;
+            ConcreteTypeRef structType;
             bool isDirect;
             switch (slotDec.Type)
             {
@@ -601,12 +600,12 @@ namespace Oxide.Compiler.Backend.Llvm
                     (_, baseAddr) = LoadSlot(inst.BaseSlot, $"inst_{inst.Id}_base");
                     isDirect = false;
 
-                    if (borrowTypeRef.InnerType is not BaseTypeRef baseTypeRef)
+                    if (borrowTypeRef.InnerType is not ConcreteTypeRef concreteTypeRef)
                     {
                         throw new Exception("Cannot borrow field from non borrowed direct type");
                     }
 
-                    innerTypeRef = baseTypeRef;
+                    structType = concreteTypeRef;
                     break;
                 case BaseTypeRef:
                     (_, baseAddr) = GetSlotRef(inst.BaseSlot);
@@ -619,9 +618,12 @@ namespace Oxide.Compiler.Backend.Llvm
                     throw new ArgumentOutOfRangeException(nameof(slotDec.Type));
             }
 
-            var structDef = ResolveBaseType(innerTypeRef) as Struct;
+            var structDef = Store.Lookup<Struct>(structType.Name);
             var index = structDef.Fields.FindIndex(x => x.Name == inst.TargetField);
             var fieldDef = structDef.Fields[index];
+            var structContext = new GenericContext(null, structDef.GenericParams, structType.GenericParams);
+            var fieldType = structContext.ResolveRef(fieldDef.Type);
+            
             var addr = Builder.BuildInBoundsGEP(
                 baseAddr,
                 new[]
@@ -632,16 +634,16 @@ namespace Oxide.Compiler.Backend.Llvm
                 $"inst_{inst.Id}_faddr"
             );
 
-            if (!Equals(fieldDef.Type, PrimitiveType.I32Ref))
+            if (!Equals(fieldType, PrimitiveType.I32Ref))
             {
                 throw new NotImplementedException("Field moves");
                 // TODO: moves
             }
 
-            if (IsCopyType(fieldDef.Type))
+            if (IsCopyType(fieldType))
             {
                 var value = Builder.BuildLoad(addr, $"inst_{inst.Id}_copy");
-                StoreSlot(inst.TargetSlot, value, fieldDef.Type);
+                StoreSlot(inst.TargetSlot, value, fieldType);
             }
             else if (!isDirect)
             {
@@ -657,11 +659,11 @@ namespace Oxide.Compiler.Backend.Llvm
         {
             var (slotType, slotVal) = LoadSlot(inst.BaseSlot, $"inst_{inst.Id}_base");
 
-            BaseTypeRef innerTypeRef;
+            ConcreteTypeRef structType;
             switch (slotType)
             {
                 case BorrowTypeRef borrowTypeRef:
-                    if (borrowTypeRef.InnerType is not BaseTypeRef baseTypeRef)
+                    if (borrowTypeRef.InnerType is not ConcreteTypeRef concreteTypeRef)
                     {
                         throw new Exception("Cannot borrow field from non borrowed direct type");
                     }
@@ -671,7 +673,7 @@ namespace Oxide.Compiler.Backend.Llvm
                         throw new Exception("Cannot mutably borrow from non-mutable borrow");
                     }
 
-                    innerTypeRef = baseTypeRef;
+                    structType = concreteTypeRef;
                     break;
                 case BaseTypeRef:
                     throw new Exception("Cannot borrow field from base type");
@@ -682,9 +684,11 @@ namespace Oxide.Compiler.Backend.Llvm
                     throw new ArgumentOutOfRangeException(nameof(slotType));
             }
 
-            var structDef = ResolveBaseType(innerTypeRef) as Struct;
+            var structDef = Store.Lookup<Struct>(structType.Name);
             var index = structDef.Fields.FindIndex(x => x.Name == inst.TargetField);
             var fieldDef = structDef.Fields[index];
+            var structContext = new GenericContext(null, structDef.GenericParams, structType.GenericParams);
+
             var addr = Builder.BuildInBoundsGEP(
                 slotVal,
                 new[]
@@ -694,7 +698,7 @@ namespace Oxide.Compiler.Backend.Llvm
                 },
                 $"inst_{inst.Id}_addr"
             );
-            StoreSlot(inst.TargetSlot, addr, new BorrowTypeRef(fieldDef.Type, inst.Mutable));
+            StoreSlot(inst.TargetSlot, addr, new BorrowTypeRef(structContext.ResolveRef(fieldDef.Type), inst.Mutable));
         }
 
         private void CompileStoreIndirectInst(StoreIndirectInst inst)
@@ -789,10 +793,9 @@ namespace Oxide.Compiler.Backend.Llvm
                     return true;
                 case ReferenceTypeRef:
                     return false;
-                case BaseTypeRef baseTypeRef:
+                case ConcreteTypeRef concreteTypeRef:
                 {
-                    var baseType = ResolveBaseType(baseTypeRef);
-
+                    var baseType = Store.Lookup(concreteTypeRef.Name);
                     switch (baseType)
                     {
                         case PrimitiveType primitiveType:
@@ -807,36 +810,10 @@ namespace Oxide.Compiler.Backend.Llvm
                             throw new ArgumentOutOfRangeException(nameof(baseType));
                     }
                 }
+                case BaseTypeRef baseTypeRef:
+                    throw new Exception("Unresolved");
                 default:
                     throw new ArgumentOutOfRangeException(nameof(type));
-            }
-        }
-
-        private OxType ResolveBaseType(BaseTypeRef typeRef)
-        {
-            switch (typeRef)
-            {
-                case ConcreteTypeRef concreteTypeRef:
-                    if (concreteTypeRef.GenericParams != null && concreteTypeRef.GenericParams.Length > 0)
-                    {
-                        throw new NotImplementedException("Generics");
-                    }
-
-                    var obj = Store.Lookup(concreteTypeRef.Name);
-                    if (obj == null)
-                    {
-                        throw new Exception($"Failed to find {typeRef}");
-                    }
-
-                    return obj as OxType;
-                case DerivedTypeRef derivedTypeRef:
-                    throw new NotImplementedException("Resolving derived types");
-                case GenericTypeRef genericTypeRef:
-                    throw new NotImplementedException("Resolving generic types");
-                case ThisTypeRef thisTypeRef:
-                    throw new NotImplementedException("Resolving this types");
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(typeRef));
             }
         }
     }

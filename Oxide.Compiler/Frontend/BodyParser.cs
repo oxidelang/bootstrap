@@ -6,6 +6,7 @@ using Oxide.Compiler.IR;
 using Oxide.Compiler.IR.Instructions;
 using Oxide.Compiler.IR.TypeRefs;
 using Oxide.Compiler.IR.Types;
+using Oxide.Compiler.Middleware;
 using Oxide.Compiler.Parser;
 
 namespace Oxide.Compiler.Frontend
@@ -29,6 +30,8 @@ namespace Oxide.Compiler.Frontend
         private Block CurrentBlock => Blocks[_currentBlockId];
 
         public int LastInstId { get; set; }
+
+        public GenericContext GenericContext { get; private set; }
 
         public BodyParser(IrStore store, IrUnit unit, FileParser fileParser, Function function)
         {
@@ -190,7 +193,9 @@ namespace Oxide.Compiler.Frontend
                         throw new Exception($"Cannot access {fieldName} on value with no type");
                     }
 
-                    var structDef = ResolveBaseType(tgt.Type.GetBaseType()) as Struct;
+                    var structType = tgt.Type.GetConcreteBaseType();
+                    var structDef = Lookup<Struct>(structType.Name);
+                    var structContext = new GenericContext(null, structDef.GenericParams, structType.GenericParams);
                     var fieldDef = structDef.Fields.Single(x => x.Name == fieldName);
 
                     if (!exp.Type.Equals(fieldDef.Type))
@@ -198,7 +203,12 @@ namespace Oxide.Compiler.Frontend
                         throw new Exception($"Cannot assign {exp.Type} to {fieldDef.Type}");
                     }
 
-                    var fieldTgt = new FieldUnrealisedAccess(tgt, fieldDef);
+                    var fieldTgt = new FieldUnrealisedAccess(
+                        tgt,
+                        fieldDef.Name,
+                        structContext.ResolveRef(fieldDef.Type),
+                        fieldDef.Mutable
+                    );
                     var fieldSlot = fieldTgt.GenerateRef(this, CurrentBlock, true);
 
                     CurrentBlock.AddInstruction(new StoreIndirectInst
@@ -901,16 +911,11 @@ namespace Oxide.Compiler.Frontend
             }
 
             var baseType = exp.Type.GetBaseType();
-            QualifiedName structName;
+            ConcreteTypeRef structType;
             switch (baseType)
             {
                 case ConcreteTypeRef concreteTypeRef:
-                    if (concreteTypeRef.GenericParams != null && concreteTypeRef.GenericParams.Length > 0)
-                    {
-                        throw new NotImplementedException("Generics");
-                    }
-
-                    structName = concreteTypeRef.Name;
+                    structType = concreteTypeRef;
                     break;
                 case DerivedTypeRef derivedTypeRef:
                     throw new NotImplementedException("Derived type field accesses");
@@ -922,30 +927,43 @@ namespace Oxide.Compiler.Frontend
                     throw new ArgumentOutOfRangeException(nameof(baseType));
             }
 
-            var structDef = Lookup<Struct>(structName);
+            var structDef = Lookup<Struct>(structType.Name);
             if (structDef == null)
             {
-                throw new Exception($"Failed to find {structName}");
+                throw new Exception($"Failed to find {structType.Name}");
             }
 
+            var structContext = new GenericContext(null, structDef.GenericParams, structType.GenericParams);
+
             var fieldDef = structDef.Fields.Single(x => x.Name == fieldName);
-            return new FieldUnrealisedAccess(exp, fieldDef);
+            return new FieldUnrealisedAccess(
+                exp,
+                fieldDef.Name,
+                structContext.ResolveRef(fieldDef.Type),
+                fieldDef.Mutable
+            );
         }
 
         private UnrealisedAccess ParseStructInitialiser(OxideParser.Struct_initialiserContext ctx)
         {
             var typeRef = ParseDirectType(ctx.direct_type());
-            if (typeRef is not ConcreteTypeRef concreteTypeRef)
-            {
-                throw new NotImplementedException("Only concrete structs implemented");
-            }
 
-            if (concreteTypeRef.GenericParams.Length != 0)
+            ConcreteTypeRef concreteTypeRef;
+            switch (typeRef)
             {
-                throw new NotImplementedException("Generics");
+                case ConcreteTypeRef concreteTypeRefInner:
+                    concreteTypeRef = concreteTypeRefInner;
+                    break;
+                case DerivedTypeRef derivedTypeRef:
+                case GenericTypeRef genericTypeRef:
+                case ThisTypeRef thisTypeRef:
+                    throw new NotImplementedException();
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(typeRef));
             }
 
             var structDef = Lookup<Struct>(concreteTypeRef.Name);
+            var structContext = new GenericContext(null, structDef.GenericParams, concreteTypeRef.GenericParams);
 
             var structSlot = CurrentScope.DefineSlot(new SlotDeclaration
             {
@@ -959,7 +977,7 @@ namespace Oxide.Compiler.Frontend
             {
                 Id = ++LastInstId,
                 SlotId = structSlot.Id,
-                StructName = concreteTypeRef.Name
+                StructType = concreteTypeRef
             });
 
             var accessSlot = CurrentScope.DefineSlot(new SlotDeclaration
@@ -1016,7 +1034,9 @@ namespace Oxide.Compiler.Frontend
                 var fieldSlot = fieldValue.GenerateMove(this, CurrentBlock);
 
                 var fieldDef = structDef.Fields.Single(x => x.Name == fieldName);
-                if (!fieldDef.Type.Equals(fieldSlot.Type))
+                var resolvedFieldType = structContext.ResolveRef(fieldDef.Type);
+
+                if (!resolvedFieldType.Equals(fieldSlot.Type))
                 {
                     throw new Exception($"Incompatible types for {fieldName}");
                 }
@@ -1025,7 +1045,7 @@ namespace Oxide.Compiler.Frontend
                 {
                     Id = ++LastSlotId,
                     Name = null,
-                    Type = new BorrowTypeRef(fieldDef.Type, true),
+                    Type = new BorrowTypeRef(resolvedFieldType, true),
                     Mutable = false
                 });
 
@@ -1317,9 +1337,9 @@ namespace Oxide.Compiler.Frontend
                     return true;
                 case ReferenceTypeRef:
                     return false;
-                case BaseTypeRef baseTypeRef:
+                case ConcreteTypeRef concreteTypeRef:
                 {
-                    var baseType = ResolveBaseType(baseTypeRef);
+                    var baseType = Lookup(concreteTypeRef.Name);
 
                     switch (baseType)
                     {
@@ -1335,40 +1355,14 @@ namespace Oxide.Compiler.Frontend
                             throw new ArgumentOutOfRangeException(nameof(baseType));
                     }
                 }
+                case BaseTypeRef baseTypeRef:
+                    throw new Exception("Unresolved");
                 default:
                     throw new ArgumentOutOfRangeException(nameof(type));
             }
         }
 
-        private OxType ResolveBaseType(BaseTypeRef typeRef)
-        {
-            switch (typeRef)
-            {
-                case ConcreteTypeRef concreteTypeRef:
-                    if (concreteTypeRef.GenericParams != null && concreteTypeRef.GenericParams.Length > 0)
-                    {
-                        throw new NotImplementedException("Generics");
-                    }
-
-                    var obj = Lookup(concreteTypeRef.Name);
-                    if (obj == null)
-                    {
-                        throw new Exception($"Failed to find {typeRef}");
-                    }
-
-                    return obj as OxType;
-                case DerivedTypeRef derivedTypeRef:
-                    throw new NotImplementedException("Resolving derived types");
-                case GenericTypeRef genericTypeRef:
-                    throw new NotImplementedException("Resolving generic types");
-                case ThisTypeRef thisTypeRef:
-                    throw new NotImplementedException("Resolving this types");
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(typeRef));
-            }
-        }
-
-        private TypeRef ParseDirectType(OxideParser.Direct_typeContext ctx)
+        private BaseTypeRef ParseDirectType(OxideParser.Direct_typeContext ctx)
         {
             return _fileParser.ParseDirectType(ctx, _function.GenericParams);
         }

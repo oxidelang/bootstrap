@@ -10,14 +10,21 @@ namespace Oxide.Compiler.Frontend
     {
         public UnrealisedAccess BaseAccess { get; }
 
-        public Field Field { get; }
+        public string FieldName { get; }
 
-        public override TypeRef Type => Field.Type;
+        public TypeRef FieldType { get; }
 
-        public FieldUnrealisedAccess(UnrealisedAccess baseAccess, Field field)
+        public bool FieldMutable { get; }
+
+        public override TypeRef Type => FieldType;
+
+        public FieldUnrealisedAccess(UnrealisedAccess baseAccess, string fieldName, TypeRef fieldType,
+            bool fieldMutable)
         {
             BaseAccess = baseAccess;
-            Field = field;
+            FieldName = fieldName;
+            FieldType = fieldType;
+            FieldMutable = fieldMutable;
         }
 
         public override SlotDeclaration GenerateMove(BodyParser parser, Block block)
@@ -35,31 +42,11 @@ namespace Oxide.Compiler.Frontend
                     throw new ArgumentOutOfRangeException();
             }
 
-            var baseFieldType = Field.Type.GetBaseType();
-            QualifiedName structName;
-            switch (baseFieldType)
-            {
-                case ConcreteTypeRef concreteTypeRef:
-                    if (concreteTypeRef.GenericParams != null && concreteTypeRef.GenericParams.Length > 0)
-                    {
-                        throw new NotImplementedException("Generics");
-                    }
-
-                    structName = concreteTypeRef.Name;
-                    break;
-                case DerivedTypeRef derivedTypeRef:
-                case ThisTypeRef thisTypeRef:
-                case GenericTypeRef genericTypeRef:
-                    throw new NotImplementedException();
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(baseFieldType));
-            }
-
-
-            var fieldType = parser.Lookup(structName);
+            var baseFieldType = FieldType.GetConcreteBaseType();
+            var fieldType = parser.Lookup(baseFieldType.Name);
             if (fieldType == null)
             {
-                throw new Exception($"Failed to find {structName}");
+                throw new Exception($"Failed to find {baseFieldType.Name}");
             }
 
             switch (fieldType)
@@ -73,14 +60,14 @@ namespace Oxide.Compiler.Frontend
                         Id = ++parser.LastSlotId,
                         Mutable = false,
                         Name = null,
-                        Type = Field.Type
+                        Type = FieldType
                     });
 
                     block.AddInstruction(new FieldMoveInst
                     {
                         Id = ++parser.LastInstId,
                         BaseSlot = baseSlot.Id,
-                        TargetField = Field.Name,
+                        TargetField = FieldName,
                         TargetSlot = varSlot.Id
                     });
 
@@ -133,7 +120,7 @@ namespace Oxide.Compiler.Frontend
                 Id = ++parser.LastSlotId,
                 Mutable = false,
                 Name = null,
-                Type = new BorrowTypeRef(Field.Type, mutable)
+                Type = new BorrowTypeRef(FieldType, mutable)
             });
 
             block.AddInstruction(new FieldBorrowInst
@@ -141,7 +128,7 @@ namespace Oxide.Compiler.Frontend
                 Id = ++parser.LastInstId,
                 BaseSlot = baseSlot.Id,
                 Mutable = mutable,
-                TargetField = Field.Name,
+                TargetField = FieldName,
                 TargetSlot = varSlot.Id
             });
 

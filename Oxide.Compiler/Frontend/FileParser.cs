@@ -429,7 +429,7 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        public TypeRef ParseDirectType(OxideParser.Direct_typeContext directTypeContext,
+        public BaseTypeRef ParseDirectType(OxideParser.Direct_typeContext directTypeContext,
             ImmutableList<string> genericTypes)
         {
             var genericParams = new List<TypeRef>();

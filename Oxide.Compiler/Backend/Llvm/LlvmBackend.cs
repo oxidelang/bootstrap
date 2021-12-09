@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.IO;
-using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text;
 using LLVMSharp.Interop;
 using Oxide.Compiler.IR;
 using Oxide.Compiler.IR.TypeRefs;
 using Oxide.Compiler.IR.Types;
+using Oxide.Compiler.Middleware;
 
 namespace Oxide.Compiler.Backend.Llvm
 {
@@ -14,18 +16,21 @@ namespace Oxide.Compiler.Backend.Llvm
     {
         public IrStore Store { get; }
 
+        public MiddlewareManager Middleware { get; }
+
         public LLVMModuleRef Module { get; private set; }
 
         public LLVMContextRef Context { get; private set; }
 
-        private Dictionary<QualifiedName, LLVMTypeRef> _typeStore;
+        private Dictionary<ConcreteTypeRef, LLVMTypeRef> _typeStore;
 
-        public LlvmBackend(IrStore store)
+        public LlvmBackend(IrStore store, MiddlewareManager middleware)
         {
             Store = store;
-            _typeStore = new Dictionary<QualifiedName, LLVMTypeRef>();
-            _typeStore.Add(PrimitiveType.I32.Name, LLVMTypeRef.Int32);
-            _typeStore.Add(PrimitiveType.Bool.Name, LLVMTypeRef.Int1);
+            Middleware = middleware;
+            _typeStore = new Dictionary<ConcreteTypeRef, LLVMTypeRef>();
+            _typeStore.Add(PrimitiveType.I32Ref, LLVMTypeRef.Int32);
+            _typeStore.Add(PrimitiveType.BoolRef, LLVMTypeRef.Int1);
         }
 
         public void Begin()
@@ -34,21 +39,49 @@ namespace Oxide.Compiler.Backend.Llvm
             Context = Module.Context;
         }
 
-        public void CompileUnit(IrUnit unit)
+        public void Compile()
         {
-            foreach (var funcDef in unit.Objects.Values.Where(x => x is Function).Cast<Function>())
+            foreach (var usedType in Middleware.Usage.UsedTypes.Values)
             {
-                CompileFunction(funcDef);
+                CreateType(usedType);
+            }
+
+            foreach (var funcName in Middleware.Usage.UsedFunctions)
+            {
+                var func = Store.Lookup<Function>(funcName);
+                CompileFunction(func);
             }
         }
 
-        public void CompileFunction(Function func)
+        private void CreateType(UsedType usedType)
+        {
+            var type = Store.Lookup<OxType>(usedType.Name);
+
+            var concreteTypes = new List<ConcreteTypeRef>();
+            foreach (var generics in usedType.GenericVersions)
+            {
+                concreteTypes.Add(new ConcreteTypeRef(usedType.Name, generics));
+            }
+
+            if (concreteTypes.Count == 0)
+            {
+                concreteTypes.Add(new ConcreteTypeRef(usedType.Name, ImmutableArray<TypeRef>.Empty));
+            }
+
+            foreach (var concreteType in concreteTypes)
+            {
+                Console.WriteLine($" - Generating {GenerateName(concreteType)}");
+                ResolveConcreteType(concreteType, null);
+            }
+        }
+
+        private void CompileFunction(Function func)
         {
             var funcGen = new FunctionGenerator(this);
             funcGen.Compile(func);
         }
 
-        public LLVMTypeRef ConvertType(TypeRef typeRef)
+        public LLVMTypeRef ConvertType(TypeRef typeRef, GenericContext context)
         {
             if (typeRef == null)
             {
@@ -58,21 +91,20 @@ namespace Oxide.Compiler.Backend.Llvm
             switch (typeRef)
             {
                 case ConcreteTypeRef concreteTypeRef:
-                {
-                    if (concreteTypeRef.GenericParams != null && !concreteTypeRef.GenericParams.IsEmpty)
-                    {
-                        throw new NotImplementedException("Generic type support is not implemented");
-                    }
-
-                    return ResolveBaseType(concreteTypeRef.Name);
-                }
-                case BaseTypeRef baseTypeRef:
+                    return ResolveConcreteType(concreteTypeRef, context);
+                case GenericTypeRef genericTypeRef:
+                    return ConvertType(
+                        context.ResolveGeneric(genericTypeRef.Name) ??
+                        throw new Exception($"Unknown generic param {genericTypeRef.Name}"),
+                        context);
+                case ThisTypeRef thisTypeRef:
+                    throw new NotImplementedException();
+                case DerivedTypeRef derivedTypeRef:
                     throw new NotImplementedException();
                 case BorrowTypeRef borrowTypeRef:
-                    return LLVMTypeRef.CreatePointer(ConvertType(borrowTypeRef.InnerType), 0);
+                    return LLVMTypeRef.CreatePointer(ConvertType(borrowTypeRef.InnerType, context), 0);
                 case PointerTypeRef pointerTypeRef:
-                    throw new NotImplementedException("Pointer types not implemented");
-                    break;
+                    return LLVMTypeRef.CreatePointer(ConvertType(pointerTypeRef.InnerType, context), 0);
                 case ReferenceTypeRef referenceTypeRef:
                     throw new NotImplementedException("Reference types not implemented");
                     break;
@@ -81,40 +113,37 @@ namespace Oxide.Compiler.Backend.Llvm
             }
         }
 
-        public LLVMTypeRef ResolveBaseType(QualifiedName qn)
+        private LLVMTypeRef ResolveConcreteType(ConcreteTypeRef typeRef, GenericContext context)
         {
-            if (_typeStore.ContainsKey(qn))
+            if (_typeStore.ContainsKey(typeRef))
             {
-                return _typeStore[qn];
+                return _typeStore[typeRef];
             }
 
-            return ResolveMissingType(qn);
-        }
-
-        private LLVMTypeRef ResolveMissingType(QualifiedName qn)
-        {
-            var objectDef = Store.Lookup(qn);
+            var objectDef = Store.Lookup(typeRef.Name);
             if (objectDef == null)
             {
-                throw new Exception($"Unable to resolve {qn}");
+                throw new Exception($"Unable to resolve {typeRef.Name}");
             }
 
-            if (objectDef.GenericParams != null && objectDef.GenericParams.Count > 0)
+            if (objectDef.GenericParams.Count != typeRef.GenericParams.Length)
             {
-                throw new NotImplementedException("Generic types");
+                throw new Exception("Mismatch of generic parameters");
             }
+
+            var newContext = new GenericContext(context, objectDef.GenericParams, typeRef.GenericParams);
 
             switch (objectDef)
             {
                 case Struct structDef:
                 {
-                    var structType = Context.CreateNamedStruct(structDef.Name.ToString());
-                    _typeStore.Add(qn, structType);
+                    var structType = Context.CreateNamedStruct(GenerateName(typeRef));
+                    _typeStore.Add(typeRef, structType);
 
                     var bodyTypes = new List<LLVMTypeRef>();
                     foreach (var fieldDef in structDef.Fields)
                     {
-                        bodyTypes.Add(ConvertType(fieldDef.Type));
+                        bodyTypes.Add(ConvertType(fieldDef.Type, newContext));
                     }
 
                     structType.StructSetBody(bodyTypes.ToArray(), false);
@@ -132,6 +161,52 @@ namespace Oxide.Compiler.Backend.Llvm
             }
         }
 
+        private string GenerateName(TypeRef typeRef)
+        {
+            switch (typeRef)
+            {
+                case ConcreteTypeRef concreteTypeRef:
+                {
+                    var sb = new StringBuilder();
+                    sb.Append(concreteTypeRef.Name);
+
+                    if (concreteTypeRef.GenericParams.Length > 0)
+                    {
+                        sb.Append('<');
+
+                        var first = true;
+                        foreach (var param in concreteTypeRef.GenericParams)
+                        {
+                            if (!first)
+                            {
+                                sb.Append(", ");
+                            }
+
+                            first = false;
+
+                            sb.Append(GenerateName(param));
+                        }
+
+                        sb.Append('>');
+                    }
+
+                    return sb.ToString();
+                }
+                case DerivedTypeRef derivedTypeRef:
+                case GenericTypeRef genericTypeRef:
+                case ThisTypeRef thisTypeRef:
+                    throw new Exception("Unexpected");
+                case BorrowTypeRef borrowTypeRef:
+                    return (borrowTypeRef.MutableRef ? "&mut " : "&") + GenerateName(borrowTypeRef.InnerType);
+                case PointerTypeRef pointerTypeRef:
+                    return (pointerTypeRef.MutableRef ? "*mut " : "*") + GenerateName(pointerTypeRef.InnerType);
+                case ReferenceTypeRef referenceTypeRef:
+                    return (referenceTypeRef.StrongRef ? "ref " : "weak ") + GenerateName(referenceTypeRef.InnerType);
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(typeRef));
+            }
+        }
+
         public void Complete(string path)
         {
             if (!Module.TryVerify(LLVMVerifierFailureAction.LLVMPrintMessageAction, out var error))
@@ -140,7 +215,7 @@ namespace Oxide.Compiler.Backend.Llvm
             }
 
             var llvmIr = Module.PrintToString();
-            File.WriteAllText($"{path}/compiled.llvm", llvmIr);
+            File.WriteAllText($"{path}/compiled.preopt.llvm", llvmIr);
 
             unsafe
             {

@@ -55,9 +55,9 @@ namespace Oxide.Compiler
             File.WriteAllText($"{path}/compiled.opt.ir", ir);
 
             Console.WriteLine("Compiling");
-            var backend = new LlvmBackend(_store);
+            var backend = new LlvmBackend(_store, middleware);
             backend.Begin();
-            backend.CompileUnit(unit);
+            backend.Compile();
             backend.Complete(path);
             backend.Run();
         }
