@@ -197,8 +197,9 @@ namespace Oxide.Compiler.Frontend
                     var structDef = Lookup<Struct>(structType.Name);
                     var structContext = new GenericContext(null, structDef.GenericParams, structType.GenericParams);
                     var fieldDef = structDef.Fields.Single(x => x.Name == fieldName);
+                    var fieldType = structContext.ResolveRef(fieldDef.Type);
 
-                    if (!exp.Type.Equals(fieldDef.Type))
+                    if (!exp.Type.Equals(fieldType))
                     {
                         throw new Exception($"Cannot assign {exp.Type} to {fieldDef.Type}");
                     }
@@ -206,7 +207,7 @@ namespace Oxide.Compiler.Frontend
                     var fieldTgt = new FieldUnrealisedAccess(
                         tgt,
                         fieldDef.Name,
-                        structContext.ResolveRef(fieldDef.Type),
+                        fieldType,
                         fieldDef.Mutable
                     );
                     var fieldSlot = fieldTgt.GenerateRef(this, CurrentBlock, true);
