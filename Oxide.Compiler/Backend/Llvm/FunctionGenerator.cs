@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using LLVMSharp.Interop;
 using Oxide.Compiler.IR;
 using Oxide.Compiler.IR.Instructions;
@@ -31,8 +30,6 @@ namespace Oxide.Compiler.Backend.Llvm
         private int? _returnSlot;
 
         private Block CurrentBlock { get; set; }
-
-        private GenericContext GenericContext { get; }
 
         public FunctionGenerator(LlvmBackend backend)
         {
@@ -76,7 +73,7 @@ namespace Oxide.Compiler.Backend.Llvm
             if (_func.ReturnType != null)
             {
                 var varName = $"return_value";
-                var varType = Backend.ConvertType(func.ReturnType, GenericContext);
+                var varType = Backend.ConvertType(func.ReturnType);
                 _returnSlot = -1;
                 _slotMap.Add(_returnSlot.Value, Builder.BuildAlloca(varType, varName));
                 _slotDefs.Add(_returnSlot.Value, new SlotDeclaration
@@ -93,7 +90,7 @@ namespace Oxide.Compiler.Backend.Llvm
                 foreach (var slotDef in scope.Slots.Values)
                 {
                     var varName = $"scope_{scope.Id}_slot_{slotDef.Id}_{slotDef.Name ?? "autogen"}";
-                    var varType = Backend.ConvertType(slotDef.Type, GenericContext);
+                    var varType = Backend.ConvertType(slotDef.Type);
                     _slotMap.Add(slotDef.Id, Builder.BuildAlloca(varType, varName));
                     _slotDefs.Add(slotDef.Id, slotDef);
                 }
@@ -438,7 +435,7 @@ namespace Oxide.Compiler.Backend.Llvm
                     }
                 case Struct @struct:
                 {
-                    var baseType = Backend.ConvertType(concreteTypeRef, GenericContext);
+                    var baseType = Backend.ConvertType(concreteTypeRef);
                     var structContext = new GenericContext(null, @struct.GenericParams, concreteTypeRef.GenericParams);
 
                     var consts = new List<LLVMValueRef>();
@@ -549,10 +546,10 @@ namespace Oxide.Compiler.Backend.Llvm
                     throw new NotImplementedException("This parameter support is not implemented");
                 }
 
-                paramTypes.Add(Backend.ConvertType(paramDef.Type, GenericContext));
+                paramTypes.Add(Backend.ConvertType(paramDef.Type));
             }
 
-            var returnType = Backend.ConvertType(func.ReturnType, GenericContext);
+            var returnType = Backend.ConvertType(func.ReturnType);
             var funcType = LLVMTypeRef.CreateFunction(returnType, paramTypes.ToArray());
             funcRef = Module.AddFunction(funcName, funcType);
 

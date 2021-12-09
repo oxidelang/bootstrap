@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using Oxide.Compiler.IR.TypeRefs;
 
 namespace Oxide.Compiler.Middleware
@@ -40,7 +41,10 @@ namespace Oxide.Compiler.Middleware
             switch (typeRef)
             {
                 case ConcreteTypeRef concreteTypeRef:
-                    return concreteTypeRef;
+                    return new ConcreteTypeRef(
+                        concreteTypeRef.Name,
+                        concreteTypeRef.GenericParams.Select(ResolveRef).ToImmutableArray()
+                    );
                 case GenericTypeRef genericTypeRef:
                     return ResolveGeneric(genericTypeRef.Name);
                 case DerivedTypeRef derivedTypeRef:

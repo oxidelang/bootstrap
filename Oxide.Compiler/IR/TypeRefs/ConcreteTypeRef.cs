@@ -42,6 +42,12 @@ namespace Oxide.Compiler.IR.TypeRefs
             var sb = new StringBuilder();
             sb.Append("[c#");
             sb.Append(Name);
+            if (GenericParams.Length > 0)
+            {
+                sb.Append('<');
+                sb.Append(string.Join(", ", GenericParams));
+                sb.Append('>');
+            }
             sb.Append("]");
 
             return sb.ToString();

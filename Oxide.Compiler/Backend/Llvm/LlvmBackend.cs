@@ -71,7 +71,7 @@ namespace Oxide.Compiler.Backend.Llvm
             foreach (var concreteType in concreteTypes)
             {
                 Console.WriteLine($" - Generating {GenerateName(concreteType)}");
-                ResolveConcreteType(concreteType, null);
+                ResolveConcreteType(concreteType);
             }
         }
 
@@ -81,7 +81,7 @@ namespace Oxide.Compiler.Backend.Llvm
             funcGen.Compile(func);
         }
 
-        public LLVMTypeRef ConvertType(TypeRef typeRef, GenericContext context)
+        public LLVMTypeRef ConvertType(TypeRef typeRef)
         {
             if (typeRef == null)
             {
@@ -91,20 +91,13 @@ namespace Oxide.Compiler.Backend.Llvm
             switch (typeRef)
             {
                 case ConcreteTypeRef concreteTypeRef:
-                    return ResolveConcreteType(concreteTypeRef, context);
-                case GenericTypeRef genericTypeRef:
-                    return ConvertType(
-                        context.ResolveGeneric(genericTypeRef.Name) ??
-                        throw new Exception($"Unknown generic param {genericTypeRef.Name}"),
-                        context);
-                case ThisTypeRef thisTypeRef:
-                    throw new NotImplementedException();
-                case DerivedTypeRef derivedTypeRef:
-                    throw new NotImplementedException();
+                    return ResolveConcreteType(concreteTypeRef);
+                case BaseTypeRef:
+                    throw new Exception("Unresolved type");
                 case BorrowTypeRef borrowTypeRef:
-                    return LLVMTypeRef.CreatePointer(ConvertType(borrowTypeRef.InnerType, context), 0);
+                    return LLVMTypeRef.CreatePointer(ConvertType(borrowTypeRef.InnerType), 0);
                 case PointerTypeRef pointerTypeRef:
-                    return LLVMTypeRef.CreatePointer(ConvertType(pointerTypeRef.InnerType, context), 0);
+                    return LLVMTypeRef.CreatePointer(ConvertType(pointerTypeRef.InnerType), 0);
                 case ReferenceTypeRef referenceTypeRef:
                     throw new NotImplementedException("Reference types not implemented");
                     break;
@@ -113,7 +106,7 @@ namespace Oxide.Compiler.Backend.Llvm
             }
         }
 
-        private LLVMTypeRef ResolveConcreteType(ConcreteTypeRef typeRef, GenericContext context)
+        private LLVMTypeRef ResolveConcreteType(ConcreteTypeRef typeRef)
         {
             if (_typeStore.ContainsKey(typeRef))
             {
@@ -131,7 +124,7 @@ namespace Oxide.Compiler.Backend.Llvm
                 throw new Exception("Mismatch of generic parameters");
             }
 
-            var newContext = new GenericContext(context, objectDef.GenericParams, typeRef.GenericParams);
+            var structContext = new GenericContext(null, objectDef.GenericParams, typeRef.GenericParams);
 
             switch (objectDef)
             {
@@ -143,7 +136,7 @@ namespace Oxide.Compiler.Backend.Llvm
                     var bodyTypes = new List<LLVMTypeRef>();
                     foreach (var fieldDef in structDef.Fields)
                     {
-                        bodyTypes.Add(ConvertType(fieldDef.Type, newContext));
+                        bodyTypes.Add(ConvertType(structContext.ResolveRef(fieldDef.Type)));
                     }
 
                     structType.StructSetBody(bodyTypes.ToArray(), false);
