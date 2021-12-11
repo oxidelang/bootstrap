@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
 using Oxide.Compiler.IR;
 using Oxide.Compiler.IR.Instructions;
 using Oxide.Compiler.IR.TypeRefs;
 using Oxide.Compiler.IR.Types;
 
-namespace Oxide.Compiler.Middleware
+namespace Oxide.Compiler.Middleware.Usage
 {
     public class UsagePass
     {
@@ -80,14 +82,52 @@ namespace Oxide.Compiler.Middleware
                 {
                     if (instruction is StaticCallInst staticCallInst)
                     {
-                        var calledFunc = Store.Lookup<Function>(staticCallInst.TargetMethod);
-                        ProcessFunction(calledFunc);
+                        if (staticCallInst.TargetType != null)
+                        {
+                            switch (staticCallInst.TargetType)
+                            {
+                                case ConcreteTypeRef concreteTypeRef:
+                                    if (concreteTypeRef.GenericParams != null &&
+                                        concreteTypeRef.GenericParams.Length > 0)
+                                    {
+                                        throw new NotImplementedException("Generics");
+                                    }
+
+                                    var (imp, targetFunc) = Store.LookupImplementation(
+                                        concreteTypeRef.Name,
+                                        staticCallInst.TargetImplementation,
+                                        staticCallInst.TargetMethod.Parts.Single()
+                                    );
+
+                                    var usedVersion = MarkConcreteType(concreteTypeRef);
+                                    var usedImp = usedVersion.MarkImplementation(imp.Interface);
+                                    usedImp.MarkFunction(targetFunc, ImmutableArray<TypeRef>.Empty);
+
+                                    break;
+                                case DerivedTypeRef derivedTypeRef:
+                                case GenericTypeRef genericTypeRef:
+                                case ThisTypeRef thisTypeRef:
+                                    throw new NotImplementedException();
+                                default:
+                                    throw new ArgumentOutOfRangeException();
+                            }
+                        }
+                        else
+                        {
+                            var calledFunc = Store.Lookup<Function>(staticCallInst.TargetMethod);
+                            if (calledFunc == null)
+                            {
+                                throw new Exception($"Failed to resolve call {staticCallInst.TargetMethod}");
+                            }
+
+                            ProcessFunction(calledFunc);
+                        }
                     }
                 }
             }
         }
 
-        private void MarkConcreteType(ConcreteTypeRef tref)
+        private UsedTypeVersion MarkConcreteType(ConcreteTypeRef tref)
         {
             if (!UsedTypes.TryGetValue(tref.Name, out var used))
             {
@@ -96,7 +136,7 @@ namespace Oxide.Compiler.Middleware
                 Console.WriteLine($" - New type {tref.Name}");
             }
 
-            used.AddGenericVariant(tref.GenericParams);
+            return used.MarkGenericVariant(tref.GenericParams);
         }
     }
 }

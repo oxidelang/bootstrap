@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using Oxide.Compiler.IR.TypeRefs;
@@ -15,6 +16,95 @@ namespace Oxide.Compiler.IR
         {
             _indentLevel = 0;
             _dest = new StringBuilder();
+        }
+
+        public void WriteStruct(Struct @struct)
+        {
+            BeginLine();
+            Write("struct ");
+            WriteVisibility(@struct.Visibility);
+            Write(" ");
+            WriteQn(@struct.Name);
+            if (@struct.GenericParams.Count > 0)
+            {
+                Write("<");
+                Write(string.Join(", ", @struct.GenericParams));
+                Write(">");
+            }
+
+            Write(" {");
+            EndLine();
+            _indentLevel++;
+
+            foreach (var field in @struct.Fields)
+            {
+                BeginLine();
+                Write($"field {(field.Mutable ? "mut" : "readonly")} {field.Name} ");
+                WriteType(field.Type);
+                EndLine();
+            }
+
+            _indentLevel--;
+            BeginLine();
+            Write("}");
+            EndLine();
+        }
+
+        public void WriteInterface(Interface iface)
+        {
+            BeginLine();
+            Write("interface ");
+            WriteVisibility(iface.Visibility);
+            Write(" ");
+            WriteQn(iface.Name);
+            if (iface.GenericParams.Count > 0)
+            {
+                Write("<");
+                Write(string.Join(", ", iface.GenericParams));
+                Write(">");
+            }
+
+            Write(" {");
+            EndLine();
+            _indentLevel++;
+
+            foreach (var function in iface.Functions)
+            {
+                WriteFunction(function);
+            }
+
+            _indentLevel--;
+            BeginLine();
+            Write("}");
+            EndLine();
+        }
+
+        public void WriteImplementation(Implementation imp)
+        {
+            BeginLine();
+            Write("implement ");
+
+            if (imp.Interface != null)
+            {
+                WriteQn(imp.Target);
+                Write(" for ");
+            }
+
+            WriteQn(imp.Target);
+
+            Write(" {");
+            EndLine();
+            _indentLevel++;
+
+            foreach (var function in imp.Functions)
+            {
+                WriteFunction(function);
+            }
+
+            _indentLevel--;
+            BeginLine();
+            Write("}");
+            EndLine();
         }
 
         public void WriteFunction(Function function)
@@ -138,15 +228,8 @@ namespace Oxide.Compiler.IR
 
         public void WriteParameter(Parameter param)
         {
-            if (param.IsThis)
-            {
-                Write("this");
-            }
-            else
-            {
-                WriteType(param.Type);
-                Write($" {param.Name}");
-            }
+            WriteType(param.Type);
+            Write($" {param.Name}");
         }
 
         public void WriteType(TypeRef type)

@@ -1,4 +1,4 @@
-using System.Collections.Immutable;
+using System.Collections.Generic;
 
 namespace Oxide.Compiler.IR.Types
 {
@@ -8,13 +8,13 @@ namespace Oxide.Compiler.IR.Types
 
         public QualifiedName Interface { get; }
 
-        public ImmutableArray<Function> Functions { get; }
+        public List<Function> Functions { get; }
 
-        public Implementation(QualifiedName target, QualifiedName @interface, ImmutableArray<Function> functions)
+        public Implementation(QualifiedName target, QualifiedName @interface)
         {
             Target = target;
             Interface = @interface;
-            Functions = functions;
+            Functions = new List<Function>();
         }
     }
 }

@@ -5,33 +5,32 @@ using Oxide.Compiler.IR;
 using Oxide.Compiler.IR.TypeRefs;
 using Oxide.Compiler.Utils;
 
-namespace Oxide.Compiler.Middleware
+namespace Oxide.Compiler.Middleware.Usage
 {
     public class UsedType
     {
         public QualifiedName Name { get; }
 
-        public HashSet<ImmutableArray<TypeRef>> GenericVersions { get; set; }
+        public Dictionary<ImmutableArray<TypeRef>, UsedTypeVersion> Versions { get; set; }
 
         public UsedType(QualifiedName name)
         {
             Name = name;
-            GenericVersions = new HashSet<ImmutableArray<TypeRef>>(
+            Versions = new Dictionary<ImmutableArray<TypeRef>, UsedTypeVersion>(
                 new SequenceEqualityComparer<ImmutableArray<TypeRef>>()
             );
         }
 
-        public void AddGenericVariant(ImmutableArray<TypeRef> types)
+        public UsedTypeVersion MarkGenericVariant(ImmutableArray<TypeRef> types)
         {
-            if (types.Length == 0)
-            {
-                return;
-            }
-
-            if (GenericVersions.Add(types))
+            if (!Versions.TryGetValue(types, out var usedType))
             {
                 Console.WriteLine($" - New variant of {Name}: {string.Join(",", types)}");
+                usedType = new UsedTypeVersion(this, types);
+                Versions.Add(types, usedType);
             }
+
+            return usedType;
         }
 
         protected bool Equals(UsedType other)

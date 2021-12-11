@@ -53,9 +53,9 @@ namespace Oxide.Compiler.Frontend
             for (var i = 0; i < _function.Parameters.Count; i++)
             {
                 var paramDef = _function.Parameters[i];
-                if (paramDef.IsThis)
+                if (paramDef.IsThis && i != 0)
                 {
-                    throw new NotImplementedException("This params are not supported");
+                    throw new Exception("This params are only supported in the first position");
                 }
 
                 scope.DefineSlot(new SlotDeclaration
@@ -195,7 +195,7 @@ namespace Oxide.Compiler.Frontend
 
                     var structType = tgt.Type.GetConcreteBaseType();
                     var structDef = Lookup<Struct>(structType.Name);
-                    var structContext = new GenericContext(null, structDef.GenericParams, structType.GenericParams);
+                    var structContext = new GenericContext(null, structDef.GenericParams, structType.GenericParams, null);
                     var fieldDef = structDef.Fields.Single(x => x.Name == fieldName);
                     var fieldType = structContext.ResolveRef(fieldDef.Type);
 
@@ -879,8 +879,7 @@ namespace Oxide.Compiler.Frontend
                 case OxideParser.Literal_base_expressionContext literalBaseExpressionContext:
                     return ParseLiteral(literalBaseExpressionContext.literal());
                 case OxideParser.Method_call_base_expressionContext methodCallBaseExpressionContext:
-                    throw new NotImplementedException("Method call expression");
-                    break;
+                    return ParseMethodCallExpression(methodCallBaseExpressionContext);
                 case OxideParser.Access_base_expressionContext accessBaseExpressionContext:
                     return ParseAccessExpression(accessBaseExpressionContext);
                 case OxideParser.Block_base_expressionContext blockBaseExpressionContext:
@@ -899,6 +898,154 @@ namespace Oxide.Compiler.Frontend
                 default:
                     throw new ArgumentOutOfRangeException(nameof(ctx));
             }
+        }
+
+        private UnrealisedAccess ParseMethodCallExpression(OxideParser.Method_call_base_expressionContext ctx)
+        {
+            var methodName = ctx.name().GetText();
+
+            var baseExp = ParseBaseExpression(ctx.base_expression());
+            if (baseExp == null)
+            {
+                throw new Exception($"Cannot access {methodName} on value with no type");
+            }
+
+            if (ctx.type_generic_params() != null)
+            {
+                throw new NotImplementedException("Generics");
+            }
+
+            var baseType = baseExp.Type.GetBaseType();
+            Implementation imp;
+            Function func;
+            switch (baseType)
+            {
+                case ConcreteTypeRef concreteTypeRef:
+                {
+                    var obj = Lookup(concreteTypeRef.Name);
+                    if (obj.GenericParams != null && obj.GenericParams.Count > 0)
+                    {
+                        throw new NotImplementedException("Generics");
+                    }
+
+                    (imp, func) = LookupImplementationFunction(concreteTypeRef.Name, methodName);
+                    break;
+                }
+                case DerivedTypeRef derivedTypeRef:
+                case GenericTypeRef genericTypeRef:
+                case ThisTypeRef thisTypeRef:
+                    throw new NotImplementedException();
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(baseType));
+            }
+
+            if (imp == null)
+            {
+                throw new Exception($"Method not found {methodName}");
+            }
+
+            var argumentCtxs = ctx.arguments() != null
+                ? ctx.arguments().argument()
+                : Array.Empty<OxideParser.ArgumentContext>();
+
+            if (argumentCtxs.Length + 1 != func.Parameters.Count)
+            {
+                throw new Exception($"{func.Name} takes {func.Parameters.Count - 1} parameters");
+            }
+
+            var argIds = new List<int>();
+            var thisParam = func.Parameters[0];
+            if (!thisParam.IsThis)
+            {
+                throw new Exception("First param not 'this'");
+            }
+
+            SlotDeclaration thisSlot;
+            switch (thisParam.Type)
+            {
+                case ConcreteTypeRef concreteTypeRef:
+                case DerivedTypeRef derivedTypeRef:
+                case GenericTypeRef genericTypeRef:
+                    throw new Exception("Unexpected base type");
+                case ThisTypeRef thisTypeRef:
+                {
+                    // TODO: Check type is "this"
+                    thisSlot = baseExp.GenerateMove(this, CurrentBlock);
+                    break;
+                }
+                case BorrowTypeRef borrowTypeRef:
+                {
+                    // TODO: Check current type
+                    thisSlot = baseExp.GenerateRef(this, CurrentBlock, borrowTypeRef.MutableRef);
+                    break;
+                }
+                case PointerTypeRef pointerTypeRef:
+                case ReferenceTypeRef referenceTypeRef:
+                    throw new NotImplementedException();
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+
+            argIds.Add(thisSlot.Id);
+
+            for (var i = 0; i < argumentCtxs.Length; i++)
+            {
+                var argument = argumentCtxs[i];
+                var parameter = func.Parameters[1 + i];
+
+                if (argument.label() != null)
+                {
+                    throw new NotImplementedException("Argument labels are not implemented");
+                }
+
+                var exp = ParseExpression(argument.expression());
+                if (exp == null)
+                {
+                    throw new Exception("Argument does not return a value");
+                }
+
+                var expSlot = exp.GenerateMove(this, CurrentBlock);
+
+                if (!expSlot.Type.Equals(parameter.Type))
+                {
+                    throw new Exception($"Parameter type mismatch {exp.Type} != {parameter.Type}");
+                }
+
+                argIds.Add(expSlot.Id);
+            }
+
+            if (func.ReturnType != null)
+            {
+                var resultDec = CurrentScope.DefineSlot(new SlotDeclaration
+                {
+                    Id = ++LastSlotId,
+                    Name = null,
+                    Type = func.ReturnType,
+                    Mutable = false
+                });
+
+                CurrentBlock.AddInstruction(new StaticCallInst
+                {
+                    Id = ++LastInstId,
+                    TargetMethod = func.Name,
+                    TargetImplementation = imp.Interface,
+                    TargetType = baseType,
+                    Arguments = argIds.ToImmutableList(),
+                    ResultSlot = resultDec.Id
+                });
+
+                return new SlotUnrealisedAccess(resultDec);
+            }
+
+            CurrentBlock.AddInstruction(new StaticCallInst
+            {
+                Id = ++LastInstId,
+                TargetMethod = func.Name,
+                TargetImplementation = imp.Interface,
+                TargetType = baseType,
+                Arguments = argIds.ToImmutableList(),
+            });
+            return null;
         }
 
         private FieldUnrealisedAccess ParseAccessExpression(OxideParser.Access_base_expressionContext ctx)
@@ -934,7 +1081,7 @@ namespace Oxide.Compiler.Frontend
                 throw new Exception($"Failed to find {structType.Name}");
             }
 
-            var structContext = new GenericContext(null, structDef.GenericParams, structType.GenericParams);
+            var structContext = new GenericContext(null, structDef.GenericParams, structType.GenericParams, null);
 
             var fieldDef = structDef.Fields.Single(x => x.Name == fieldName);
             return new FieldUnrealisedAccess(
@@ -964,7 +1111,7 @@ namespace Oxide.Compiler.Frontend
             }
 
             var structDef = Lookup<Struct>(concreteTypeRef.Name);
-            var structContext = new GenericContext(null, structDef.GenericParams, concreteTypeRef.GenericParams);
+            var structContext = new GenericContext(null, structDef.GenericParams, concreteTypeRef.GenericParams, null);
 
             var structSlot = CurrentScope.DefineSlot(new SlotDeclaration
             {
@@ -1327,6 +1474,13 @@ namespace Oxide.Compiler.Frontend
         public T Lookup<T>(QualifiedName qn) where T : OxObj
         {
             return _unit.Lookup<T>(qn) ?? _store.Lookup<T>(qn);
+        }
+
+        public (Implementation imp, Function function) LookupImplementationFunction(QualifiedName target,
+            string functionName)
+        {
+            var (i, f) = _unit.LookupImplementationFunction(target, functionName);
+            return i != null ? (i, f) : _store.LookupImplementationFunction(target, functionName);
         }
 
         private bool IsCopyType(TypeRef type)

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using LLVMSharp.Interop;
@@ -9,6 +10,7 @@ using Oxide.Compiler.IR;
 using Oxide.Compiler.IR.TypeRefs;
 using Oxide.Compiler.IR.Types;
 using Oxide.Compiler.Middleware;
+using Oxide.Compiler.Middleware.Usage;
 
 namespace Oxide.Compiler.Backend.Llvm
 {
@@ -24,6 +26,8 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private Dictionary<ConcreteTypeRef, LLVMTypeRef> _typeStore;
 
+        private Dictionary<Function, LLVMValueRef> _functionRefs;
+
         public LlvmBackend(IrStore store, MiddlewareManager middleware)
         {
             Store = store;
@@ -31,6 +35,7 @@ namespace Oxide.Compiler.Backend.Llvm
             _typeStore = new Dictionary<ConcreteTypeRef, LLVMTypeRef>();
             _typeStore.Add(PrimitiveType.I32Ref, LLVMTypeRef.Int32);
             _typeStore.Add(PrimitiveType.BoolRef, LLVMTypeRef.Int1);
+            _functionRefs = new Dictionary<Function, LLVMValueRef>();
         }
 
         public void Begin()
@@ -41,6 +46,7 @@ namespace Oxide.Compiler.Backend.Llvm
 
         public void Compile()
         {
+            // Create types & functions
             foreach (var usedType in Middleware.Usage.UsedTypes.Values)
             {
                 CreateType(usedType);
@@ -49,36 +55,145 @@ namespace Oxide.Compiler.Backend.Llvm
             foreach (var funcName in Middleware.Usage.UsedFunctions)
             {
                 var func = Store.Lookup<Function>(funcName);
-                CompileFunction(func);
+                CreateFunction(func, null, null);
             }
+
+            // Compile functions
+            foreach (var usedType in Middleware.Usage.UsedTypes.Values)
+            {
+                CompileType(usedType);
+            }
+
+
+            var tempContext = new GenericContext(null, ImmutableList<string>.Empty, ImmutableArray<TypeRef>.Empty, null);
+
+            foreach (var funcName in Middleware.Usage.UsedFunctions)
+            {
+                var func = Store.Lookup<Function>(funcName);
+                CompileFunction(func, tempContext);
+            }
+        }
+
+        private void CreateFunction(Function func, string namePrefix, GenericContext context)
+        {
+            if (!func.GenericParams.IsEmpty)
+            {
+                throw new NotImplementedException("Generic function support is not implemented");
+            }
+
+            var funcName = $"{namePrefix}{(namePrefix != null ? "#" : "")}{func.Name}";
+            var paramTypes = new List<LLVMTypeRef>();
+            foreach (var paramDef in func.Parameters)
+            {
+                var paramType = context != null ? context.ResolveRef(paramDef.Type) : paramDef.Type;
+                paramTypes.Add(ConvertType(paramType));
+            }
+
+            var returnType = ConvertType(func.ReturnType);
+            var funcType = LLVMTypeRef.CreateFunction(returnType, paramTypes.ToArray());
+            var funcRef = Module.AddFunction(funcName, funcType);
+            _functionRefs.Add(func, funcRef);
         }
 
         private void CreateType(UsedType usedType)
         {
             var type = Store.Lookup<OxType>(usedType.Name);
-
-            var concreteTypes = new List<ConcreteTypeRef>();
-            foreach (var generics in usedType.GenericVersions)
+            if (usedType.Versions.Count == 0)
             {
-                concreteTypes.Add(new ConcreteTypeRef(usedType.Name, generics));
+                throw new Exception("Type has no used versions");
             }
 
-            if (concreteTypes.Count == 0)
+            foreach (var version in usedType.Versions.Values)
             {
-                concreteTypes.Add(new ConcreteTypeRef(usedType.Name, ImmutableArray<TypeRef>.Empty));
-            }
-
-            foreach (var concreteType in concreteTypes)
-            {
+                var concreteType = new ConcreteTypeRef(usedType.Name, version.Generics);
                 Console.WriteLine($" - Generating {GenerateName(concreteType)}");
                 ResolveConcreteType(concreteType);
+
+                if (version.DefaultImplementation != null)
+                {
+                    CreateImplementation(usedType.Name, version.DefaultImplementation);
+                }
+
+                foreach (var imp in version.Implementations.Values)
+                {
+                    CreateImplementation(usedType.Name, imp);
+                }
             }
         }
 
-        private void CompileFunction(Function func)
+        private void CreateImplementation(QualifiedName type, UsedImplementation usedImp)
+        {
+            var genericContext = new GenericContext(
+                null,
+                ImmutableList<string>.Empty,
+                ImmutableArray<TypeRef>.Empty,
+                new ConcreteTypeRef(type, ImmutableArray<TypeRef>.Empty)
+            );
+
+            foreach (var usedFunc in usedImp.Functions.Values)
+            {
+                var (imp, func) = Store.LookupImplementation(type, usedImp.Interface, usedFunc.Name.Parts.Single());
+                var baseName = $"{imp.Target}#{(imp.Interface != null ? imp.Interface.ToString() : "direct")}";
+                CreateFunction(func, baseName, genericContext);
+            }
+        }
+
+        private void CompileType(UsedType usedType)
+        {
+            var type = Store.Lookup<OxType>(usedType.Name);
+            if (usedType.Versions.Count == 0)
+            {
+                throw new Exception("Type has no used versions");
+            }
+
+            foreach (var version in usedType.Versions.Values)
+            {
+                var concreteType = new ConcreteTypeRef(usedType.Name, version.Generics);
+                Console.WriteLine($" - Compiling {GenerateName(concreteType)}");
+                ResolveConcreteType(concreteType);
+
+                if (version.DefaultImplementation != null)
+                {
+                    CompileImplementation(usedType.Name, version.DefaultImplementation);
+                }
+
+                foreach (var imp in version.Implementations.Values)
+                {
+                    CompileImplementation(usedType.Name, imp);
+                }
+            }
+        }
+
+        private void CompileImplementation(QualifiedName type, UsedImplementation usedImp)
+        {
+            var genericContext = new GenericContext(
+                null,
+                ImmutableList<string>.Empty,
+                ImmutableArray<TypeRef>.Empty,
+                new ConcreteTypeRef(type, ImmutableArray<TypeRef>.Empty)
+            );
+
+            foreach (var usedFunc in usedImp.Functions.Values)
+            {
+                var (imp, func) = Store.LookupImplementation(type, usedImp.Interface, usedFunc.Name.Parts.Single());
+                CompileFunction(func, genericContext);
+            }
+        }
+
+        private void CompileFunction(Function func, GenericContext context)
         {
             var funcGen = new FunctionGenerator(this);
-            funcGen.Compile(func);
+            funcGen.Compile(func, context);
+        }
+
+        public LLVMValueRef GetFunctionRef(Function func)
+        {
+            if (_functionRefs.TryGetValue(func, out var funcRef))
+            {
+                return funcRef;
+            }
+
+            throw new Exception("Failed to find function");
         }
 
         public LLVMTypeRef ConvertType(TypeRef typeRef)
@@ -124,7 +239,7 @@ namespace Oxide.Compiler.Backend.Llvm
                 throw new Exception("Mismatch of generic parameters");
             }
 
-            var structContext = new GenericContext(null, objectDef.GenericParams, typeRef.GenericParams);
+            var structContext = new GenericContext(null, objectDef.GenericParams, typeRef.GenericParams, null);
 
             switch (objectDef)
             {

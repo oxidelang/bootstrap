@@ -12,8 +12,10 @@ namespace Oxide.Compiler.Middleware
 
         public ImmutableDictionary<string, TypeRef> Generics { get; }
 
+        public ConcreteTypeRef ThisRef { get; }
+
         public GenericContext(GenericContext parent, ImmutableList<string> genericParams,
-            ImmutableArray<TypeRef> genericValues)
+            ImmutableArray<TypeRef> genericValues, ConcreteTypeRef thisRef)
         {
             Parent = parent;
             var generics = new Dictionary<string, TypeRef>();
@@ -29,6 +31,7 @@ namespace Oxide.Compiler.Middleware
             }
 
             Generics = generics.ToImmutableDictionary();
+            ThisRef = thisRef;
         }
 
         public TypeRef ResolveGeneric(string name)
@@ -48,8 +51,9 @@ namespace Oxide.Compiler.Middleware
                 case GenericTypeRef genericTypeRef:
                     return ResolveGeneric(genericTypeRef.Name);
                 case DerivedTypeRef derivedTypeRef:
-                case ThisTypeRef thisTypeRef:
                     throw new NotImplementedException();
+                case ThisTypeRef thisTypeRef:
+                    return ThisRef;
                 case BorrowTypeRef borrowTypeRef:
                     return new BorrowTypeRef(ResolveRef(borrowTypeRef.InnerType), borrowTypeRef.MutableRef);
                 case PointerTypeRef pointerTypeRef:

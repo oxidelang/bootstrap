@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Oxide.Compiler.IR.Types;
 
 namespace Oxide.Compiler.IR
 {
@@ -53,6 +54,38 @@ namespace Oxide.Compiler.IR
             }
 
             return null;
+        }
+
+        public (Implementation imp, Function function) LookupImplementationFunction(QualifiedName target,
+            string functionName)
+        {
+            foreach (var unit in _units)
+            {
+                var (i, f) = unit.LookupImplementationFunction(target, functionName);
+
+                if (i != null)
+                {
+                    return (i, f);
+                }
+            }
+
+            return (null, null);
+        }
+
+        public (Implementation imp, Function function) LookupImplementation(QualifiedName type, QualifiedName imp,
+            string func)
+        {
+            foreach (var unit in _units)
+            {
+                var (i, f) = unit.LookupImplementation(type, imp, func);
+
+                if (i != null)
+                {
+                    return (i, f);
+                }
+            }
+
+            return (null, null);
         }
     }
 }

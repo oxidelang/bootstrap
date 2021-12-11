@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
 using LLVMSharp.Interop;
 using Oxide.Compiler.IR;
 using Oxide.Compiler.IR.Instructions;
@@ -31,14 +33,17 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private Block CurrentBlock { get; set; }
 
+        private GenericContext FunctionContext { get; set; }
+
         public FunctionGenerator(LlvmBackend backend)
         {
             Backend = backend;
         }
 
-        public void Compile(Function func)
+        public void Compile(Function func, GenericContext context)
         {
             _func = func;
+            FunctionContext = context;
 
             if (!func.GenericParams.IsEmpty)
             {
@@ -47,7 +52,7 @@ namespace Oxide.Compiler.Backend.Llvm
 
             Builder = Backend.Context.CreateBuilder();
 
-            _funcRef = GetFunctionRef(func);
+            _funcRef = Backend.GetFunctionRef(func);
             if (func.IsExtern)
             {
                 // _funcRef.Linkage = LLVMLinkage.LLVMExternalLinkage;
@@ -73,14 +78,15 @@ namespace Oxide.Compiler.Backend.Llvm
             if (_func.ReturnType != null)
             {
                 var varName = $"return_value";
-                var varType = Backend.ConvertType(func.ReturnType);
+                var returnType = FunctionContext.ResolveRef(func.ReturnType);
+                var varType = Backend.ConvertType(returnType);
                 _returnSlot = -1;
                 _slotMap.Add(_returnSlot.Value, Builder.BuildAlloca(varType, varName));
                 _slotDefs.Add(_returnSlot.Value, new SlotDeclaration
                 {
                     Id = _returnSlot.Value,
                     Mutable = true,
-                    Type = _func.ReturnType
+                    Type = returnType
                 });
             }
 
@@ -90,7 +96,7 @@ namespace Oxide.Compiler.Backend.Llvm
                 foreach (var slotDef in scope.Slots.Values)
                 {
                     var varName = $"scope_{scope.Id}_slot_{slotDef.Id}_{slotDef.Name ?? "autogen"}";
-                    var varType = Backend.ConvertType(slotDef.Type);
+                    var varType = Backend.ConvertType(FunctionContext.ResolveRef(slotDef.Type));
                     _slotMap.Add(slotDef.Id, Builder.BuildAlloca(varType, varName));
                     _slotDefs.Add(slotDef.Id, slotDef);
                 }
@@ -436,7 +442,8 @@ namespace Oxide.Compiler.Backend.Llvm
                 case Struct @struct:
                 {
                     var baseType = Backend.ConvertType(concreteTypeRef);
-                    var structContext = new GenericContext(null, @struct.GenericParams, concreteTypeRef.GenericParams);
+                    var structContext =
+                        new GenericContext(null, @struct.GenericParams, concreteTypeRef.GenericParams, null);
 
                     var consts = new List<LLVMValueRef>();
                     foreach (var fieldDef in @struct.Fields)
@@ -477,15 +484,48 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private void CompileStaticCallInst(StaticCallInst inst)
         {
-            if (inst.TargetImplementation != null)
+            Function funcDef;
+            GenericContext funcContext;
+            switch (inst.TargetType)
             {
-                throw new NotImplementedException("Targeted calls");
+                case null:
+                    funcDef = Store.Lookup<Function>(inst.TargetMethod);
+                    funcContext = new GenericContext(
+                        null,
+                        ImmutableList<string>.Empty,
+                        ImmutableArray<TypeRef>.Empty,
+                        null
+                    );
+                    break;
+                case ConcreteTypeRef concreteTypeRef:
+                    Implementation imp;
+                    (imp, funcDef) = Store.LookupImplementation(
+                        concreteTypeRef.Name,
+                        inst.TargetImplementation,
+                        inst.TargetMethod.Parts.Single()
+                    );
+                    funcContext = new GenericContext(
+                        null,
+                        ImmutableList<string>.Empty,
+                        ImmutableArray<TypeRef>.Empty,
+                        new ConcreteTypeRef(imp.Target, ImmutableArray<TypeRef>.Empty)
+                    );
+                    break;
+                case DerivedTypeRef derivedTypeRef:
+                case GenericTypeRef genericTypeRef:
+                case ThisTypeRef thisTypeRef:
+                    throw new NotImplementedException();
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+
+            if (funcDef == null)
+            {
+                throw new Exception($"Failed to find unit for {inst.TargetMethod}");
             }
 
             var name = $"inst_{inst.Id}";
-            var funcDef = Store.Lookup<Function>(inst.TargetMethod) ??
-                          throw new Exception($"Failed to find unit for {inst.TargetMethod}");
-            var funcRef = GetFunctionRef(funcDef);
+            var funcRef = Backend.GetFunctionRef(funcDef);
 
             if (funcDef.Parameters.Count != inst.Arguments.Count)
             {
@@ -497,8 +537,9 @@ namespace Oxide.Compiler.Backend.Llvm
             for (var i = 0; i < funcDef.Parameters.Count; i++)
             {
                 var param = funcDef.Parameters[i];
+                var paramType = funcContext.ResolveRef(param.Type);
                 var (argType, argVal) = LoadSlot(inst.Arguments[i], $"{name}_param_{param.Name}");
-                if (!Equals(argType, param.Type))
+                if (!Equals(argType, paramType))
                 {
                     throw new Exception($"Argument does not match parameter type for {param.Name}");
                 }
@@ -525,35 +566,6 @@ namespace Oxide.Compiler.Backend.Llvm
 
                 Builder.BuildCall(funcRef, args.ToArray());
             }
-        }
-
-        public LLVMValueRef GetFunctionRef(Function func)
-        {
-            if (!func.GenericParams.IsEmpty)
-            {
-                throw new NotImplementedException("Generic function support is not implemented");
-            }
-
-            var funcName = func.Name.ToString();
-            var funcRef = Module.GetNamedFunction(funcName);
-            if (funcRef != null) return funcRef;
-
-            var paramTypes = new List<LLVMTypeRef>();
-            foreach (var paramDef in func.Parameters)
-            {
-                if (paramDef.IsThis)
-                {
-                    throw new NotImplementedException("This parameter support is not implemented");
-                }
-
-                paramTypes.Add(Backend.ConvertType(paramDef.Type));
-            }
-
-            var returnType = Backend.ConvertType(func.ReturnType);
-            var funcType = LLVMTypeRef.CreateFunction(returnType, paramTypes.ToArray());
-            funcRef = Module.AddFunction(funcName, funcType);
-
-            return funcRef;
         }
 
         private void CompileReturnInst(ReturnInst inst)
@@ -618,9 +630,9 @@ namespace Oxide.Compiler.Backend.Llvm
             var structDef = Store.Lookup<Struct>(structType.Name);
             var index = structDef.Fields.FindIndex(x => x.Name == inst.TargetField);
             var fieldDef = structDef.Fields[index];
-            var structContext = new GenericContext(null, structDef.GenericParams, structType.GenericParams);
+            var structContext = new GenericContext(null, structDef.GenericParams, structType.GenericParams, null);
             var fieldType = structContext.ResolveRef(fieldDef.Type);
-            
+
             var addr = Builder.BuildInBoundsGEP(
                 baseAddr,
                 new[]
@@ -684,7 +696,7 @@ namespace Oxide.Compiler.Backend.Llvm
             var structDef = Store.Lookup<Struct>(structType.Name);
             var index = structDef.Fields.FindIndex(x => x.Name == inst.TargetField);
             var fieldDef = structDef.Fields[index];
-            var structContext = new GenericContext(null, structDef.GenericParams, structType.GenericParams);
+            var structContext = new GenericContext(null, structDef.GenericParams, structType.GenericParams, null);
 
             var addr = Builder.BuildInBoundsGEP(
                 slotVal,

@@ -110,12 +110,12 @@ namespace Oxide.Compiler.Frontend
             Functions = new Dictionary<QualifiedName, Function>();
             foreach (var ctx in funcsDefs)
             {
-                var func = ParseFunc(ctx, Package, false);
+                var func = ParseFunc(ctx, null, false);
                 Functions.Add(func.Name, func);
             }
         }
 
-        private Function ParseFunc(OxideParser.Func_defContext ctx, QualifiedName owner, bool allowThis)
+        private Function ParseFunc(OxideParser.Func_defContext ctx, object owner, bool allowThis)
         {
             var vis = ctx.visibility().Parse();
             var funcName = ctx.name().GetText();
@@ -135,8 +135,8 @@ namespace Oxide.Compiler.Frontend
                     throw new ArgumentOutOfRangeException();
             }
 
-            var name = owner != null
-                ? new QualifiedName(owner.IsAbsolute, owner.Parts.Add(funcName))
+            var name = owner == null
+                ? new QualifiedName(Package.IsAbsolute, Package.Parts.Add(funcName))
                 : new QualifiedName(false, new[] { funcName });
 
             var func = new Function
@@ -148,6 +148,7 @@ namespace Oxide.Compiler.Frontend
                 ReturnType = returnType,
                 IsExtern = ctx.EXTERN() != null,
                 HasBody = body != null,
+                // Owner = owner
             };
 
             if (body != null)
@@ -198,8 +199,8 @@ namespace Oxide.Compiler.Frontend
                             var (category, mutable) = thisParameterContext.type_flags().Parse();
                             type = category switch
                             {
-                                CommonParsers.TypeCategory.Borrow => new PointerTypeRef(type, mutable),
-                                CommonParsers.TypeCategory.Pointer => new BorrowTypeRef(type, mutable),
+                                CommonParsers.TypeCategory.Borrow => new BorrowTypeRef(type, mutable),
+                                CommonParsers.TypeCategory.Pointer => new PointerTypeRef(type, mutable),
                                 CommonParsers.TypeCategory.StrongReference => new ReferenceTypeRef(type, true),
                                 CommonParsers.TypeCategory.WeakReference => new ReferenceTypeRef(type, false),
                                 _ => throw new ArgumentOutOfRangeException()
@@ -349,17 +350,14 @@ namespace Oxide.Compiler.Frontend
             var vis = ctx.visibility().Parse();
             var interfaceName = new QualifiedName(true, Package.Parts.Add(ctx.name().GetText()));
             var genericParams = ctx.generic_def()?.Parse() ?? new List<string>();
+            var iface = new Interface(interfaceName, vis, genericParams.ToImmutableList());
 
-            var functions = new List<Function>();
             foreach (var funcDef in ctx.func_def())
             {
-                functions.Add(ParseFunc(funcDef, null, true));
+                iface.Functions.Add(ParseFunc(funcDef, null, true));
             }
 
-            Interfaces.Add(
-                interfaceName,
-                new Interface(interfaceName, vis, genericParams.ToImmutableList(), functions.ToImmutableList())
-            );
+            Interfaces.Add(interfaceName, iface);
         }
 
         private void ParseImpl(OxideParser.Impl_stmtContext ctx)
@@ -383,16 +381,16 @@ namespace Oxide.Compiler.Frontend
                 Implementations.Add(target, ifaces);
             }
 
-            var functions = new List<Function>();
+            var imp = new Implementation(target, iface);
+            ifaces.Add(imp);
+
             if (ctx.impl_body() != null)
             {
                 foreach (var funcDef in ctx.impl_body().func_def())
                 {
-                    functions.Add(ParseFunc(funcDef, null, true));
+                    imp.Functions.Add(ParseFunc(funcDef, imp, true));
                 }
             }
-
-            ifaces.Add(new Implementation(target, iface, functions.ToImmutableArray()));
         }
 
         public TypeRef ParseType(OxideParser.TypeContext ctx, ImmutableList<string> genericTypes)

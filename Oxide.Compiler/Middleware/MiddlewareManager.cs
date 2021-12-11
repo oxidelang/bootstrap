@@ -1,5 +1,7 @@
+using System;
 using Oxide.Compiler.IR;
 using Oxide.Compiler.IR.Types;
+using Oxide.Compiler.Middleware.Usage;
 
 namespace Oxide.Compiler.Middleware
 {
