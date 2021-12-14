@@ -506,6 +506,7 @@ namespace Oxide.Compiler.Backend.Llvm
                     );
                     break;
                 case ConcreteTypeRef concreteTypeRef:
+                {
                     Implementation imp;
                     (imp, funcDef) = Store.LookupImplementation(
                         concreteTypeRef.Name,
@@ -519,9 +520,25 @@ namespace Oxide.Compiler.Backend.Llvm
                         new ConcreteTypeRef(imp.Target, ImmutableArray<TypeRef>.Empty)
                     );
                     break;
+                }
+                case ThisTypeRef:
+                {
+                    Implementation imp;
+                    (imp, funcDef) = Store.LookupImplementation(
+                        FunctionContext.ThisRef.Name,
+                        inst.TargetImplementation,
+                        inst.TargetMethod.Parts.Single()
+                    );
+                    funcContext = new GenericContext(
+                        null,
+                        ImmutableList<string>.Empty,
+                        ImmutableArray<TypeRef>.Empty,
+                        new ConcreteTypeRef(imp.Target, ImmutableArray<TypeRef>.Empty)
+                    );
+                    break;
+                }
                 case DerivedTypeRef derivedTypeRef:
                 case GenericTypeRef genericTypeRef:
-                case ThisTypeRef thisTypeRef:
                     throw new NotImplementedException();
                 default:
                     throw new ArgumentOutOfRangeException();
@@ -547,7 +564,43 @@ namespace Oxide.Compiler.Backend.Llvm
                 var param = funcDef.Parameters[i];
                 var paramType = funcContext.ResolveRef(param.Type);
                 var (argType, argVal) = LoadSlot(inst.Arguments[i], $"{name}_param_{param.Name}");
-                if (!Equals(argType, paramType))
+
+                bool matches;
+                switch (argType)
+                {
+                    case BaseTypeRef:
+                    case ReferenceTypeRef:
+                        matches = Equals(argType, paramType);
+                        break;
+                    case BorrowTypeRef borrowTypeRef:
+                        if (paramType is BorrowTypeRef paramBorrowType)
+                        {
+                            matches = Equals(borrowTypeRef.InnerType, paramBorrowType.InnerType) &&
+                                      (!paramBorrowType.MutableRef || borrowTypeRef.MutableRef);
+                        }
+                        else
+                        {
+                            matches = false;
+                        }
+
+                        break;
+                    case PointerTypeRef pointerTypeRef:
+                        if (paramType is PointerTypeRef paramPointerType)
+                        {
+                            matches = Equals(pointerTypeRef.InnerType, paramPointerType.InnerType) &&
+                                      (!paramPointerType.MutableRef || pointerTypeRef.MutableRef);
+                        }
+                        else
+                        {
+                            matches = false;
+                        }
+
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(argType));
+                }
+
+                if (!matches)
                 {
                     throw new Exception($"Argument does not match parameter type for {param.Name}");
                 }

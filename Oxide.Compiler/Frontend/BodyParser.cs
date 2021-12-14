@@ -957,8 +957,19 @@ namespace Oxide.Compiler.Frontend
                 }
                 case DerivedTypeRef derivedTypeRef:
                 case GenericTypeRef genericTypeRef:
-                case ThisTypeRef thisTypeRef:
                     throw new NotImplementedException();
+                case ThisTypeRef:
+                {
+                    var concreteTypeRef = ThisType ?? throw new Exception("This is not valid in this context");
+                    var obj = Lookup(concreteTypeRef.Name);
+                    if (obj.GenericParams != null && obj.GenericParams.Count > 0)
+                    {
+                        throw new NotImplementedException("Generics");
+                    }
+
+                    (imp, func) = LookupImplementationFunction(concreteTypeRef.Name, methodName);
+                    break;
+                }
                 default:
                     throw new ArgumentOutOfRangeException(nameof(baseType));
             }
@@ -1000,7 +1011,26 @@ namespace Oxide.Compiler.Frontend
                 case BorrowTypeRef borrowTypeRef:
                 {
                     // TODO: Check current type
-                    thisSlot = baseExp.GenerateRef(this, CurrentBlock, borrowTypeRef.MutableRef);
+                    switch (baseExp.Type)
+                    {
+                        case BaseTypeRef:
+                            thisSlot = baseExp.GenerateRef(this, CurrentBlock, borrowTypeRef.MutableRef);
+                            break;
+                        case BorrowTypeRef existingRef:
+                            if (borrowTypeRef.MutableRef && !existingRef.MutableRef)
+                            {
+                                throw new Exception("Method requires mutable borrow");
+                            }
+
+                            thisSlot = baseExp.GenerateMove(this, CurrentBlock);
+                            break;
+                        case PointerTypeRef pointerTypeRef:
+                        case ReferenceTypeRef referenceTypeRef:
+                            throw new NotImplementedException();
+                        default:
+                            throw new ArgumentOutOfRangeException();
+                    }
+
                     break;
                 }
                 case PointerTypeRef pointerTypeRef:
