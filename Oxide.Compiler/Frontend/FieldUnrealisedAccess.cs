@@ -29,11 +29,24 @@ namespace Oxide.Compiler.Frontend
 
         public override SlotDeclaration GenerateMove(BodyParser parser, Block block)
         {
+            // TODO: Check if type is "copyable"
+
+            SlotDeclaration baseSlot;
             switch (BaseAccess.Type)
             {
                 case BaseTypeRef:
+                    baseSlot = BaseAccess.GenerateRef(parser, block, false);
                     break;
                 case BorrowTypeRef borrowTypeRef:
+                {
+                    if (!borrowTypeRef.InnerType.IsBaseType)
+                    {
+                        throw new Exception("Cannot move field from deeply borrowed variable");
+                    }
+
+                    baseSlot = BaseAccess.GenerateMove(parser, block);
+                    break;
+                }
                 case PointerTypeRef pointerTypeRef:
                     throw new NotImplementedException();
                 case ReferenceTypeRef referenceTypeRef:
@@ -53,8 +66,6 @@ namespace Oxide.Compiler.Frontend
             {
                 case PrimitiveType primitiveType:
                 {
-                    var baseSlot = BaseAccess.GenerateRef(parser, block, false);
-
                     var varSlot = block.Scope.DefineSlot(new SlotDeclaration
                     {
                         Id = ++parser.LastSlotId,

@@ -31,14 +31,16 @@ namespace Oxide.Compiler.Frontend
 
         public int LastInstId { get; set; }
 
-        public GenericContext GenericContext { get; private set; }
+        public ConcreteTypeRef ThisType { get; }
 
-        public BodyParser(IrStore store, IrUnit unit, FileParser fileParser, Function function)
+        public BodyParser(IrStore store, IrUnit unit, FileParser fileParser, Function function,
+            ConcreteTypeRef thisType)
         {
             _store = store;
             _unit = unit;
             _function = function;
             _fileParser = fileParser;
+            ThisType = thisType;
             Scopes = new List<Scope>();
             Blocks = new Dictionary<int, Block>();
             _lastScopeId = 0;
@@ -74,20 +76,34 @@ namespace Oxide.Compiler.Frontend
             // TODO: Init context
             var finalOp = ParseBlock(ctx);
 
-            // TODO: Improve
             if (!CurrentBlock.HasTerminated)
             {
-                // TODO: Attempt to return value from finalOp
-
-                if (_function.ReturnType != null)
+                if (finalOp != null)
                 {
-                    throw new Exception("Function does not return value");
+                    var slot = finalOp.GenerateMove(this, CurrentBlock);
+                    if (!Equals(_function.ReturnType, slot.Type))
+                    {
+                        throw new Exception("Implicit return value did not match function return type");
+                    }
+
+                    CurrentBlock.AddInstruction(new ReturnInst
+                    {
+                        Id = ++LastInstId,
+                        ReturnSlot = slot.Id
+                    });
                 }
-
-                CurrentBlock.AddInstruction(new ReturnInst
+                else
                 {
-                    Id = ++LastInstId
-                });
+                    if (_function.ReturnType != null)
+                    {
+                        throw new Exception($"Function does not return value");
+                    }
+
+                    CurrentBlock.AddInstruction(new ReturnInst
+                    {
+                        Id = ++LastInstId
+                    });
+                }
             }
 
             return block.Id;
@@ -195,7 +211,8 @@ namespace Oxide.Compiler.Frontend
 
                     var structType = tgt.Type.GetConcreteBaseType();
                     var structDef = Lookup<Struct>(structType.Name);
-                    var structContext = new GenericContext(null, structDef.GenericParams, structType.GenericParams, null);
+                    var structContext =
+                        new GenericContext(null, structDef.GenericParams, structType.GenericParams, null);
                     var fieldDef = structDef.Fields.Single(x => x.Name == fieldName);
                     var fieldType = structContext.ResolveRef(fieldDef.Type);
 
@@ -893,8 +910,7 @@ namespace Oxide.Compiler.Frontend
                 case OxideParser.Struct_base_expressionContext structBaseExpressionContext:
                     return ParseStructInitialiser(structBaseExpressionContext.struct_initialiser());
                 case OxideParser.This_base_expressionContext thisBaseExpressionContext:
-                    throw new NotImplementedException("This expressions");
-                    break;
+                    return ParseThisExpression(thisBaseExpressionContext);
                 default:
                     throw new ArgumentOutOfRangeException(nameof(ctx));
             }
@@ -1070,7 +1086,15 @@ namespace Oxide.Compiler.Frontend
                 case GenericTypeRef genericTypeRef:
                     throw new NotImplementedException("Generic type field accesses");
                 case ThisTypeRef thisTypeRef:
-                    throw new NotImplementedException("This field accesses");
+                {
+                    if (ThisType == null)
+                    {
+                        throw new Exception("This expression not expected");
+                    }
+
+                    structType = ThisType;
+                    break;
+                }
                 default:
                     throw new ArgumentOutOfRangeException(nameof(baseType));
             }
@@ -1314,6 +1338,17 @@ namespace Oxide.Compiler.Frontend
         private UnrealisedAccess ParseQnExpression(OxideParser.Qualified_base_expressionContext ctx)
         {
             return new SlotUnrealisedAccess(ResolveQn(ctx.qualified_name(), ctx.type_generic_params()));
+        }
+
+        private UnrealisedAccess ParseThisExpression(OxideParser.This_base_expressionContext ctx)
+        {
+            var varDec = CurrentScope.ResolveVariable("this");
+            if (varDec == null)
+            {
+                throw new Exception($"Unknown variable this");
+            }
+
+            return new SlotUnrealisedAccess(varDec);
         }
 
         private SlotDeclaration ResolveQn(OxideParser.Qualified_nameContext[] qns,

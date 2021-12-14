@@ -2,6 +2,8 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using Antlr4.Runtime;
 using Oxide.Compiler.IR;
+using Oxide.Compiler.IR.TypeRefs;
+using Oxide.Compiler.Middleware;
 using Oxide.Compiler.Parser;
 
 namespace Oxide.Compiler.Frontend
@@ -75,7 +77,7 @@ namespace Oxide.Compiler.Frontend
                     }
 
                     var unparsedBody = fp.UnparsedBodies[functionDef];
-                    var bodyParser = new BodyParser(_store, _unit, fp, functionDef);
+                    var bodyParser = new BodyParser(_store, _unit, fp, functionDef, null);
                     functionDef.EntryBlock = bodyParser.ParseBody(unparsedBody);
                     functionDef.Blocks = bodyParser.Blocks.Values.ToImmutableList();
                     functionDef.Scopes = bodyParser.Scopes.ToImmutableList();
@@ -91,7 +93,7 @@ namespace Oxide.Compiler.Frontend
                         }
 
                         var unparsedBody = fp.UnparsedBodies[functionDef];
-                        var bodyParser = new BodyParser(_store, _unit, fp, functionDef);
+                        var bodyParser = new BodyParser(_store, _unit, fp, functionDef, null);
                         functionDef.EntryBlock = bodyParser.ParseBody(unparsedBody);
                         functionDef.Blocks = bodyParser.Blocks.Values.ToImmutableList();
                         functionDef.Scopes = bodyParser.Scopes.ToImmutableList();
@@ -110,7 +112,8 @@ namespace Oxide.Compiler.Frontend
                             }
 
                             var unparsedBody = fp.UnparsedBodies[functionDef];
-                            var bodyParser = new BodyParser(_store, _unit, fp, functionDef);
+                            var thisType = new ConcreteTypeRef(imp.Target, ImmutableArray<TypeRef>.Empty);
+                            var bodyParser = new BodyParser(_store, _unit, fp, functionDef, thisType);
                             functionDef.EntryBlock = bodyParser.ParseBody(unparsedBody);
                             functionDef.Blocks = bodyParser.Blocks.Values.ToImmutableList();
                             functionDef.Scopes = bodyParser.Scopes.ToImmutableList();

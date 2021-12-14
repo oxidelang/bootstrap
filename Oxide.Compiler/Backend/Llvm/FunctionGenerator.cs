@@ -96,9 +96,17 @@ namespace Oxide.Compiler.Backend.Llvm
                 foreach (var slotDef in scope.Slots.Values)
                 {
                     var varName = $"scope_{scope.Id}_slot_{slotDef.Id}_{slotDef.Name ?? "autogen"}";
-                    var varType = Backend.ConvertType(FunctionContext.ResolveRef(slotDef.Type));
+                    var resolvedType = FunctionContext.ResolveRef(slotDef.Type);
+                    var varType = Backend.ConvertType(resolvedType);
                     _slotMap.Add(slotDef.Id, Builder.BuildAlloca(varType, varName));
-                    _slotDefs.Add(slotDef.Id, slotDef);
+                    _slotDefs.Add(slotDef.Id, new SlotDeclaration
+                    {
+                        Id = slotDef.Id,
+                        Name = slotDef.Name,
+                        Mutable = slotDef.Mutable,
+                        ParameterSource = slotDef.ParameterSource,
+                        Type = resolvedType
+                    });
                 }
             }
 
