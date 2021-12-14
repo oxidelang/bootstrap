@@ -209,7 +209,15 @@ namespace Oxide.Compiler.Frontend
                         throw new Exception($"Cannot access {fieldName} on value with no type");
                     }
 
-                    var structType = tgt.Type.GetConcreteBaseType();
+                    var structType = tgt.Type.GetBaseType() switch
+                    {
+                        ConcreteTypeRef concreteTypeRef => concreteTypeRef,
+                        ThisTypeRef => ThisType ?? throw new Exception("This is not valid in this context"),
+                        DerivedTypeRef => throw new Exception("Cannot access field of derived generic type"),
+                        GenericTypeRef => throw new Exception("Cannot access field of generic type"),
+                        _ => throw new ArgumentOutOfRangeException()
+                    };
+
                     var structDef = Lookup<Struct>(structType.Name);
                     var structContext =
                         new GenericContext(null, structDef.GenericParams, structType.GenericParams, null);

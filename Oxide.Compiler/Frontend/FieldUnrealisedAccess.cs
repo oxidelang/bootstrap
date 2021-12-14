@@ -55,7 +55,13 @@ namespace Oxide.Compiler.Frontend
                     throw new ArgumentOutOfRangeException();
             }
 
-            var baseFieldType = FieldType.GetConcreteBaseType();
+            var baseFieldType = FieldType.GetBaseType() switch
+            {
+                ConcreteTypeRef concreteTypeRef => concreteTypeRef,
+                ThisTypeRef or DerivedTypeRef or GenericTypeRef => throw new NotImplementedException(),
+                _ => throw new ArgumentOutOfRangeException()
+            };
+
             var fieldType = parser.Lookup(baseFieldType.Name);
             if (fieldType == null)
             {
