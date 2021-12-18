@@ -82,15 +82,24 @@ namespace Oxide.Compiler.IR
         public void WriteImplementation(Implementation imp)
         {
             BeginLine();
-            Write("implement ");
+            Write("implement");
+            
+            if (imp.GenericParams.Length > 0)
+            {
+                Write("<");
+                Write(string.Join(", ", imp.GenericParams));
+                Write(">");
+            }
+            
+            Write(" ");
 
             if (imp.Interface != null)
             {
-                WriteQn(imp.Target);
+                WriteType(imp.Target);
                 Write(" for ");
             }
 
-            WriteQn(imp.Target);
+            WriteType(imp.Target);
 
             Write(" {");
             EndLine();

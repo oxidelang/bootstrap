@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
-using Oxide.Compiler.IR;
 using Oxide.Compiler.IR.TypeRefs;
 using Oxide.Compiler.IR.Types;
 
@@ -9,10 +8,10 @@ namespace Oxide.Compiler.Middleware.Usage
 {
     public class UsedImplementation
     {
-        public QualifiedName Interface { get; }
+        public ConcreteTypeRef Interface { get; }
         public Dictionary<string, UsedFunction> Functions { get; }
 
-        public UsedImplementation(QualifiedName iface)
+        public UsedImplementation(ConcreteTypeRef iface)
         {
             Interface = iface;
             Functions = new Dictionary<string, UsedFunction>();

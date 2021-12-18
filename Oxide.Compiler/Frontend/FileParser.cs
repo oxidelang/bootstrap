@@ -110,18 +110,19 @@ namespace Oxide.Compiler.Frontend
             Functions = new Dictionary<QualifiedName, Function>();
             foreach (var ctx in funcsDefs)
             {
-                var func = ParseFunc(ctx, null, false);
+                var func = ParseFunc(ctx, null, false, ImmutableList<string>.Empty);
                 Functions.Add(func.Name, func);
             }
         }
 
-        private Function ParseFunc(OxideParser.Func_defContext ctx, object owner, bool allowThis)
+        private Function ParseFunc(OxideParser.Func_defContext ctx, object owner, bool allowThis, ImmutableList<string> parentGenerics)
         {
             var vis = ctx.visibility().Parse();
             var funcName = ctx.name().GetText();
             var genericParams = ctx.generic_def().Parse().ToImmutableList();
-            var parameters = ParseParameters(ctx.parameter(), allowThis, genericParams);
-            var returnType = ctx.type() != null ? ParseType(ctx.type(), genericParams) : null;
+            var availableParams = genericParams.AddRange(parentGenerics);
+            var parameters = ParseParameters(ctx.parameter(), allowThis, availableParams);
+            var returnType = ctx.type() != null ? ParseType(ctx.type(), availableParams) : null;
             OxideParser.BlockContext body = null;
 
             switch (ctx.func_body())
@@ -349,12 +350,12 @@ namespace Oxide.Compiler.Frontend
         {
             var vis = ctx.visibility().Parse();
             var interfaceName = new QualifiedName(true, Package.Parts.Add(ctx.name().GetText()));
-            var genericParams = ctx.generic_def()?.Parse() ?? new List<string>();
-            var iface = new Interface(interfaceName, vis, genericParams.ToImmutableList());
+            var genericParams = ctx.generic_def()?.Parse().ToImmutableList() ?? ImmutableList<string>.Empty;
+            var iface = new Interface(interfaceName, vis, genericParams);
 
             foreach (var funcDef in ctx.func_def())
             {
-                iface.Functions.Add(ParseFunc(funcDef, null, true));
+                iface.Functions.Add(ParseFunc(funcDef, null, true, genericParams));
             }
 
             Interfaces.Add(interfaceName, iface);
@@ -362,9 +363,23 @@ namespace Oxide.Compiler.Frontend
 
         private void ParseImpl(OxideParser.Impl_stmtContext ctx)
         {
-            if (ctx.tgt_generics != null || ctx.iface_generics != null)
+            var target = ResolveQN(ctx.tgt_name.Parse());
+            var iface = ctx.iface_name != null ? ResolveQN(ctx.iface_name.Parse()) : null;
+
+            var impGenerics = ctx.impl_generics != null
+                ? ctx.impl_generics.Parse().ToImmutableList()
+                : ImmutableList<string>.Empty;
+
+            var tgtParams = new List<TypeRef>();
+            if (ctx.tgt_generics != null)
             {
-                throw new NotImplementedException("Generics not implemented");
+                tgtParams.AddRange(ctx.tgt_generics.type().Select(x => ParseType(x, impGenerics)));
+            }
+
+            var ifaceParams = new List<TypeRef>();
+            if (ctx.iface_generics != null)
+            {
+                ifaceParams.AddRange(ctx.iface_generics.type().Select(x => ParseType(x, impGenerics)));
             }
 
             if (ctx.where() != null)
@@ -372,23 +387,23 @@ namespace Oxide.Compiler.Frontend
                 throw new NotImplementedException("Where statements not implemented");
             }
 
-            var target = ResolveQN(ctx.tgt_name.Parse());
-            var iface = ctx.iface_name != null ? ResolveQN(ctx.iface_name.Parse()) : null;
-
             if (!Implementations.TryGetValue(target, out var ifaces))
             {
                 ifaces = new List<Implementation>();
                 Implementations.Add(target, ifaces);
             }
 
-            var imp = new Implementation(target, iface);
+            var targetRef = new ConcreteTypeRef(target, tgtParams.ToImmutableArray());
+            var ifaceRef = iface != null ? new ConcreteTypeRef(iface, ifaceParams.ToImmutableArray()) : null;
+
+            var imp = new Implementation(targetRef, ifaceRef, impGenerics.ToImmutableArray());
             ifaces.Add(imp);
 
             if (ctx.impl_body() != null)
             {
                 foreach (var funcDef in ctx.impl_body().func_def())
                 {
-                    imp.Functions.Add(ParseFunc(funcDef, imp, true));
+                    imp.Functions.Add(ParseFunc(funcDef, imp, true, impGenerics));
                 }
             }
         }

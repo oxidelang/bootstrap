@@ -33,8 +33,10 @@ namespace Oxide.Compiler.Frontend
 
         public ConcreteTypeRef ThisType { get; }
 
+        private ImmutableArray<string> _parentGenerics;
+
         public BodyParser(IrStore store, IrUnit unit, FileParser fileParser, Function function,
-            ConcreteTypeRef thisType)
+            ConcreteTypeRef thisType, ImmutableArray<string> parentGenerics)
         {
             _store = store;
             _unit = unit;
@@ -46,6 +48,7 @@ namespace Oxide.Compiler.Frontend
             _lastScopeId = 0;
             _lastBlockId = 0;
             LastSlotId = 0;
+            _parentGenerics = parentGenerics;
         }
 
         public int ParseBody(OxideParser.BlockContext ctx)
@@ -940,7 +943,7 @@ namespace Oxide.Compiler.Frontend
             }
 
             var baseType = baseExp.Type.GetBaseType();
-            Implementation imp;
+            ConcreteTypeRef iface;
             Function func;
             switch (baseType)
             {
@@ -952,7 +955,9 @@ namespace Oxide.Compiler.Frontend
                         throw new NotImplementedException("Generics");
                     }
 
-                    (imp, func) = LookupImplementationFunction(concreteTypeRef.Name, methodName);
+                    var result = ResolveFunction(concreteTypeRef, methodName);
+                    iface = result.Interface;
+                    func = result.Function;
                     break;
                 }
                 case DerivedTypeRef derivedTypeRef:
@@ -967,14 +972,16 @@ namespace Oxide.Compiler.Frontend
                         throw new NotImplementedException("Generics");
                     }
 
-                    (imp, func) = LookupImplementationFunction(concreteTypeRef.Name, methodName);
+                    var result = ResolveFunction(concreteTypeRef, methodName);
+                    iface = result.Interface;
+                    func = result.Function;
                     break;
                 }
                 default:
                     throw new ArgumentOutOfRangeException(nameof(baseType));
             }
 
-            if (imp == null)
+            if (func == null)
             {
                 throw new Exception($"Method not found {methodName}");
             }
@@ -1082,7 +1089,7 @@ namespace Oxide.Compiler.Frontend
                 {
                     Id = ++LastInstId,
                     TargetMethod = func.Name,
-                    TargetImplementation = imp.Interface,
+                    TargetImplementation = iface,
                     TargetType = baseType,
                     Arguments = argIds.ToImmutableList(),
                     ResultSlot = resultDec.Id
@@ -1095,7 +1102,7 @@ namespace Oxide.Compiler.Frontend
             {
                 Id = ++LastInstId,
                 TargetMethod = func.Name,
-                TargetImplementation = imp.Interface,
+                TargetImplementation = iface,
                 TargetType = baseType,
                 Arguments = argIds.ToImmutableList(),
             });
@@ -1283,28 +1290,52 @@ namespace Oxide.Compiler.Frontend
 
         private UnrealisedAccess ParseFunctionCall(OxideParser.Function_call_base_expressionContext ctx)
         {
+            var qns = ctx.qualified_name();
+            Function functionDef;
+            BaseTypeRef targetType;
+            ConcreteTypeRef targetImplementation;
+            QualifiedName targetMethod;
+            GenericContext functionContext;
+
             if (ctx.qn_generics != null)
             {
-                throw new NotImplementedException("Generic params on QN in function call expressions not implemented");
-            }
+                var targetName = ResolveQN(qns[0].Parse());
+                var targetGenerics = ctx.qn_generics.type().Select(ParseType).ToImmutableArray();
+                var target = new ConcreteTypeRef(targetName, targetGenerics);
+                var functionName = qns[1].Parse().Parts.Single();
 
-            var qns = ctx.qualified_name();
-            if (qns.Length != 1)
+                var result = ResolveFunction(target, functionName);
+                targetImplementation = result.Interface;
+                functionDef = result.Function;
+                if (functionDef == null)
+                {
+                    throw new Exception(
+                        $"Unable to find resolve {targetName}<{string.Join(", ", targetGenerics)}>::{functionName}");
+                }
+
+                targetType = target;
+                targetMethod = new QualifiedName(false, new[] { functionName });
+                functionContext = new GenericContext(null, result.InterfaceGenerics, null);
+            }
+            else
             {
-                throw new NotImplementedException("Generic param derived function calls not implemented");
+                var resolvedName = ResolveQN(qns[0].Parse());
+
+                functionDef = Lookup<Function>(resolvedName);
+                if (functionDef == null)
+                {
+                    throw new Exception($"Unable to resolve {resolvedName}");
+                }
+
+                targetType = null;
+                targetImplementation = null;
+                targetMethod = functionDef.Name;
+                functionContext = GenericContext.Default;
             }
 
             if (ctx.method_generics != null)
             {
                 throw new NotImplementedException("Generic method params in function call expressions not implemented");
-            }
-
-            var qn1 = qns[0].Parse();
-            var resolvedName = ResolveQN(qn1);
-            var functionDef = Lookup<Function>(resolvedName);
-            if (functionDef == null)
-            {
-                throw new Exception($"Unable to find unit for {resolvedName}");
             }
 
             var argumentCtxs = ctx.arguments() != null
@@ -1321,6 +1352,7 @@ namespace Oxide.Compiler.Frontend
             {
                 var argument = argumentCtxs[i];
                 var parameter = functionDef.Parameters[i];
+                var paramType = functionContext.ResolveRef(parameter.Type);
 
                 if (argument.label() != null)
                 {
@@ -1335,9 +1367,9 @@ namespace Oxide.Compiler.Frontend
 
                 var expSlot = exp.GenerateMove(this, CurrentBlock);
 
-                if (!expSlot.Type.Equals(parameter.Type))
+                if (!expSlot.Type.Equals(paramType))
                 {
-                    throw new Exception($"Parameter type mismatch {exp.Type} != {parameter.Type}");
+                    throw new Exception($"Parameter type mismatch {exp.Type} != {paramType}");
                 }
 
                 argIds.Add(expSlot.Id);
@@ -1345,18 +1377,21 @@ namespace Oxide.Compiler.Frontend
 
             if (functionDef.ReturnType != null)
             {
+                var returnType = functionContext.ResolveRef(functionDef.ReturnType);
                 var resultDec = CurrentScope.DefineSlot(new SlotDeclaration
                 {
                     Id = ++LastSlotId,
                     Name = null,
-                    Type = functionDef.ReturnType,
+                    Type = returnType,
                     Mutable = false
                 });
 
                 CurrentBlock.AddInstruction(new StaticCallInst
                 {
                     Id = ++LastInstId,
-                    TargetMethod = functionDef.Name,
+                    TargetType = targetType,
+                    TargetMethod = targetMethod,
+                    TargetImplementation = targetImplementation,
                     Arguments = argIds.ToImmutableList(),
                     ResultSlot = resultDec.Id
                 });
@@ -1367,7 +1402,9 @@ namespace Oxide.Compiler.Frontend
             CurrentBlock.AddInstruction(new StaticCallInst
             {
                 Id = ++LastInstId,
-                TargetMethod = functionDef.Name,
+                TargetType = targetType,
+                TargetMethod = targetMethod,
+                TargetImplementation = targetImplementation,
                 Arguments = argIds.ToImmutableList(),
             });
             return null;
@@ -1549,11 +1586,9 @@ namespace Oxide.Compiler.Frontend
             return _unit.Lookup<T>(qn) ?? _store.Lookup<T>(qn);
         }
 
-        public (Implementation imp, Function function) LookupImplementationFunction(QualifiedName target,
-            string functionName)
+        public ResolvedFunction ResolveFunction(ConcreteTypeRef target, string functionName)
         {
-            var (i, f) = _unit.LookupImplementationFunction(target, functionName);
-            return i != null ? (i, f) : _store.LookupImplementationFunction(target, functionName);
+            return _unit.ResolveFunction(_store, target, functionName) ?? _store.ResolveFunction(target, functionName);
         }
 
         private bool IsCopyType(TypeRef type)
@@ -1592,7 +1627,7 @@ namespace Oxide.Compiler.Frontend
 
         private BaseTypeRef ParseDirectType(OxideParser.Direct_typeContext ctx)
         {
-            return _fileParser.ParseDirectType(ctx, _function.GenericParams);
+            return _fileParser.ParseDirectType(ctx, _function.GenericParams.AddRange(_parentGenerics));
         }
     }
 }

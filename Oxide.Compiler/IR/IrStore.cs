@@ -1,4 +1,8 @@
+using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
+using Oxide.Compiler.IR.TypeRefs;
 using Oxide.Compiler.IR.Types;
 
 namespace Oxide.Compiler.IR
@@ -56,28 +60,74 @@ namespace Oxide.Compiler.IR
             return null;
         }
 
-        public (Implementation imp, Function function) LookupImplementationFunction(QualifiedName target,
-            string functionName)
+        public bool AreCompatible(Implementation imp, ImmutableArray<TypeRef> targetParams,
+            out Dictionary<string, TypeRef> mappings)
         {
-            foreach (var unit in _units)
+            if (imp.Target.GenericParams.Length != targetParams.Length)
             {
-                var (i, f) = unit.LookupImplementationFunction(target, functionName);
-
-                if (i != null)
-                {
-                    return (i, f);
-                }
+                throw new Exception("Generic parameter count mismatch");
             }
 
-            return (null, null);
+            mappings = new Dictionary<string, TypeRef>();
+
+            for (var i = 0; i < imp.Target.GenericParams.Length; i++)
+            {
+                var impParam = imp.Target.GenericParams[i];
+                var tgtParam = targetParams[i];
+
+                if (impParam is not BaseTypeRef impBase || impBase is ConcreteTypeRef)
+                {
+                    impBase = impParam.GetBaseType();
+                    if (impBase is not ConcreteTypeRef)
+                    {
+                        throw new Exception("Unexpected complex type");
+                    }
+
+                    var matchBase = tgtParam.GetBaseType();
+                    if (matchBase is not ConcreteTypeRef)
+                    {
+                        throw new NotImplementedException("Generic constraint resolving");
+                    }
+
+                    if (!Equals(impParam, tgtParam))
+                    {
+                        return false;
+                    }
+
+                    continue;
+                }
+
+                if (impBase is not GenericTypeRef impGeneric)
+                {
+                    throw new Exception("Unexpected type");
+                }
+
+                if (!imp.GenericParams.Contains(impGeneric.Name))
+                {
+                    throw new Exception($"Unknown generic param {impGeneric.Name}");
+                }
+
+                // TODO: Resolve 'where' conditions
+
+                mappings.Add(impGeneric.Name, tgtParam);
+            }
+
+            return true;
         }
 
-        public (Implementation imp, Function function) LookupImplementation(QualifiedName type, QualifiedName imp,
+        public ResolvedFunction ResolveFunction(ConcreteTypeRef target,
+            string functionName)
+        {
+            return _units.Select(unit => unit.ResolveFunction(this, target, functionName))
+                .FirstOrDefault(result => result != null);
+        }
+
+        public (Implementation imp, Function function) LookupImplementation(ConcreteTypeRef target, ConcreteTypeRef iface,
             string func)
         {
             foreach (var unit in _units)
             {
-                var (i, f) = unit.LookupImplementation(type, imp, func);
+                var (i, f) = unit.LookupImplementation(this, target, iface, func);
 
                 if (i != null)
                 {

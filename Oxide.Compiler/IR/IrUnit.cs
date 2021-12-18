@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using Oxide.Compiler.IR.TypeRefs;
 using Oxide.Compiler.IR.Types;
+using Oxide.Compiler.Middleware;
 
 namespace Oxide.Compiler.IR
 {
@@ -97,10 +99,10 @@ namespace Oxide.Compiler.IR
 
         public void AddImplementation(Implementation implementation)
         {
-            if (!Implementations.TryGetValue(implementation.Target, out var ifaces))
+            if (!Implementations.TryGetValue(implementation.Target.Name, out var ifaces))
             {
                 ifaces = new List<Implementation>();
-                Implementations.Add(implementation.Target, ifaces);
+                Implementations.Add(implementation.Target.Name, ifaces);
             }
 
             if (!ifaces.Contains(implementation))
@@ -109,24 +111,40 @@ namespace Oxide.Compiler.IR
             }
         }
 
-        public List<Implementation> LookupImplementations(QualifiedName target, QualifiedName iface)
-        {
-            return Implementations.TryGetValue(target, out var ifaces)
-                ? ifaces.Where(x => Equals(x.Interface, iface)).ToList()
-                : new List<Implementation>();
-        }
-
-        public (Implementation imp, Function function) LookupImplementationFunction(QualifiedName target,
+        public ResolvedFunction ResolveFunction(IrStore store, ConcreteTypeRef target,
             string functionName)
         {
-            if (!Implementations.TryGetValue(target, out var imps))
+            if (!Implementations.TryGetValue(target.Name, out var imps))
             {
-                return (null, null);
+                return null;
             }
 
+            var solutions = new List<ResolvedFunction>();
             foreach (var imp in imps)
             {
-                foreach (var function in imp.Functions)
+                if (target.GenericParams.Length != imp.Target.GenericParams.Length)
+                {
+                    throw new Exception("Generic length mismatch");
+                }
+
+                if (!store.AreCompatible(imp, target.GenericParams, out var knownGenerics))
+                {
+                    continue;
+                }
+
+                // TODO: Replace with more advance resolution system
+                var impContext = new GenericContext(null, knownGenerics.ToImmutableDictionary(), null);
+
+                var functions = imp.Functions;
+                ConcreteTypeRef ifaceRef = null;
+                if (imp.Interface != null)
+                {
+                    ifaceRef = (ConcreteTypeRef)impContext.ResolveRef(imp.Interface);
+                    var iface = store.Lookup<Interface>(imp.Interface.Name);
+                    functions = iface.Functions;
+                }
+
+                foreach (var function in functions)
                 {
                     if (function.Name.Parts.Single() != functionName)
                     {
@@ -138,29 +156,60 @@ namespace Oxide.Compiler.IR
                         throw new NotImplementedException("Generics");
                     }
 
-                    return (imp, function);
+                    solutions.Add(new ResolvedFunction
+                    {
+                        Interface = ifaceRef,
+                        InterfaceGenerics = impContext.Generics,
+                        Function = function
+                    });
+                    break;
                 }
             }
 
-            return (null, null);
+            if (solutions.Count > 1)
+            {
+                throw new Exception("Conflicting implementations");
+            }
+
+            if (solutions.Count == 1)
+            {
+                return solutions.Single();
+            }
+
+            return null;
         }
 
-        public (Implementation imp, Function function) LookupImplementation(QualifiedName type, QualifiedName imp,
-            string func)
+        public (Implementation imp, Function function) LookupImplementation(IrStore store, ConcreteTypeRef target,
+            ConcreteTypeRef iface, string func)
         {
-            if (!Implementations.TryGetValue(type, out var imps))
+            if (!Implementations.TryGetValue(target.Name, out var imps))
             {
                 return (null, null);
             }
 
-            foreach (var implementation in imps)
+            foreach (var imp in imps)
             {
-                if (!Equals(implementation.Interface, imp))
+                if (target.GenericParams.Length != imp.Target.GenericParams.Length)
+                {
+                    throw new Exception("Generic length mismatch");
+                }
+
+                if (!store.AreCompatible(imp, target.GenericParams, out var knownGenerics))
                 {
                     continue;
                 }
 
-                foreach (var function in implementation.Functions)
+                if (iface != null && iface.GenericParams != null && iface.GenericParams.Length > 0)
+                {
+                    throw new NotImplementedException("Generics");
+                }
+
+                if (!Equals(imp.Interface, iface))
+                {
+                    continue;
+                }
+
+                foreach (var function in imp.Functions)
                 {
                     if (function.Name.Parts.Single() != func)
                     {
@@ -172,7 +221,7 @@ namespace Oxide.Compiler.IR
                         throw new NotImplementedException("Generics");
                     }
 
-                    return (implementation, function);
+                    return (imp, function);
                 }
             }
 

@@ -8,7 +8,7 @@ namespace Oxide.Compiler.IR.Instructions
     {
         public BaseTypeRef TargetType { get; init; }
 
-        public QualifiedName TargetImplementation { get; init; }
+        public ConcreteTypeRef TargetImplementation { get; init; }
 
         public QualifiedName TargetMethod { get; init; }
 
@@ -31,7 +31,7 @@ namespace Oxide.Compiler.IR.Instructions
 
                 if (TargetImplementation != null)
                 {
-                    writer.WriteQn(TargetImplementation);
+                    writer.WriteType(TargetImplementation);
                     writer.Write(" ");
                 }
             }

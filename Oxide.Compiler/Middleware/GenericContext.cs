@@ -8,11 +8,21 @@ namespace Oxide.Compiler.Middleware
 {
     public class GenericContext
     {
+        public static GenericContext Default = new(null, ImmutableDictionary<string, TypeRef>.Empty, null);
+
         public GenericContext Parent { get; }
 
         public ImmutableDictionary<string, TypeRef> Generics { get; }
 
         public ConcreteTypeRef ThisRef { get; }
+
+        public GenericContext(GenericContext parent, ImmutableDictionary<string, TypeRef> generics,
+            ConcreteTypeRef thisRef)
+        {
+            Parent = parent;
+            Generics = generics;
+            ThisRef = thisRef;
+        }
 
         public GenericContext(GenericContext parent, ImmutableList<string> genericParams,
             ImmutableArray<TypeRef> genericValues, ConcreteTypeRef thisRef)
@@ -49,7 +59,7 @@ namespace Oxide.Compiler.Middleware
                         concreteTypeRef.GenericParams.Select(ResolveRef).ToImmutableArray()
                     );
                 case GenericTypeRef genericTypeRef:
-                    return ResolveGeneric(genericTypeRef.Name);
+                    return ResolveGeneric(genericTypeRef.Name) ?? throw new Exception("Unable to resolve generic type");
                 case DerivedTypeRef derivedTypeRef:
                     throw new NotImplementedException();
                 case ThisTypeRef thisTypeRef:

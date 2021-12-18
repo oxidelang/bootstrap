@@ -46,33 +46,18 @@ namespace Oxide.Compiler.Middleware.Usage
 
             Console.WriteLine($" - New function: {func.Name}");
 
+            var functionContext = GenericContext.Default;
+
             if (func.IsExtern || !func.HasBody)
             {
                 return;
             }
 
-            var typeRefs = new HashSet<BaseTypeRef>();
             foreach (var scope in func.Scopes)
             {
                 foreach (var slot in scope.Slots.Values)
                 {
-                    typeRefs.Add(slot.Type.GetBaseType());
-                }
-            }
-
-            foreach (var type in typeRefs)
-            {
-                switch (type)
-                {
-                    case ConcreteTypeRef concreteTypeRef:
-                        MarkConcreteType(concreteTypeRef);
-                        break;
-                    case DerivedTypeRef derivedTypeRef:
-                    case GenericTypeRef genericTypeRef:
-                    case ThisTypeRef thisTypeRef:
-                        throw new NotImplementedException("Type resolving");
-                    default:
-                        throw new ArgumentOutOfRangeException(nameof(type));
+                    MarkConcreteType((ConcreteTypeRef)functionContext.ResolveRef(slot.Type.GetBaseType()));
                 }
             }
 
@@ -84,33 +69,16 @@ namespace Oxide.Compiler.Middleware.Usage
                     {
                         if (staticCallInst.TargetType != null)
                         {
-                            switch (staticCallInst.TargetType)
-                            {
-                                case ConcreteTypeRef concreteTypeRef:
-                                    if (concreteTypeRef.GenericParams != null &&
-                                        concreteTypeRef.GenericParams.Length > 0)
-                                    {
-                                        throw new NotImplementedException("Generics");
-                                    }
+                            var targetConcrete = (ConcreteTypeRef)functionContext.ResolveRef(staticCallInst.TargetType);
+                            var (imp, targetFunc) = Store.LookupImplementation(
+                                targetConcrete,
+                                staticCallInst.TargetImplementation,
+                                staticCallInst.TargetMethod.Parts.Single()
+                            );
 
-                                    var (imp, targetFunc) = Store.LookupImplementation(
-                                        concreteTypeRef.Name,
-                                        staticCallInst.TargetImplementation,
-                                        staticCallInst.TargetMethod.Parts.Single()
-                                    );
-
-                                    var usedVersion = MarkConcreteType(concreteTypeRef);
-                                    var usedImp = usedVersion.MarkImplementation(imp.Interface);
-                                    usedImp.MarkFunction(targetFunc, ImmutableArray<TypeRef>.Empty);
-
-                                    break;
-                                case DerivedTypeRef derivedTypeRef:
-                                case GenericTypeRef genericTypeRef:
-                                case ThisTypeRef thisTypeRef:
-                                    throw new NotImplementedException();
-                                default:
-                                    throw new ArgumentOutOfRangeException();
-                            }
+                            var usedVersion = MarkConcreteType(targetConcrete);
+                            var usedImp = usedVersion.MarkImplementation(imp.Interface);
+                            usedImp.MarkFunction(targetFunc, ImmutableArray<TypeRef>.Empty);
                         }
                         else
                         {

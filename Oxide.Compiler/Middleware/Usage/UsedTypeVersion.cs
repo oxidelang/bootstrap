@@ -12,7 +12,7 @@ namespace Oxide.Compiler.Middleware.Usage
 
         public ImmutableArray<TypeRef> Generics { get; }
 
-        public Dictionary<QualifiedName, UsedImplementation> Implementations { get; }
+        public Dictionary<ConcreteTypeRef, UsedImplementation> Implementations { get; }
 
         public UsedImplementation DefaultImplementation { get; private set; }
 
@@ -20,10 +20,10 @@ namespace Oxide.Compiler.Middleware.Usage
         {
             Type = type;
             Generics = generics;
-            Implementations = new Dictionary<QualifiedName, UsedImplementation>();
+            Implementations = new Dictionary<ConcreteTypeRef, UsedImplementation>();
         }
 
-        public UsedImplementation MarkImplementation(QualifiedName iface)
+        public UsedImplementation MarkImplementation(ConcreteTypeRef iface)
         {
             if (iface == null)
             {
