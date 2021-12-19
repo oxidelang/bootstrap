@@ -945,19 +945,16 @@ namespace Oxide.Compiler.Frontend
             var baseType = baseExp.Type.GetBaseType();
             ConcreteTypeRef iface;
             Function func;
+            GenericContext functionContext;
+
             switch (baseType)
             {
                 case ConcreteTypeRef concreteTypeRef:
                 {
-                    var obj = Lookup(concreteTypeRef.Name);
-                    if (obj.GenericParams != null && obj.GenericParams.Count > 0)
-                    {
-                        throw new NotImplementedException("Generics");
-                    }
-
                     var result = ResolveFunction(concreteTypeRef, methodName);
                     iface = result.Interface;
                     func = result.Function;
+                    functionContext = new GenericContext(null, result.ImplementationGenerics, null);
                     break;
                 }
                 case DerivedTypeRef derivedTypeRef:
@@ -975,6 +972,7 @@ namespace Oxide.Compiler.Frontend
                     var result = ResolveFunction(concreteTypeRef, methodName);
                     iface = result.Interface;
                     func = result.Function;
+                    functionContext = new GenericContext(null, result.ImplementationGenerics, null);
                     break;
                 }
                 default:
@@ -1053,6 +1051,7 @@ namespace Oxide.Compiler.Frontend
             {
                 var argument = argumentCtxs[i];
                 var parameter = func.Parameters[1 + i];
+                var parameterType = functionContext.ResolveRef(parameter.Type);
 
                 if (argument.label() != null)
                 {
@@ -1067,9 +1066,9 @@ namespace Oxide.Compiler.Frontend
 
                 var expSlot = exp.GenerateMove(this, CurrentBlock);
 
-                if (!expSlot.Type.Equals(parameter.Type))
+                if (!expSlot.Type.Equals(parameterType))
                 {
-                    throw new Exception($"Parameter type mismatch {exp.Type} != {parameter.Type}");
+                    throw new Exception($"Parameter type mismatch {exp.Type} != {parameterType}");
                 }
 
                 argIds.Add(expSlot.Id);
@@ -1077,11 +1076,13 @@ namespace Oxide.Compiler.Frontend
 
             if (func.ReturnType != null)
             {
+                var returnType = functionContext.ResolveRef(func.ReturnType);
+
                 var resultDec = CurrentScope.DefineSlot(new SlotDeclaration
                 {
                     Id = ++LastSlotId,
                     Name = null,
-                    Type = func.ReturnType,
+                    Type = returnType,
                     Mutable = false
                 });
 
@@ -1315,7 +1316,7 @@ namespace Oxide.Compiler.Frontend
 
                 targetType = target;
                 targetMethod = new QualifiedName(false, new[] { functionName });
-                functionContext = new GenericContext(null, result.InterfaceGenerics, null);
+                functionContext = new GenericContext(null, result.ImplementationGenerics, null);
             }
             else
             {

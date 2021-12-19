@@ -64,13 +64,10 @@ namespace Oxide.Compiler.Backend.Llvm
                 CompileType(usedType);
             }
 
-
-            var tempContext = new GenericContext(null, ImmutableList<string>.Empty, ImmutableArray<TypeRef>.Empty, null);
-
             foreach (var funcName in Middleware.Usage.UsedFunctions)
             {
                 var func = Store.Lookup<Function>(funcName);
-                CompileFunction(func, tempContext);
+                CompileFunction(func, GenericContext.Default);
             }
         }
 
@@ -89,7 +86,8 @@ namespace Oxide.Compiler.Backend.Llvm
                 paramTypes.Add(ConvertType(paramType));
             }
 
-            var returnType = ConvertType(func.ReturnType);
+            var returnTypeRef = context != null ? context.ResolveRef(func.ReturnType) : func.ReturnType;
+            var returnType = ConvertType(returnTypeRef);
             var funcType = LLVMTypeRef.CreateFunction(returnType, paramTypes.ToArray());
             var funcRef = Module.AddFunction(funcName, funcType);
             _functionRefs.Add(func, funcRef);
@@ -109,32 +107,28 @@ namespace Oxide.Compiler.Backend.Llvm
                 Console.WriteLine($" - Generating {GenerateName(concreteType)}");
                 ResolveConcreteType(concreteType);
 
+                var context = new GenericContext(null, type.GenericParams, version.Generics, concreteType);
+
                 if (version.DefaultImplementation != null)
                 {
-                    CreateImplementation(usedType.Name, version.DefaultImplementation);
+                    CreateImplementation(context, version.DefaultImplementation);
                 }
 
                 foreach (var imp in version.Implementations.Values)
                 {
-                    CreateImplementation(usedType.Name, imp);
+                    CreateImplementation(context, imp);
                 }
             }
         }
 
-        private void CreateImplementation(QualifiedName type, UsedImplementation usedImp)
+        private void CreateImplementation(GenericContext context, UsedImplementation usedImp)
         {
-            var genericContext = new GenericContext(
-                null,
-                ImmutableList<string>.Empty,
-                ImmutableArray<TypeRef>.Empty,
-                new ConcreteTypeRef(type, ImmutableArray<TypeRef>.Empty)
-            );
-
             foreach (var usedFunc in usedImp.Functions.Values)
             {
-                var (imp, func) = Store.LookupImplementation(type, usedImp.Interface, usedFunc.Name.Parts.Single());
+                var (imp, func) = Store.LookupImplementation(context.ThisRef, usedImp.Interface,
+                    usedFunc.Name.Parts.Single());
                 var baseName = $"{imp.Target}#{(imp.Interface != null ? imp.Interface.ToString() : "direct")}";
-                CreateFunction(func, baseName, genericContext);
+                CreateFunction(func, baseName, context);
             }
         }
 
@@ -152,31 +146,27 @@ namespace Oxide.Compiler.Backend.Llvm
                 Console.WriteLine($" - Compiling {GenerateName(concreteType)}");
                 ResolveConcreteType(concreteType);
 
+                var context = new GenericContext(null, type.GenericParams, version.Generics, concreteType);
+
                 if (version.DefaultImplementation != null)
                 {
-                    CompileImplementation(usedType.Name, version.DefaultImplementation);
+                    CompileImplementation(context, version.DefaultImplementation);
                 }
 
                 foreach (var imp in version.Implementations.Values)
                 {
-                    CompileImplementation(usedType.Name, imp);
+                    CompileImplementation(context, imp);
                 }
             }
         }
 
-        private void CompileImplementation(QualifiedName type, UsedImplementation usedImp)
+        private void CompileImplementation(GenericContext context, UsedImplementation usedImp)
         {
-            var genericContext = new GenericContext(
-                null,
-                ImmutableList<string>.Empty,
-                ImmutableArray<TypeRef>.Empty,
-                new ConcreteTypeRef(type, ImmutableArray<TypeRef>.Empty)
-            );
-
             foreach (var usedFunc in usedImp.Functions.Values)
             {
-                var (imp, func) = Store.LookupImplementation(type, usedImp.Interface, usedFunc.Name.Parts.Single());
-                CompileFunction(func, genericContext);
+                var (imp, func) = Store.LookupImplementation(context.ThisRef, usedImp.Interface,
+                    usedFunc.Name.Parts.Single());
+                CompileFunction(func, context);
             }
         }
 

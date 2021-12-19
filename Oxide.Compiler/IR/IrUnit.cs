@@ -159,7 +159,7 @@ namespace Oxide.Compiler.IR
                     solutions.Add(new ResolvedFunction
                     {
                         Interface = ifaceRef,
-                        InterfaceGenerics = impContext.Generics,
+                        ImplementationGenerics = impContext.Generics,
                         Function = function
                     });
                     break;

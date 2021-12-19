@@ -163,7 +163,7 @@ namespace Oxide.Compiler.Backend.Llvm
                 if (_returnSlot.HasValue)
                 {
                     var (retType, retVal) = LoadSlot(_returnSlot.Value, "loaded_return_value", true);
-                    if (!Equals(retType, _func.ReturnType))
+                    if (!Equals(retType, FunctionContext.ResolveRef(_func.ReturnType)))
                     {
                         throw new Exception("Incompatible return type");
                     }
@@ -424,7 +424,8 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private void CompileAllocStructInst(AllocStructInst inst)
         {
-            StoreSlot(inst.SlotId, ZeroInit(inst.StructType), inst.StructType);
+            var structType = FunctionContext.ResolveRef(inst.StructType);
+            StoreSlot(inst.SlotId, ZeroInit(structType), structType);
         }
 
         private LLVMValueRef ZeroInit(TypeRef tref)
@@ -494,54 +495,28 @@ namespace Oxide.Compiler.Backend.Llvm
         {
             Function funcDef;
             GenericContext funcContext;
-            switch (inst.TargetType)
+
+            if (inst.TargetType != null)
             {
-                case null:
-                    funcDef = Store.Lookup<Function>(inst.TargetMethod);
-                    funcContext = new GenericContext(
-                        null,
-                        ImmutableList<string>.Empty,
-                        ImmutableArray<TypeRef>.Empty,
-                        null
-                    );
-                    break;
-                case ConcreteTypeRef concreteTypeRef:
-                {
-                    Implementation imp;
-                    (imp, funcDef) = Store.LookupImplementation(
-                        concreteTypeRef.Name,
-                        inst.TargetImplementation,
-                        inst.TargetMethod.Parts.Single()
-                    );
-                    funcContext = new GenericContext(
-                        null,
-                        ImmutableList<string>.Empty,
-                        ImmutableArray<TypeRef>.Empty,
-                        new ConcreteTypeRef(imp.Target, ImmutableArray<TypeRef>.Empty)
-                    );
-                    break;
-                }
-                case ThisTypeRef:
-                {
-                    Implementation imp;
-                    (imp, funcDef) = Store.LookupImplementation(
-                        FunctionContext.ThisRef.Name,
-                        inst.TargetImplementation,
-                        inst.TargetMethod.Parts.Single()
-                    );
-                    funcContext = new GenericContext(
-                        null,
-                        ImmutableList<string>.Empty,
-                        ImmutableArray<TypeRef>.Empty,
-                        new ConcreteTypeRef(imp.Target, ImmutableArray<TypeRef>.Empty)
-                    );
-                    break;
-                }
-                case DerivedTypeRef derivedTypeRef:
-                case GenericTypeRef genericTypeRef:
-                    throw new NotImplementedException();
-                default:
-                    throw new ArgumentOutOfRangeException();
+                var targetType = (ConcreteTypeRef)FunctionContext.ResolveRef(inst.TargetType);
+                (_, funcDef) = Store.LookupImplementation(
+                    targetType,
+                    inst.TargetImplementation,
+                    inst.TargetMethod.Parts.Single()
+                );
+
+                var type = Store.Lookup(targetType.Name);
+                funcContext = new GenericContext(
+                    null,
+                    type.GenericParams,
+                    targetType.GenericParams,
+                    targetType
+                );
+            }
+            else
+            {
+                funcDef = Store.Lookup<Function>(inst.TargetMethod);
+                funcContext = GenericContext.Default;
             }
 
             if (funcDef == null)
@@ -615,8 +590,9 @@ namespace Oxide.Compiler.Backend.Llvm
                     throw new Exception("Function does not return a value");
                 }
 
+                var returnType = funcContext.ResolveRef(funcDef.ReturnType);
                 var value = Builder.BuildCall(funcRef, args.ToArray(), $"{name}_ret");
-                StoreSlot(inst.ResultSlot.Value, value, funcDef.ReturnType);
+                StoreSlot(inst.ResultSlot.Value, value, returnType);
             }
             else
             {
@@ -639,7 +615,7 @@ namespace Oxide.Compiler.Backend.Llvm
             if (inst.ReturnSlot.HasValue)
             {
                 var (retType, retValue) = LoadSlot(inst.ReturnSlot.Value, $"inst_{inst.Id}_load");
-                if (!Equals(retType, _func.ReturnType))
+                if (!Equals(retType, FunctionContext.ResolveRef(_func.ReturnType)))
                 {
                     throw new Exception("Invalid return type");
                 }
