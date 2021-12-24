@@ -11,6 +11,8 @@ namespace Oxide.Compiler.IR.Types
 
         public Dictionary<int, SlotDeclaration> Slots { get; }
 
+        public bool Unsafe { get; init; }
+
         private readonly Dictionary<string, int> _variableMapping;
 
         public Scope()

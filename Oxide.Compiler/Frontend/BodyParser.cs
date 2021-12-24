@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Oxide.Compiler.IR;
 using Oxide.Compiler.IR.Instructions;
 using Oxide.Compiler.IR.TypeRefs;
@@ -53,7 +54,7 @@ namespace Oxide.Compiler.Frontend
 
         public int ParseBody(OxideParser.BlockContext ctx)
         {
-            var scope = PushScope();
+            var scope = PushScope(false);
 
             for (var i = 0; i < _function.Parameters.Count; i++)
             {
@@ -277,15 +278,10 @@ namespace Oxide.Compiler.Frontend
             {
                 case OxideParser.Block_block_expressionContext child:
                 {
-                    if (child.UNSAFE() != null)
-                    {
-                        throw new NotImplementedException("Unsafe blocks");
-                    }
-
                     var originalScope = CurrentScope;
                     var originalBlock = CurrentBlock;
 
-                    PushScope();
+                    PushScope(child.UNSAFE() != null);
                     var block = NewBlock(CurrentScope);
                     MakeCurrent(block);
 
@@ -363,7 +359,7 @@ namespace Oxide.Compiler.Frontend
 
                     // Configure jump paths
                     var returnBlock = NewBlock(originalScope);
-                    PushScope();
+                    PushScope(false);
                     var trueBlock = NewBlock(CurrentScope);
                     RestoreScope(originalScope);
 
@@ -714,8 +710,10 @@ namespace Oxide.Compiler.Frontend
                 case OxideParser.Pass_cast_expressionContext passCastExpressionContext:
                     return ParseShiftExpression(passCastExpressionContext.shift_expression());
                 case OxideParser.Op_cast_expressionContext opCastExpressionContext:
+                {
                     throw new NotImplementedException("cast expression");
                     break;
+                }
                 default:
                     throw new ArgumentOutOfRangeException(nameof(ctx));
             }
@@ -1531,12 +1529,13 @@ namespace Oxide.Compiler.Frontend
             return new SlotUnrealisedAccess(slotDec);
         }
 
-        private Scope PushScope()
+        private Scope PushScope(bool @unsafe)
         {
             var scope = new Scope
             {
                 Id = ++_lastScopeId,
-                ParentScope = CurrentScope
+                ParentScope = CurrentScope,
+                Unsafe = (CurrentScope?.Unsafe ?? false) || @unsafe,
             };
 
             CurrentScope = scope;

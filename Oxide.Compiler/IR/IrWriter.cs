@@ -83,14 +83,14 @@ namespace Oxide.Compiler.IR
         {
             BeginLine();
             Write("implement");
-            
+
             if (imp.GenericParams.Length > 0)
             {
                 Write("<");
                 Write(string.Join(", ", imp.GenericParams));
                 Write(">");
             }
-            
+
             Write(" ");
 
             if (imp.Interface != null)
@@ -183,6 +183,11 @@ namespace Oxide.Compiler.IR
         {
             WriteLine($"scope @{scope.Id} {{");
             _indentLevel++;
+
+            if (scope.Unsafe)
+            {
+                WriteLine("flags unsafe");
+            }
 
             foreach (var slotDec in scope.Slots.Values)
             {
