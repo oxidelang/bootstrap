@@ -208,7 +208,8 @@ func_body
     ;
 
 block
-    : LBRACE statement* expression?  RBRACE
+    : LBRACE statement* expression RBRACE
+    | LBRACE statement* RBRACE
     ;
 
 statement

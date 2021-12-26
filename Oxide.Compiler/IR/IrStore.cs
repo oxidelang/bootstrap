@@ -16,6 +16,40 @@ namespace Oxide.Compiler.IR
             _units = new List<IrUnit>();
         }
 
+        public (bool castable, bool @unsafe) CanCastTypes(TypeRef a, TypeRef b)
+        {
+            if (Equals(a, b))
+            {
+                return (true, false);
+            }
+
+            switch (a)
+            {
+                case BaseTypeRef baseTypeRef:
+                    return (Equals(baseTypeRef, b), false);
+                case BorrowTypeRef:
+                {
+                    switch (b)
+                    {
+                        case PointerTypeRef:
+                        case ReferenceTypeRef:
+                        case BaseTypeRef:
+                            return (false, false);
+                        case BorrowTypeRef:
+                            return (true, true);
+                        default:
+                            throw new ArgumentOutOfRangeException(nameof(b));
+                    }
+                }
+                case PointerTypeRef pointerTypeRef:
+                    throw new NotImplementedException();
+                case ReferenceTypeRef referenceTypeRef:
+                    throw new NotImplementedException();
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(a));
+            }
+        }
+
         public void AddUnit(IrUnit unit)
         {
             _units.Add(unit);
@@ -122,7 +156,8 @@ namespace Oxide.Compiler.IR
                 .FirstOrDefault(result => result != null);
         }
 
-        public (Implementation imp, Function function) LookupImplementation(ConcreteTypeRef target, ConcreteTypeRef iface,
+        public (Implementation imp, Function function) LookupImplementation(ConcreteTypeRef target,
+            ConcreteTypeRef iface,
             string func)
         {
             foreach (var unit in _units)

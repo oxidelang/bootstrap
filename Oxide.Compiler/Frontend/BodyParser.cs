@@ -711,8 +711,36 @@ namespace Oxide.Compiler.Frontend
                     return ParseShiftExpression(passCastExpressionContext.shift_expression());
                 case OxideParser.Op_cast_expressionContext opCastExpressionContext:
                 {
-                    throw new NotImplementedException("cast expression");
-                    break;
+                    var exp = ParseCastExpression(opCastExpressionContext.cast_expression());
+                    var target = ParseType(opCastExpressionContext.type());
+                    var slot = exp.GenerateMove(this, CurrentBlock);
+
+                    var (castable, unsafeCast) = _store.CanCastTypes(slot.Type, target);
+                    if (!castable)
+                    {
+                        throw new Exception($"Cannot cast from {slot.Type} to {target}");
+                    }
+
+                    if (!CurrentScope.Unsafe && unsafeCast)
+                    {
+                        throw new Exception($"Cast from {slot.Type} to {target} is unsafe");
+                    }
+
+                    var resultSlot = CurrentScope.DefineSlot(new SlotDeclaration
+                    {
+                        Id = ++LastSlotId,
+                        Type = target
+                    });
+
+                    CurrentBlock.AddInstruction(new CastInst
+                    {
+                        Id = ++LastInstId,
+                        SourceSlot = slot.Id,
+                        ResultSlot = resultSlot.Id,
+                        TargetType = target
+                    });
+
+                    return new SlotUnrealisedAccess(resultSlot);
                 }
                 default:
                     throw new ArgumentOutOfRangeException(nameof(ctx));
@@ -1566,11 +1594,6 @@ namespace Oxide.Compiler.Frontend
             _currentBlockId = block.Id;
         }
 
-        private TypeRef ParseType(OxideParser.TypeContext ctx)
-        {
-            return _fileParser.ParseType(ctx, _function.GenericParams);
-        }
-
         private QualifiedName ResolveQN(QualifiedName qn)
         {
             return _fileParser.ResolveQN(qn);
@@ -1623,6 +1646,11 @@ namespace Oxide.Compiler.Frontend
                 default:
                     throw new ArgumentOutOfRangeException(nameof(type));
             }
+        }
+
+        private TypeRef ParseType(OxideParser.TypeContext ctx)
+        {
+            return _fileParser.ParseType(ctx, _function.GenericParams.AddRange(_parentGenerics));
         }
 
         private BaseTypeRef ParseDirectType(OxideParser.Direct_typeContext ctx)

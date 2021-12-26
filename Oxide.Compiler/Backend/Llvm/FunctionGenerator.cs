@@ -252,6 +252,9 @@ namespace Oxide.Compiler.Backend.Llvm
                 case LoadIndirectInst loadIndirectInst:
                     CompileLoadIndirectInst(loadIndirectInst);
                     break;
+                case CastInst castInst:
+                    CompileCastInst(castInst);
+                    break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(instruction));
             }
@@ -806,6 +809,66 @@ namespace Oxide.Compiler.Backend.Llvm
 
             var value = Builder.BuildLoad(addr, $"inst_{inst.Id}_load");
             StoreSlot(inst.TargetSlot, value, innerTypeRef);
+        }
+
+        private void CompileCastInst(CastInst inst)
+        {
+            var (type, value) = LoadSlot(inst.SourceSlot, $"inst_{inst.Id}_load");
+            var targetType = FunctionContext.ResolveRef(inst.TargetType);
+
+            LLVMValueRef converted;
+
+
+            switch (type)
+            {
+                case BaseTypeRef baseTypeRef:
+                    if (Equals(baseTypeRef, targetType))
+                    {
+                        converted = value;
+                    }
+                    else
+                    {
+                        throw new NotImplementedException();
+                    }
+
+                    break;
+                case BorrowTypeRef:
+                {
+                    if (targetType is not BorrowTypeRef)
+                    {
+                        throw new Exception("Incompatible conversion");
+                    }
+
+                    if (!CurrentBlock.Scope.Unsafe)
+                    {
+                        throw new Exception("Conversion is unsafe");
+                    }
+
+                    converted = value;
+                    break;
+                }
+                case PointerTypeRef:
+                {
+                    if (targetType is not PointerTypeRef)
+                    {
+                        throw new Exception("Incompatible conversion");
+                    }
+
+                    if (!CurrentBlock.Scope.Unsafe)
+                    {
+                        throw new Exception("Conversion is unsafe");
+                    }
+
+                    converted = value;
+                    break;
+                }
+                case ReferenceTypeRef referenceTypeRef:
+                    throw new NotImplementedException();
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(type));
+            }
+
+            StoreSlot(inst.ResultSlot, converted, targetType);
         }
 
         private bool IsIntegerBacked(TypeRef typeRef)
