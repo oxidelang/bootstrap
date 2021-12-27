@@ -39,7 +39,8 @@ namespace Oxide.Compiler.IR
                         ifaces.Add(iface);
                         break;
                     case Variant variant:
-                        throw new NotImplementedException();
+                        writer.WriteVariant(variant);
+                        break;
                     case PrimitiveType primitiveType:
                         throw new Exception("Unexpected");
                     default:
@@ -78,17 +79,36 @@ namespace Oxide.Compiler.IR
 
         public OxObj Lookup(QualifiedName qn)
         {
-            return Objects.ContainsKey(qn) ? Objects[qn] : null;
+            if (Objects.TryGetValue(qn, out var obj))
+            {
+                return obj;
+            }
+
+            if (
+                qn.IsAbsolute &&
+                Objects.TryGetValue(
+                    new QualifiedName(true, qn.Parts.RemoveAt(qn.Parts.Length - 1)),
+                    out obj
+                ) &&
+                obj is Variant variant &&
+                variant.TryGetItem(qn.Parts.Last(), out var item)
+            )
+            {
+                return item.Content;
+            }
+
+            return null;
         }
 
         public T Lookup<T>(QualifiedName qn) where T : OxObj
         {
-            if (!Objects.ContainsKey(qn))
+            var found = Lookup(qn);
+
+            if (found == null)
             {
-                return default;
+                return null;
             }
 
-            var found = Objects[qn];
             if (found is not T obj)
             {
                 throw new Exception($"{qn} is not of expected type");

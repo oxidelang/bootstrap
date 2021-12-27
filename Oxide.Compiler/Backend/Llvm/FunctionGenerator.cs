@@ -255,6 +255,9 @@ namespace Oxide.Compiler.Backend.Llvm
                 case CastInst castInst:
                     CompileCastInst(castInst);
                     break;
+                case AllocVariantInst allocVariantInst:
+                    CompileAllocVariantInst(allocVariantInst);
+                    break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(instruction));
             }
@@ -441,6 +444,8 @@ namespace Oxide.Compiler.Backend.Llvm
             var val = Store.Lookup(concreteTypeRef.Name);
             switch (val)
             {
+                case null:
+                    throw new Exception($"Unable to resolve {tref}");
                 case PrimitiveType primitiveType:
                     switch (primitiveType.Kind)
                     {
@@ -466,8 +471,27 @@ namespace Oxide.Compiler.Backend.Llvm
                     return LLVMValueRef.CreateConstNamedStruct(baseType, consts.ToArray());
                 }
                 case Interface @interface:
-                case Variant variant:
                     throw new NotImplementedException($"Zero init not implemented for {val}");
+                case Variant variant:
+                {
+                    var baseType = Backend.ConvertType(concreteTypeRef);
+                    var bodySize = Backend.GetVariantBodySize(variant, concreteTypeRef.GenericParams);
+
+                    var emptyBody = new LLVMValueRef[bodySize];
+                    for (var i = 0; i < bodySize; i++)
+                    {
+                        emptyBody[i] = LLVMValueRef.CreateConstInt(LLVMTypeRef.Int8, 0);
+                    }
+
+                    return LLVMValueRef.CreateConstNamedStruct(baseType, new[]
+                    {
+                        LLVMValueRef.CreateConstInt(LLVMTypeRef.Int8, 0),
+                        LLVMValueRef.CreateConstArray(
+                            LLVMTypeRef.Int8,
+                            emptyBody
+                        )
+                    });
+                }
                 default:
                     throw new ArgumentOutOfRangeException(nameof(val));
             }
@@ -869,6 +893,61 @@ namespace Oxide.Compiler.Backend.Llvm
             }
 
             StoreSlot(inst.ResultSlot, converted, targetType);
+        }
+
+        private void CompileAllocVariantInst(AllocVariantInst inst)
+        {
+            var variant = Store.Lookup<Variant>(inst.VariantType.Name);
+            var variantTypeRef = FunctionContext.ResolveRef(inst.VariantType);
+            var variantItemRef = new ConcreteTypeRef(
+                new QualifiedName(true, inst.VariantType.Name.Parts.Add(inst.ItemName)),
+                inst.VariantType.GenericParams
+            );
+            var variantItemType = Backend.ConvertType(variantItemRef);
+
+            var variantValue = ZeroInit(variantTypeRef);
+            StoreSlot(inst.SlotId, variantValue, variantTypeRef);
+
+            var (_, baseAddr) = GetSlotRef(inst.SlotId);
+
+            // Create type value
+            var typeAddr = Builder.BuildInBoundsGEP(
+                baseAddr,
+                new[]
+                {
+                    LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0),
+                    LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0)
+                },
+                $"inst_{inst.Id}_taddr"
+            );
+            var index = variant.Items.FindIndex(x => x.Name == inst.ItemName);
+            Builder.BuildStore(LLVMValueRef.CreateConstInt(LLVMTypeRef.Int8, (ulong)index), typeAddr);
+
+            if (inst.ItemSlot is not { } slotId) return;
+
+            // Store variant value
+            var valueAddr = Builder.BuildInBoundsGEP(
+                baseAddr,
+                new[]
+                {
+                    LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0),
+                    LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 1)
+                },
+                $"inst_{inst.Id}_vaddr"
+            );
+            var castedAddr = Builder.BuildBitCast(
+                valueAddr,
+                LLVMTypeRef.CreatePointer(variantItemType, 0),
+                $"inst_{inst.Id}_vaddr_cast"
+            );
+
+            var (type, value) = LoadSlot(slotId, $"inst_{inst.Id}_load");
+            if (!Equals(type, variantItemRef))
+            {
+                throw new Exception("Invalid variant item type");
+            }
+
+            Builder.BuildStore(value, castedAddr);
         }
 
         private bool IsIntegerBacked(TypeRef typeRef)

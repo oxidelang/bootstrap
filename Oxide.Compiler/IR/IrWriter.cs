@@ -50,6 +50,55 @@ namespace Oxide.Compiler.IR
             EndLine();
         }
 
+        public void WriteVariant(Variant variant)
+        {
+            BeginLine();
+            Write("variant ");
+            WriteVisibility(@variant.Visibility);
+            Write(" ");
+            WriteQn(variant.Name);
+            if (variant.GenericParams.Count > 0)
+            {
+                Write("<");
+                Write(string.Join(", ", variant.GenericParams));
+                Write(">");
+            }
+
+            Write(" {");
+            EndLine();
+            _indentLevel++;
+
+            foreach (var variantItem in variant.Items)
+            {
+                WriteLine($"{variantItem.Name} {{");
+                _indentLevel++;
+
+                if (variantItem.NamedFields)
+                {
+                    WriteLine("flags named");
+                }
+
+                if (variantItem.Content != null)
+                {
+                    foreach (var field in variantItem.Content.Fields)
+                    {
+                        BeginLine();
+                        Write($"field {(field.Mutable ? "mut" : "readonly")} {field.Name} ");
+                        WriteType(field.Type);
+                        EndLine();
+                    }
+                }
+
+                _indentLevel--;
+                WriteLine("}");
+            }
+
+            _indentLevel--;
+            BeginLine();
+            Write("}");
+            EndLine();
+        }
+
         public void WriteInterface(Interface iface)
         {
             BeginLine();

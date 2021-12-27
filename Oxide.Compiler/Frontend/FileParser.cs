@@ -115,7 +115,8 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        private Function ParseFunc(OxideParser.Func_defContext ctx, object owner, bool allowThis, ImmutableList<string> parentGenerics)
+        private Function ParseFunc(OxideParser.Func_defContext ctx, object owner, bool allowThis,
+            ImmutableList<string> parentGenerics)
         {
             var vis = ctx.visibility().Parse();
             var funcName = ctx.name().GetText();
@@ -254,7 +255,7 @@ namespace Oxide.Compiler.Frontend
             var vis = ctx.visibility().Parse();
             var variantName = new QualifiedName(true, Package.Parts.Add(ctx.name().GetText()));
             var genericParams = ctx.generic_def()?.Parse() ?? new List<string>();
-            var items = new Dictionary<string, VariantItem>();
+            var items = new List<VariantItem>();
 
             foreach (var itemDef in ctx.variant_item_def())
             {
@@ -263,9 +264,10 @@ namespace Oxide.Compiler.Frontend
                     case OxideParser.Simple_variant_item_defContext simpleDef:
                     {
                         var itemName = simpleDef.name().GetText();
-                        items.Add(itemName, new VariantItem
+                        items.Add(new VariantItem
                         {
                             Name = itemName,
+                            NamedFields = false,
                             Content = null
                         });
                         break;
@@ -287,9 +289,10 @@ namespace Oxide.Compiler.Frontend
                             });
                         }
 
-                        items.Add(itemName, new VariantItem
+                        items.Add(new VariantItem
                         {
                             Name = itemName,
+                            NamedFields = true,
                             Content = new Struct(
                                 new QualifiedName(true, variantName.Parts.Add(itemName)),
                                 Visibility.Public,
@@ -317,9 +320,10 @@ namespace Oxide.Compiler.Frontend
                             });
                         }
 
-                        items.Add(itemName, new VariantItem
+                        items.Add(new VariantItem
                         {
                             Name = itemName,
+                            NamedFields = false,
                             Content = new Struct(
                                 new QualifiedName(true, variantName.Parts.Add(itemName)),
                                 Visibility.Public,
@@ -341,7 +345,7 @@ namespace Oxide.Compiler.Frontend
                     Name = variantName,
                     Visibility = vis,
                     GenericParams = genericParams.ToImmutableList(),
-                    Items = items.ToImmutableDictionary()
+                    Items = items.ToImmutableList()
                 }
             );
         }

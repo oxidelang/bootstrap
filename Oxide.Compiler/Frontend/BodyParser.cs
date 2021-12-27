@@ -1318,6 +1318,10 @@ namespace Oxide.Compiler.Frontend
         private UnrealisedAccess ParseFunctionCall(OxideParser.Function_call_base_expressionContext ctx)
         {
             var qns = ctx.qualified_name();
+            var argumentCtxs = ctx.arguments() != null
+                ? ctx.arguments().argument()
+                : Array.Empty<OxideParser.ArgumentContext>();
+
             Function functionDef;
             BaseTypeRef targetType;
             ConcreteTypeRef targetImplementation;
@@ -1330,6 +1334,23 @@ namespace Oxide.Compiler.Frontend
                 var targetGenerics = ctx.qn_generics.type().Select(ParseType).ToImmutableArray();
                 var target = new ConcreteTypeRef(targetName, targetGenerics);
                 var functionName = qns[1].Parse().Parts.Single();
+
+                switch (Lookup(targetName))
+                {
+                    case null:
+                        throw new Exception($"Unable to resolve {targetName}");
+                    case Struct:
+                        break;
+                    case Function:
+                    case PrimitiveType:
+                    case Interface:
+                        throw new Exception("Unexpected type");
+                    case Variant:
+                        return ParseTupleVariantAlloc(target, functionName, argumentCtxs);
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+
 
                 var result = ResolveFunction(target, functionName);
                 targetImplementation = result.Interface;
@@ -1364,10 +1385,6 @@ namespace Oxide.Compiler.Frontend
             {
                 throw new NotImplementedException("Generic method params in function call expressions not implemented");
             }
-
-            var argumentCtxs = ctx.arguments() != null
-                ? ctx.arguments().argument()
-                : Array.Empty<OxideParser.ArgumentContext>();
 
             if (argumentCtxs.Length != functionDef.Parameters.Count)
             {
@@ -1435,6 +1452,138 @@ namespace Oxide.Compiler.Frontend
                 Arguments = argIds.ToImmutableList(),
             });
             return null;
+        }
+
+        private UnrealisedAccess ParseTupleVariantAlloc(ConcreteTypeRef target, string itemName,
+            OxideParser.ArgumentContext[] argumentCtxs)
+        {
+            var variant = Lookup<Variant>(target.Name);
+            var variantContext = new GenericContext(null, variant.GenericParams, target.GenericParams, null);
+
+            if (!variant.TryGetItem(itemName, out var item))
+            {
+                throw new Exception($"Unknown variant item {itemName}");
+            }
+
+            var itemRef = new ConcreteTypeRef(
+                new QualifiedName(true, variant.Name.Parts.Add(item.Name)),
+                target.GenericParams
+            );
+
+            int? itemSlotId = null;
+            if (item.Content != null)
+            {
+                if (item.NamedFields)
+                {
+                    throw new Exception("Cannot use tuple initializer on named struct");
+                }
+
+                var variantItemSlot = CurrentScope.DefineSlot(new SlotDeclaration
+                {
+                    Id = ++LastSlotId,
+                    Name = null,
+                    Type = itemRef,
+                    Mutable = true
+                });
+                itemSlotId = variantItemSlot.Id;
+
+                CurrentBlock.AddInstruction(new AllocStructInst
+                {
+                    Id = ++LastInstId,
+                    SlotId = variantItemSlot.Id,
+                    StructType = itemRef
+                });
+
+                var accessItemSlot = CurrentScope.DefineSlot(new SlotDeclaration
+                {
+                    Id = ++LastSlotId,
+                    Name = null,
+                    Type = new BorrowTypeRef(itemRef, true),
+                    Mutable = false
+                });
+
+                CurrentBlock.AddInstruction(new SlotBorrowInst
+                {
+                    Id = ++LastInstId,
+                    BaseSlot = variantItemSlot.Id,
+                    Mutable = true,
+                    TargetSlot = accessItemSlot.Id
+                });
+
+                var fields = item.Content.Fields;
+                if (fields.Count != argumentCtxs.Length)
+                {
+                    throw new Exception("Invalid number of tuple arguments");
+                }
+
+
+                for (var i = 0; i < fields.Count; i++)
+                {
+                    var field = fields[i];
+                    var fieldType = variantContext.ResolveRef(field.Type);
+                    var arg = argumentCtxs[i];
+
+                    if (arg.label() != null)
+                    {
+                        throw new Exception("Argument labels are not supported in tuples");
+                    }
+
+                    var exp = ParseExpression(arg.expression());
+                    if (exp == null)
+                    {
+                        throw new Exception($"Argument {i} does not return a value");
+                    }
+
+                    var expSlot = exp.GenerateMove(this, CurrentBlock);
+                    if (!expSlot.Type.Equals(fieldType))
+                    {
+                        throw new Exception($"Field type mismatch {exp.Type} != {fieldType}");
+                    }
+
+                    var accessFieldSlot = CurrentScope.DefineSlot(new SlotDeclaration
+                    {
+                        Id = ++LastSlotId,
+                        Name = null,
+                        Type = new BorrowTypeRef(fieldType, true),
+                        Mutable = false
+                    });
+
+                    CurrentBlock.AddInstruction(new FieldBorrowInst
+                    {
+                        Id = ++LastInstId,
+                        BaseSlot = accessItemSlot.Id,
+                        Mutable = true,
+                        TargetSlot = accessFieldSlot.Id,
+                        TargetField = field.Name,
+                    });
+
+                    CurrentBlock.AddInstruction(new StoreIndirectInst
+                    {
+                        Id = ++LastInstId,
+                        TargetSlot = accessFieldSlot.Id,
+                        ValueSlot = expSlot.Id
+                    });
+                }
+            }
+
+            var variantSlot = CurrentScope.DefineSlot(new SlotDeclaration
+            {
+                Id = ++LastSlotId,
+                Name = null,
+                Type = target,
+                Mutable = true
+            });
+
+            CurrentBlock.AddInstruction(new AllocVariantInst
+            {
+                Id = ++LastInstId,
+                SlotId = variantSlot.Id,
+                VariantType = target,
+                ItemName = item.Name,
+                ItemSlot = itemSlotId
+            });
+
+            return new SlotUnrealisedAccess(variantSlot);
         }
 
         private UnrealisedAccess ParseQnExpression(OxideParser.Qualified_base_expressionContext ctx)

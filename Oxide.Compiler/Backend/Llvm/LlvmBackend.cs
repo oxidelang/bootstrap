@@ -26,12 +26,17 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private Dictionary<ConcreteTypeRef, LLVMTypeRef> _typeStore;
 
+        private Dictionary<ConcreteTypeRef, uint> _typeSizeStore;
+
         private Dictionary<Function, LLVMValueRef> _functionRefs;
+
+        private LLVMTargetDataRef DataLayout { get; set; }
 
         public LlvmBackend(IrStore store, MiddlewareManager middleware)
         {
             Store = store;
             Middleware = middleware;
+            _typeSizeStore = new Dictionary<ConcreteTypeRef, uint>();
             _typeStore = new Dictionary<ConcreteTypeRef, LLVMTypeRef>();
             _typeStore.Add(PrimitiveType.I32Ref, LLVMTypeRef.Int32);
             _typeStore.Add(PrimitiveType.BoolRef, LLVMTypeRef.Int1);
@@ -42,6 +47,7 @@ namespace Oxide.Compiler.Backend.Llvm
         {
             Module = LLVMModuleRef.CreateWithName("OxideModule");
             Context = Module.Context;
+            DataLayout = LLVMTargetDataRef.FromStringRepresentation(Module.DataLayout);
         }
 
         public void Compile()
@@ -253,10 +259,55 @@ namespace Oxide.Compiler.Backend.Llvm
                 case Interface interfaceDef:
                     throw new NotImplementedException("Interface types not implemented");
                 case Variant variantDef:
-                    throw new NotImplementedException("Variant types not implemented");
+                {
+                    var structType = Context.CreateNamedStruct(GenerateName(typeRef));
+                    _typeStore.Add(typeRef, structType);
+
+                    var bodySize = GetVariantBodySize(variantDef, typeRef.GenericParams);
+
+                    structType.StructSetBody(new[]
+                    {
+                        LLVMTypeRef.Int8,
+                        LLVMTypeRef.CreateArray(LLVMTypeRef.Int8, bodySize)
+                    }, false);
+
+                    return structType;
+                }
                 default:
                     throw new ArgumentOutOfRangeException(nameof(objectDef));
             }
+        }
+
+        public uint GetVariantBodySize(Variant variant, ImmutableArray<TypeRef> genericParams)
+        {
+            ulong maxSize = 0;
+
+            foreach (var item in variant.Items)
+            {
+                if (item.Content == null) continue;
+
+                var itemRef = new ConcreteTypeRef(
+                    new QualifiedName(true, variant.Name.Parts.Add(item.Name)),
+                    genericParams
+                );
+                maxSize = Math.Max(maxSize, GetConcreteTypeSize(itemRef));
+            }
+
+            return (uint)maxSize;
+        }
+
+        public uint GetConcreteTypeSize(ConcreteTypeRef typeRef)
+        {
+            if (_typeSizeStore.TryGetValue(typeRef, out var size))
+            {
+                return size;
+            }
+
+            var resolvedType = ResolveConcreteType(typeRef);
+            size = (uint)DataLayout.ABISizeOfType(resolvedType);
+            _typeSizeStore.Add(typeRef, size);
+
+            return size;
         }
 
         private string GenerateName(TypeRef typeRef)

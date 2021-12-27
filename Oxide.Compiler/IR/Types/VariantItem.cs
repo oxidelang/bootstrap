@@ -4,6 +4,8 @@ namespace Oxide.Compiler.IR.Types
     {
         public string Name { get; init; }
 
+        public bool NamedFields { get; init; }
+
         public Struct Content { get; init; }
     }
 }
