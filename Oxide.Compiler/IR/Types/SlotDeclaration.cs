@@ -13,5 +13,7 @@ namespace Oxide.Compiler.IR.Types
         public bool Mutable { get; init; }
 
         public int? ParameterSource { get; init; }
+
+        public bool SetOnJump { get; init; }
     }
 }

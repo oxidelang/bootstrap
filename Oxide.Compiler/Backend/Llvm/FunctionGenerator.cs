@@ -258,6 +258,9 @@ namespace Oxide.Compiler.Backend.Llvm
                 case AllocVariantInst allocVariantInst:
                     CompileAllocVariantInst(allocVariantInst);
                     break;
+                case JumpVariantInst jumpVariantInst:
+                    CompileJumpVariantInst(jumpVariantInst);
+                    break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(instruction));
             }
@@ -516,6 +519,134 @@ namespace Oxide.Compiler.Backend.Llvm
 
             // TODO: Real cleanup
             // throw new NotImplementedException("Jump inst");
+        }
+
+        private void CompileJumpVariantInst(JumpVariantInst inst)
+        {
+            var (varType, rawVarRef) = GetSlotRef(inst.VariantSlot);
+
+            LLVMValueRef varRef;
+            switch (varType)
+            {
+                case BaseTypeRef:
+                    varRef = rawVarRef;
+                    break;
+                case PointerTypeRef:
+                case BorrowTypeRef:
+                    varRef = Builder.BuildLoad(rawVarRef, $"inst_{inst.Id}_laddr");
+                    break;
+                case ReferenceTypeRef referenceTypeRef:
+                    throw new NotImplementedException();
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+
+            var expectedVarType = new ConcreteTypeRef(
+                new QualifiedName(
+                    true,
+                    inst.VariantItemType.Name.Parts.RemoveAt(inst.VariantItemType.Name.Parts.Length - 1)
+                ),
+                inst.VariantItemType.GenericParams
+            );
+
+            if (!Equals(varType.GetBaseType(), expectedVarType))
+            {
+                throw new Exception($"Variant type mismatch {varType} {expectedVarType}");
+            }
+
+            var variant = Store.Lookup<Variant>(expectedVarType.Name);
+            var itemName = inst.VariantItemType.Name.Parts.Last();
+            var index = variant.Items.FindIndex(x => x.Name == itemName);
+
+            var typeAddr = Builder.BuildInBoundsGEP(
+                varRef,
+                new[]
+                {
+                    LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0),
+                    LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0)
+                },
+                $"inst_{inst.Id}_taddr"
+            );
+            var typeVal = Builder.BuildLoad(typeAddr, $"inst_{inst.Id}_type");
+            var condVal = Builder.BuildICmp(
+                LLVMIntPredicate.LLVMIntEQ,
+                typeVal,
+                LLVMValueRef.CreateConstInt(LLVMTypeRef.Int8, (ulong)index),
+                $"inst_{inst.Id}_cond"
+            );
+
+            var trueBlock = _funcRef.AppendBasicBlock(
+                $"scope_{CurrentBlock.Scope.Id}_block_{CurrentBlock.Id}_inst_{inst.Id}"
+            );
+            Builder.BuildCondBr(condVal, trueBlock, _blockMap[inst.ElseBlock]);
+            Builder.PositionAtEnd(trueBlock);
+
+            switch (varType)
+            {
+                case BaseTypeRef:
+                    varRef = rawVarRef;
+                    break;
+                case PointerTypeRef:
+                case BorrowTypeRef:
+                    varRef = Builder.BuildLoad(rawVarRef, $"inst_{inst.Id}_laddr");
+                    break;
+                case ReferenceTypeRef referenceTypeRef:
+                    throw new NotImplementedException();
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+
+            var itemAddr = Builder.BuildInBoundsGEP(
+                varRef,
+                new[]
+                {
+                    LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0),
+                    LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 1)
+                },
+                $"inst_{inst.Id}_iaddr"
+            );
+            var variantItemType = Backend.ConvertType(inst.VariantItemType);
+            var castedAddr = Builder.BuildBitCast(
+                itemAddr,
+                LLVMTypeRef.CreatePointer(variantItemType, 0),
+                $"inst_{inst.Id}_iaddr_cast"
+            );
+
+            switch (varType)
+            {
+                case BaseTypeRef:
+                    if (IsCopyType(inst.VariantItemType))
+                    {
+                        var value = Builder.BuildLoad(castedAddr, $"inst_{inst.Id}_copy");
+                        StoreSlot(inst.ItemSlot, value, inst.VariantItemType, true);
+                    }
+                    else
+                    {
+                        throw new NotImplementedException("Field moves");
+                    }
+
+                    break;
+                case BorrowTypeRef borrowTypeRef:
+                    StoreSlot(
+                        inst.ItemSlot,
+                        castedAddr,
+                        new BorrowTypeRef(
+                            inst.VariantItemType,
+                            borrowTypeRef.MutableRef
+                        ),
+                        true
+                    );
+                    break;
+                case PointerTypeRef pointerTypeRef:
+                    throw new NotImplementedException();
+                case ReferenceTypeRef referenceTypeRef:
+                    throw new NotImplementedException();
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+
+            Builder.BuildBr(_blockMap[inst.TargetBlock]);
+            Builder.PositionAtEnd(_blockMap[CurrentBlock.Id]);
         }
 
         private void CompileStaticCallInst(StaticCallInst inst)

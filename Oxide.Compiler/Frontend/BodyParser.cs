@@ -344,27 +344,37 @@ namespace Oxide.Compiler.Frontend
 
         private UnrealisedAccess ParseIfExpression(OxideParser.If_expressionContext ctx)
         {
-            switch (ctx)
+            var originalScope = CurrentScope;
+            var originalBlock = CurrentBlock;
+
+            // Configure jump paths
+            var returnBlock = NewBlock(originalScope);
+            PushScope(false);
+            var trueBlock = NewBlock(CurrentScope);
+            RestoreScope(originalScope);
+
+            var hasElse = ctx.else_block != null || ctx.else_if != null;
+            Block falseBlock = null;
+            if (hasElse)
             {
-                case OxideParser.Simple_if_expressionContext child:
+                PushScope(false);
+                falseBlock = NewBlock(CurrentScope);
+                RestoreScope(originalScope);
+            }
+
+            MakeCurrent(originalBlock);
+
+            switch (ctx.if_condition())
+            {
+                case OxideParser.Simple_if_conditionContext simpleIfConditionContext:
                 {
-                    var condSlot = ParseExpression(child.expression()).GenerateMove(this, CurrentBlock);
+                    var condSlot = ParseExpression(simpleIfConditionContext.expression())
+                        .GenerateMove(this, CurrentBlock);
                     if (!Equals(condSlot.Type, PrimitiveType.BoolRef))
                     {
                         throw new Exception("Non-bool value");
                     }
 
-                    var originalScope = CurrentScope;
-                    var originalBlock = CurrentBlock;
-
-                    // Configure jump paths
-                    var returnBlock = NewBlock(originalScope);
-                    PushScope(false);
-                    var trueBlock = NewBlock(CurrentScope);
-                    RestoreScope(originalScope);
-
-                    var hasElse = child.else_block != null || child.else_if != null;
-                    var falseBlock = hasElse ? NewBlock(CurrentScope) : null;
                     originalBlock.AddInstruction(new JumpInst
                     {
                         Id = ++LastInstId,
@@ -372,95 +382,251 @@ namespace Oxide.Compiler.Frontend
                         TargetBlock = trueBlock.Id,
                         ElseBlock = hasElse ? falseBlock.Id : returnBlock.Id
                     });
+                    break;
+                }
+                case OxideParser.Var_if_conditionContext ifVar:
+                {
+                    var variantSlot = ParseExpression(ifVar.expression())
+                        .GenerateMove(this, CurrentBlock);
 
-                    MakeCurrent(trueBlock);
-                    var trueSlot = ParseBlock(child.body)?.GenerateMove(this, CurrentBlock);
-                    var trueFinalBlock = CurrentBlock;
-                    if (trueFinalBlock.HasTerminated)
+                    var qns = ifVar.qualified_name();
+                    ConcreteTypeRef variantType;
+                    string itemName;
+
+                    if (ifVar.qn_generics != null)
                     {
-                        throw new NotImplementedException("TODO");
+                        variantType = new ConcreteTypeRef(
+                            ResolveQN(qns[0].Parse()),
+                            ifVar.qn_generics.type().Select(ParseType).ToImmutableArray()
+                        );
+                        itemName = qns[1].Parse().Parts.Single();
+                    }
+                    else
+                    {
+                        var resolvedName = ResolveQN(qns[0].Parse());
+                        variantType = new ConcreteTypeRef(
+                            new QualifiedName(
+                                true,
+                                resolvedName.Parts.RemoveAt(resolvedName.Parts.Length - 1)
+                            ),
+                            ImmutableArray<TypeRef>.Empty
+                        );
+                        itemName = resolvedName.Parts.Last();
                     }
 
-                    SlotDeclaration falseSlot = null;
-                    Block falseFinalBlock = null;
-                    if (hasElse)
+                    var variant = Lookup<Variant>(variantType.Name);
+                    var variantContext = new GenericContext(
+                        null,
+                        variant.GenericParams,
+                        variantType.GenericParams,
+                        null
+                    );
+
+                    var itemRef = new ConcreteTypeRef(
+                        new QualifiedName(true,
+                            variantType.Name.Parts.Add(itemName)
+                        ),
+                        variantType.GenericParams
+                    );
+                    var variantItem = Lookup<Struct>(itemRef.Name);
+
+                    var mappings = new Dictionary<string, string>();
+                    switch (ifVar.if_var_values())
                     {
-                        MakeCurrent(falseBlock);
-                        falseSlot = (child.else_block != null
-                            ? ParseBlock(child.else_block)
-                            : ParseIfExpression(child.else_if))?.GenerateMove(this, CurrentBlock);
-                        falseFinalBlock = CurrentBlock;
-                        if (falseFinalBlock.HasTerminated)
+                        case OxideParser.Tuple_if_var_valuesContext tupleCtx:
                         {
-                            throw new NotImplementedException("TODO");
+                            var names = tupleCtx.name();
+                            for (var i = 0; i < names.Length; i++)
+                            {
+                                var name = names[i].GetText();
+                                var fieldName = variantItem.Fields[i].Name;
+                                mappings.Add(fieldName, name);
+                            }
+
+                            break;
                         }
+                        default:
+                            throw new ArgumentOutOfRangeException();
                     }
 
-                    MakeCurrent(returnBlock);
-
-                    if (hasElse && trueSlot != null && falseSlot != null)
+                    var itemSlot = trueBlock.Scope.DefineSlot(new SlotDeclaration
                     {
-                        if (!Equals(trueSlot.Type, falseSlot.Type))
+                        Id = ++LastSlotId,
+                        Name = null,
+                        Type = variantSlot.Type switch
                         {
-                            throw new NotImplementedException("Incompatible if block true and false path values");
-                        }
+                            BaseTypeRef => itemRef,
+                            BorrowTypeRef borrowTypeRef => new BorrowTypeRef(
+                                itemRef,
+                                borrowTypeRef.MutableRef
+                            ),
+                            PointerTypeRef pointerTypeRef => new BorrowTypeRef(
+                                itemRef,
+                                pointerTypeRef.MutableRef
+                            ),
+                            ReferenceTypeRef referenceTypeRef => throw new NotImplementedException(),
+                            _ => throw new ArgumentOutOfRangeException()
+                        },
+                        Mutable = false,
+                        SetOnJump = true,
+                    });
 
-                        var resultDec = originalScope.DefineSlot(new SlotDeclaration
+                    originalBlock.AddInstruction(new JumpVariantInst
+                    {
+                        Id = ++LastInstId,
+                        VariantSlot = variantSlot.Id,
+                        VariantItemType = itemRef,
+                        ItemSlot = itemSlot.Id,
+                        TargetBlock = trueBlock.Id,
+                        ElseBlock = hasElse ? falseBlock.Id : returnBlock.Id
+                    });
+
+                    foreach (var pair in mappings)
+                    {
+                        var fieldName = pair.Key;
+                        var field = variantItem.Fields.Single(x => x.Name == fieldName);
+                        var fieldType = variantContext.ResolveRef(field.Type);
+                        var varName = pair.Value;
+
+                        var fieldSlot = trueBlock.Scope.DefineSlot(new SlotDeclaration
                         {
                             Id = ++LastSlotId,
-                            Name = null,
-                            Type = trueSlot.Type,
+                            Name = varName,
+                            Type = variantSlot.Type switch
+                            {
+                                BaseTypeRef => fieldType,
+                                BorrowTypeRef borrowTypeRef => new BorrowTypeRef(
+                                    fieldType,
+                                    borrowTypeRef.MutableRef
+                                ),
+                                PointerTypeRef pointerTypeRef => new BorrowTypeRef(
+                                    fieldType,
+                                    pointerTypeRef.MutableRef
+                                ),
+                                ReferenceTypeRef referenceTypeRef => throw new NotImplementedException(),
+                                _ => throw new ArgumentOutOfRangeException()
+                            },
                             Mutable = false
                         });
 
-                        trueFinalBlock.AddInstruction(new MoveInst
+                        switch (variantSlot.Type)
                         {
-                            Id = ++LastInstId,
-                            SrcSlot = trueSlot.Id,
-                            DestSlot = resultDec.Id,
-                        });
-                        trueFinalBlock.AddInstruction(new JumpInst
-                        {
-                            Id = ++LastInstId,
-                            TargetBlock = returnBlock.Id
-                        });
-
-                        falseFinalBlock.AddInstruction(new MoveInst
-                        {
-                            Id = ++LastInstId,
-                            SrcSlot = falseSlot.Id,
-                            DestSlot = resultDec.Id
-                        });
-                        falseFinalBlock.AddInstruction(new JumpInst
-                        {
-                            Id = ++LastInstId,
-                            TargetBlock = returnBlock.Id
-                        });
-
-                        return new SlotUnrealisedAccess(resultDec);
+                            case BaseTypeRef:
+                                trueBlock.AddInstruction(new FieldMoveInst
+                                {
+                                    Id = ++LastInstId,
+                                    BaseSlot = itemSlot.Id,
+                                    TargetField = fieldName,
+                                    TargetSlot = fieldSlot.Id,
+                                });
+                                break;
+                            case BorrowTypeRef borrowTypeRef:
+                                trueBlock.AddInstruction(new FieldBorrowInst
+                                {
+                                    Id = ++LastInstId,
+                                    BaseSlot = itemSlot.Id,
+                                    TargetField = fieldName,
+                                    TargetSlot = fieldSlot.Id,
+                                    Mutable = borrowTypeRef.MutableRef
+                                });
+                                break;
+                            case PointerTypeRef pointerTypeRef:
+                                throw new NotImplementedException();
+                            case ReferenceTypeRef referenceTypeRef:
+                                throw new NotImplementedException();
+                            default:
+                                throw new ArgumentOutOfRangeException();
+                        }
                     }
 
-                    trueFinalBlock.AddInstruction(new JumpInst
-                    {
-                        Id = ++LastInstId,
-                        TargetBlock = returnBlock.Id
-                    });
-                    if (hasElse)
-                    {
-                        falseFinalBlock.AddInstruction(new JumpInst
-                        {
-                            Id = ++LastInstId,
-                            TargetBlock = returnBlock.Id
-                        });
-                    }
-
-                    return null;
+                    break;
                 }
-                case OxideParser.Let_if_expressionContext:
-                    throw new NotImplementedException("If let expressions");
                 default:
-                    throw new ArgumentOutOfRangeException(nameof(ctx));
+                    throw new ArgumentOutOfRangeException();
             }
+
+            MakeCurrent(trueBlock);
+            var trueSlot = ParseBlock(ctx.body)?.GenerateMove(this, CurrentBlock);
+            var trueFinalBlock = CurrentBlock;
+            if (trueFinalBlock.HasTerminated)
+            {
+                throw new NotImplementedException("TODO");
+            }
+
+            SlotDeclaration falseSlot = null;
+            Block falseFinalBlock = null;
+            if (hasElse)
+            {
+                MakeCurrent(falseBlock);
+                falseSlot = (ctx.else_block != null
+                    ? ParseBlock(ctx.else_block)
+                    : ParseIfExpression(ctx.else_if))?.GenerateMove(this, CurrentBlock);
+                falseFinalBlock = CurrentBlock;
+                if (falseFinalBlock.HasTerminated)
+                {
+                    throw new NotImplementedException("TODO");
+                }
+            }
+
+            MakeCurrent(returnBlock);
+
+            if (hasElse && trueSlot != null && falseSlot != null)
+            {
+                if (!Equals(trueSlot.Type, falseSlot.Type))
+                {
+                    throw new NotImplementedException("Incompatible if block true and false path values");
+                }
+
+                var resultDec = originalScope.DefineSlot(new SlotDeclaration
+                {
+                    Id = ++LastSlotId,
+                    Name = null,
+                    Type = trueSlot.Type,
+                    Mutable = false
+                });
+
+                trueFinalBlock.AddInstruction(new MoveInst
+                {
+                    Id = ++LastInstId,
+                    SrcSlot = trueSlot.Id,
+                    DestSlot = resultDec.Id,
+                });
+                trueFinalBlock.AddInstruction(new JumpInst
+                {
+                    Id = ++LastInstId,
+                    TargetBlock = returnBlock.Id
+                });
+
+                falseFinalBlock.AddInstruction(new MoveInst
+                {
+                    Id = ++LastInstId,
+                    SrcSlot = falseSlot.Id,
+                    DestSlot = resultDec.Id
+                });
+                falseFinalBlock.AddInstruction(new JumpInst
+                {
+                    Id = ++LastInstId,
+                    TargetBlock = returnBlock.Id
+                });
+
+                return new SlotUnrealisedAccess(resultDec);
+            }
+
+            trueFinalBlock.AddInstruction(new JumpInst
+            {
+                Id = ++LastInstId,
+                TargetBlock = returnBlock.Id
+            });
+            if (hasElse)
+            {
+                falseFinalBlock.AddInstruction(new JumpInst
+                {
+                    Id = ++LastInstId,
+                    TargetBlock = returnBlock.Id
+                });
+            }
+
+            return null;
         }
 
         private void ParseVariableStatement(OxideParser.Variable_statementContext ctx)

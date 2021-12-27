@@ -327,8 +327,16 @@ block_expression
     ;
 
 if_expression
-    : IF cond=expression body=block (ELSE (else_block=block | else_if=if_expression))? #simple_if_expression
-    | IF VAR cond=expression body=block (ELSE (else_block=block | else_if=if_expression))? #let_if_expression
+    : IF if_condition body=block (ELSE (else_block=block | else_if=if_expression))?
+    ;
+
+if_condition
+    : cond=expression #simple_if_condition
+    | VAR qualified_name (qn_generics=type_generic_params DCOLON qualified_name)? if_var_values? EQUAL cond=expression #var_if_condition
+    ;
+
+if_var_values
+    : LBRACK name (COMMA name)* COMMA? RBRACK #tuple_if_var_values
     ;
 
 arguments
