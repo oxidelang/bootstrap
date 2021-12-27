@@ -77,7 +77,7 @@ namespace Oxide.Compiler.IR
             Objects.Add(def.Name, def);
         }
 
-        public OxObj Lookup(QualifiedName qn)
+        public OxObj Lookup(QualifiedName qn, bool returnVariant = false)
         {
             if (Objects.TryGetValue(qn, out var obj))
             {
@@ -94,7 +94,7 @@ namespace Oxide.Compiler.IR
                 variant.TryGetItem(qn.Parts.Last(), out var item)
             )
             {
-                return item.Content;
+                return returnVariant ? variant : item.Content;
             }
 
             return null;

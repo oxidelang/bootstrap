@@ -1368,11 +1368,33 @@ namespace Oxide.Compiler.Frontend
             else
             {
                 var resolvedName = ResolveQN(qns[0].Parse());
+                var resolved = Lookup(resolvedName, true);
 
-                functionDef = Lookup<Function>(resolvedName);
-                if (functionDef == null)
+                switch (resolved)
                 {
-                    throw new Exception($"Unable to resolve {resolvedName}");
+                    case null:
+                        throw new Exception($"Unable to resolve {resolvedName}");
+                    case Function function:
+                        functionDef = function;
+                        break;
+                    case Interface:
+                    case PrimitiveType:
+                    case Struct:
+                        throw new Exception($"Uncallable type {resolvedName}");
+                    case Variant:
+                        return ParseTupleVariantAlloc(
+                            new ConcreteTypeRef(
+                                new QualifiedName(
+                                    true,
+                                    resolvedName.Parts.RemoveAt(resolvedName.Parts.Length - 1)
+                                ),
+                                ImmutableArray<TypeRef>.Empty
+                            ),
+                            resolvedName.Parts.Last(),
+                            argumentCtxs
+                        );
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(resolved));
                 }
 
                 targetType = null;
@@ -1748,9 +1770,9 @@ namespace Oxide.Compiler.Frontend
             return _fileParser.ResolveQN(qn);
         }
 
-        public OxObj Lookup(QualifiedName qn)
+        public OxObj Lookup(QualifiedName qn, bool returnVariant = false)
         {
-            return _unit.Lookup(qn) ?? _store.Lookup(qn);
+            return _unit.Lookup(qn, returnVariant) ?? _store.Lookup(qn, returnVariant);
         }
 
         public T Lookup<T>(QualifiedName qn) where T : OxObj

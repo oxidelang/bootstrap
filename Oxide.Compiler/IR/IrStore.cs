@@ -55,9 +55,9 @@ namespace Oxide.Compiler.IR
             _units.Add(unit);
         }
 
-        public OxObj Lookup(QualifiedName qn)
+        public OxObj Lookup(QualifiedName qn, bool returnVariant = false)
         {
-            return _units.Select(unit => unit.Lookup(qn)).FirstOrDefault(result => result != null);
+            return _units.Select(unit => unit.Lookup(qn, returnVariant)).FirstOrDefault(result => result != null);
         }
 
         public T Lookup<T>(QualifiedName qn) where T : OxObj
