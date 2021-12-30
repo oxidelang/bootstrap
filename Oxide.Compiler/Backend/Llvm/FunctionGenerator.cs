@@ -990,9 +990,9 @@ namespace Oxide.Compiler.Backend.Llvm
         {
             var (type, value) = LoadSlot(inst.SourceSlot, $"inst_{inst.Id}_load");
             var targetType = FunctionContext.ResolveRef(inst.TargetType);
+            var targetLlvmType = Backend.ConvertType(targetType);
 
             LLVMValueRef converted;
-
 
             switch (type)
             {
@@ -1024,12 +1024,7 @@ namespace Oxide.Compiler.Backend.Llvm
                 }
                 case PointerTypeRef:
                 {
-                    if (targetType is not PointerTypeRef)
-                    {
-                        throw new Exception("Incompatible conversion");
-                    }
-
-                    if (!CurrentBlock.Scope.Unsafe)
+                    if (targetType is not PointerTypeRef && !CurrentBlock.Scope.Unsafe)
                     {
                         throw new Exception("Conversion is unsafe");
                     }
@@ -1042,6 +1037,8 @@ namespace Oxide.Compiler.Backend.Llvm
                 default:
                     throw new ArgumentOutOfRangeException(nameof(type));
             }
+
+            converted = Builder.BuildBitCast(converted, targetLlvmType, $"inst_{inst.Id}_cast");
 
             StoreSlot(inst.ResultSlot, converted, targetType);
         }

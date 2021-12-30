@@ -41,8 +41,8 @@ namespace Oxide.Compiler.IR
                             throw new ArgumentOutOfRangeException(nameof(b));
                     }
                 }
-                case PointerTypeRef pointerTypeRef:
-                    throw new NotImplementedException();
+                case PointerTypeRef:
+                    return (true, b is not PointerTypeRef);
                 case ReferenceTypeRef referenceTypeRef:
                     throw new NotImplementedException();
                 default:
