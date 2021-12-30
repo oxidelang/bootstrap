@@ -5,6 +5,26 @@ namespace Oxide.Compiler.IR.Types
 {
     public class PrimitiveType : OxType
     {
+        public static PrimitiveType USize = new()
+        {
+            Name = new QualifiedName(true, new[] { "std", "usize" }),
+            Visibility = Visibility.Public,
+            GenericParams = ImmutableList<string>.Empty,
+            Kind = PrimitiveKind.USize,
+        };
+
+        public static ConcreteTypeRef USizeRef = new(USize.Name, ImmutableArray<TypeRef>.Empty);
+
+        public static PrimitiveType U8 = new()
+        {
+            Name = new QualifiedName(true, new[] { "std", "u8" }),
+            Visibility = Visibility.Public,
+            GenericParams = ImmutableList<string>.Empty,
+            Kind = PrimitiveKind.U8,
+        };
+
+        public static ConcreteTypeRef U8Ref = new(U8.Name, ImmutableArray<TypeRef>.Empty);
+
         public static PrimitiveType I32 = new()
         {
             Name = new QualifiedName(true, new[] { "std", "i32" }),

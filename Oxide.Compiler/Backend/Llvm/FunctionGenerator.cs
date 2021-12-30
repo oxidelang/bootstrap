@@ -14,13 +14,13 @@ namespace Oxide.Compiler.Backend.Llvm
 {
     public class FunctionGenerator
     {
-        private LlvmBackend Backend { get; }
+        public LlvmBackend Backend { get; }
 
-        private LLVMModuleRef Module => Backend.Module;
+        public LLVMModuleRef Module => Backend.Module;
 
-        private IrStore Store => Backend.Store;
+        public IrStore Store => Backend.Store;
 
-        private LLVMBuilderRef Builder { get; set; }
+        public LLVMBuilderRef Builder { get; set; }
 
         private Function _func;
 
@@ -32,9 +32,9 @@ namespace Oxide.Compiler.Backend.Llvm
         private Dictionary<int, LLVMBasicBlockRef> _scopeReturnMap;
         private int? _returnSlot;
 
-        private Block CurrentBlock { get; set; }
+        public Block CurrentBlock { get; set; }
 
-        private GenericContext FunctionContext { get; set; }
+        public GenericContext FunctionContext { get; set; }
 
         public FunctionGenerator(LlvmBackend backend)
         {
@@ -45,11 +45,6 @@ namespace Oxide.Compiler.Backend.Llvm
         {
             _func = func;
             FunctionContext = context;
-
-            if (!func.GenericParams.IsEmpty)
-            {
-                throw new NotImplementedException("Generic function generation is not implemented");
-            }
 
             Builder = Backend.Context.CreateBuilder();
 
@@ -277,7 +272,7 @@ namespace Oxide.Compiler.Backend.Llvm
             return _slotDefs[slot];
         }
 
-        private void StoreSlot(int slot, LLVMValueRef value, TypeRef type, bool ignoreChecks = false)
+        public void StoreSlot(int slot, LLVMValueRef value, TypeRef type, bool ignoreChecks = false)
         {
             if (!ignoreChecks && !CurrentBlock.Scope.CanAccessSlot(slot))
             {
@@ -292,7 +287,7 @@ namespace Oxide.Compiler.Backend.Llvm
             Builder.BuildStore(value, _slotMap[slot]);
         }
 
-        private (TypeRef type, LLVMValueRef value) LoadSlot(int slot, string name, bool ignoreChecks = false)
+        public (TypeRef type, LLVMValueRef value) LoadSlot(int slot, string name, bool ignoreChecks = false)
         {
             if (!ignoreChecks && !CurrentBlock.Scope.CanAccessSlot(slot))
             {
@@ -302,7 +297,7 @@ namespace Oxide.Compiler.Backend.Llvm
             return (_slotDefs[slot].Type, Builder.BuildLoad(_slotMap[slot], name));
         }
 
-        private (TypeRef type, LLVMValueRef value) GetSlotRef(int slot, bool ignoreChecks = false)
+        public (TypeRef type, LLVMValueRef value) GetSlotRef(int slot, bool ignoreChecks = false)
         {
             if (!ignoreChecks && !CurrentBlock.Scope.CanAccessSlot(slot))
             {
@@ -655,14 +650,21 @@ namespace Oxide.Compiler.Backend.Llvm
             Function funcDef;
             GenericContext funcContext;
             FunctionRef key;
+            ConcreteTypeRef targetMethod;
 
             if (inst.TargetType != null)
             {
                 var targetType = (ConcreteTypeRef)FunctionContext.ResolveRef(inst.TargetType);
+
+                targetMethod = new ConcreteTypeRef(
+                    inst.TargetMethod.Name,
+                    FunctionContext.ResolveRefs(inst.TargetMethod.GenericParams)
+                );
+
                 (_, funcDef) = Store.LookupImplementation(
                     targetType,
                     inst.TargetImplementation,
-                    inst.TargetMethod.Name.Parts.Single()
+                    targetMethod.Name.Parts.Single()
                 );
 
                 var type = Store.Lookup(targetType.Name);
@@ -677,29 +679,40 @@ namespace Oxide.Compiler.Backend.Llvm
                 {
                     TargetType = targetType,
                     TargetImplementation = inst.TargetImplementation,
-                    TargetMethod = inst.TargetMethod
+                    TargetMethod = targetMethod
                 };
             }
             else
             {
-                funcDef = Store.Lookup<Function>(inst.TargetMethod.Name);
-                funcContext = GenericContext.Default;
-
+                targetMethod = (ConcreteTypeRef)FunctionContext.ResolveRef(inst.TargetMethod);
                 key = new FunctionRef
                 {
-                    TargetMethod = inst.TargetMethod
+                    TargetMethod = targetMethod
                 };
+
+                if (Backend.GetIntrinsic(targetMethod.Name, out var intrinsic))
+                {
+                    intrinsic(this, inst, key);
+                    return;
+                }
+
+                funcDef = Store.Lookup<Function>(targetMethod.Name);
+                funcContext = GenericContext.Default;
             }
 
             if (funcDef == null)
             {
-                throw new Exception($"Failed to find unit for {inst.TargetMethod}");
+                throw new Exception($"Failed to find unit for {targetMethod}");
             }
 
-            if (inst.TargetMethod.GenericParams.Length > 0)
+            if (targetMethod.GenericParams.Length > 0)
             {
-                funcContext = new GenericContext(funcContext, funcDef.GenericParams, inst.TargetMethod.GenericParams,
-                    funcContext.ThisRef);
+                funcContext = new GenericContext(
+                    funcContext,
+                    funcDef.GenericParams,
+                    targetMethod.GenericParams,
+                    funcContext.ThisRef
+                );
             }
 
             var name = $"inst_{inst.Id}";

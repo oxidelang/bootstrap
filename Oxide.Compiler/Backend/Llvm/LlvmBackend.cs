@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Text;
 using LLVMSharp.Interop;
 using Oxide.Compiler.IR;
+using Oxide.Compiler.IR.Instructions;
 using Oxide.Compiler.IR.TypeRefs;
 using Oxide.Compiler.IR.Types;
 using Oxide.Compiler.Middleware;
@@ -16,6 +16,8 @@ namespace Oxide.Compiler.Backend.Llvm
 {
     public class LlvmBackend
     {
+        public delegate void IntrinsicMapper(FunctionGenerator generator, StaticCallInst inst, FunctionRef key);
+
         public IrStore Store { get; }
 
         public MiddlewareManager Middleware { get; }
@@ -28,9 +30,13 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private Dictionary<ConcreteTypeRef, uint> _typeSizeStore;
 
+        private Dictionary<TypeRef, LLVMTypeRef> _boxTypeStore;
+
         private Dictionary<FunctionRef, LLVMValueRef> _functionRefs;
 
         private LLVMTargetDataRef DataLayout { get; set; }
+
+        private Dictionary<QualifiedName, IntrinsicMapper> _intrinsics;
 
         public LlvmBackend(IrStore store, MiddlewareManager middleware)
         {
@@ -38,9 +44,18 @@ namespace Oxide.Compiler.Backend.Llvm
             Middleware = middleware;
             _typeSizeStore = new Dictionary<ConcreteTypeRef, uint>();
             _typeStore = new Dictionary<ConcreteTypeRef, LLVMTypeRef>();
+            _boxTypeStore = new Dictionary<TypeRef, LLVMTypeRef>();
+            _functionRefs = new Dictionary<FunctionRef, LLVMValueRef>();
+            _intrinsics = new Dictionary<QualifiedName, IntrinsicMapper>();
+
+            // TODO: Check target size
+            _typeStore.Add(PrimitiveType.USizeRef, LLVMTypeRef.Int64);
+            _typeStore.Add(PrimitiveType.U8Ref, LLVMTypeRef.Int8);
             _typeStore.Add(PrimitiveType.I32Ref, LLVMTypeRef.Int32);
             _typeStore.Add(PrimitiveType.BoolRef, LLVMTypeRef.Int1);
-            _functionRefs = new Dictionary<FunctionRef, LLVMValueRef>();
+
+            _intrinsics.Add(new QualifiedName(true, new[] { "std", "size_of" }), LlvmIntrinsics.SizeOf);
+            _intrinsics.Add(new QualifiedName(true, new[] { "std", "size_of_box" }), LlvmIntrinsics.SizeOfBox);
         }
 
         public void Begin()
@@ -92,7 +107,9 @@ namespace Oxide.Compiler.Backend.Llvm
                         TargetMethod = new ConcreteTypeRef(usedFunc.Name, version)
                     };
 
-                    CompileFunction(key, func, GenericContext.Default);
+                    var funcContext = new GenericContext(null, func.GenericParams, version, null);
+
+                    CompileFunction(key, func, funcContext);
                 }
             }
         }
@@ -243,14 +260,19 @@ namespace Oxide.Compiler.Backend.Llvm
             funcGen.Compile(key, func, context);
         }
 
-        public LLVMValueRef GetFunctionRef(FunctionRef key)
+        public LLVMValueRef GetFunctionRef(FunctionRef key, bool throwIfMissing = true)
         {
             if (_functionRefs.TryGetValue(key, out var funcRef))
             {
                 return funcRef;
             }
 
-            throw new Exception("Failed to find function");
+            if (throwIfMissing)
+            {
+                throw new Exception("Failed to find function");
+            }
+
+            return null;
         }
 
         public LLVMTypeRef ConvertType(TypeRef typeRef)
@@ -271,18 +293,36 @@ namespace Oxide.Compiler.Backend.Llvm
                 case PointerTypeRef pointerTypeRef:
                     return LLVMTypeRef.CreatePointer(ConvertType(pointerTypeRef.InnerType), 0);
                 case ReferenceTypeRef referenceTypeRef:
-                    throw new NotImplementedException("Reference types not implemented");
-                    break;
+                    return LLVMTypeRef.CreatePointer(GetBoxType(referenceTypeRef.InnerType), 0);
                 default:
                     throw new ArgumentOutOfRangeException(nameof(typeRef));
             }
         }
 
+        public LLVMTypeRef GetBoxType(TypeRef typeRef)
+        {
+            if (_boxTypeStore.TryGetValue(typeRef, out var boxType))
+            {
+                return boxType;
+            }
+
+            boxType = Context.CreateNamedStruct($"box[{GenerateName(typeRef)}]");
+            _boxTypeStore.Add(typeRef, boxType);
+
+            boxType.StructSetBody(new[]
+            {
+                LLVMTypeRef.Int64,
+                ConvertType(typeRef),
+            }, false);
+
+            return boxType;
+        }
+
         private LLVMTypeRef ResolveConcreteType(ConcreteTypeRef typeRef)
         {
-            if (_typeStore.ContainsKey(typeRef))
+            if (_typeStore.TryGetValue(typeRef, out var mappedType))
             {
-                return _typeStore[typeRef];
+                return mappedType;
             }
 
             var objectDef = Store.Lookup(typeRef.Name);
@@ -417,6 +457,11 @@ namespace Oxide.Compiler.Backend.Llvm
             }
         }
 
+        public bool GetIntrinsic(QualifiedName qn, out IntrinsicMapper mapper)
+        {
+            return _intrinsics.TryGetValue(qn, out mapper);
+        }
+
         public void Complete(string path)
         {
             if (!Module.TryVerify(LLVMVerifierFailureAction.LLVMPrintMessageAction, out var error))
@@ -443,74 +488,6 @@ namespace Oxide.Compiler.Backend.Llvm
             {
                 Console.WriteLine("error writing bitcode to file");
             }
-        }
-
-        public void Run()
-        {
-            var options = new LLVMMCJITCompilerOptions { NoFramePointerElim = 1 };
-            if (!Module.TryCreateMCJITCompiler(out var engine, ref options, out var error))
-            {
-                throw new Exception($"Error: {error}");
-            }
-
-            MapFunction<DebugInt>(engine, "::std::debug_int", DebugIntImp);
-            MapFunction<DebugBool>(engine, "::std::debug_bool", DebugBoolImp);
-
-            var mainMethod = GetFunction<MainMethod>(engine, "::examples::main");
-
-            Console.WriteLine("Running...");
-            Console.WriteLine("------------");
-            Console.WriteLine();
-            mainMethod();
-
-            engine.Dispose();
-        }
-
-        public void MapFunction<TDelegate>(LLVMExecutionEngineRef engine, string target, TDelegate d)
-            where TDelegate : notnull
-        {
-            var funcRef = Module.GetNamedFunction(target);
-            if (funcRef.IsNull || funcRef.IsUndef || funcRef.Handle == IntPtr.Zero)
-            {
-                return;
-            }
-
-            engine.AddGlobalMapping(
-                funcRef,
-                Marshal.GetFunctionPointerForDelegate(d)
-            );
-        }
-
-        public TDelegate GetFunction<TDelegate>(LLVMExecutionEngineRef engine, string target)
-        {
-            var funcRef = Module.GetNamedFunction(target);
-            if (funcRef.IsNull || funcRef.IsUndef || funcRef.Handle == IntPtr.Zero)
-            {
-                throw new Exception($"Could not find {target}");
-            }
-
-            var globalRef = engine.GetPointerToGlobal(funcRef);
-            return Marshal.GetDelegateForFunctionPointer<TDelegate>(globalRef);
-        }
-
-
-        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        public delegate void MainMethod();
-
-        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        public delegate void DebugInt(int a);
-
-        public static void DebugIntImp(int val)
-        {
-            Console.WriteLine($"DebugInt: {val}");
-        }
-
-        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        public delegate void DebugBool(byte a);
-
-        public static void DebugBoolImp(byte val)
-        {
-            Console.WriteLine($"DebugBool: {val}");
         }
 
         static LlvmBackend()
