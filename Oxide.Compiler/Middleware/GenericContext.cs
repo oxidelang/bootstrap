@@ -49,6 +49,11 @@ namespace Oxide.Compiler.Middleware
             return Generics.ContainsKey(name) ? Generics[name] : Parent?.ResolveGeneric(name);
         }
 
+        public ImmutableArray<TypeRef> ResolveRefs(ImmutableArray<TypeRef> refs)
+        {
+            return refs.Select(ResolveRef).ToImmutableArray();
+        }
+
         public TypeRef ResolveRef(TypeRef typeRef)
         {
             switch (typeRef)

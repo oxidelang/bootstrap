@@ -960,7 +960,18 @@ namespace Oxide.Compiler.Backend.Llvm
                     }
 
                     break;
-                case PointerTypeRef:
+                case PointerTypeRef pointerTypeRef:
+                    if (!pointerTypeRef.MutableRef)
+                    {
+                        throw new Exception("Cannot store into a non-mutable pointer");
+                    }
+
+                    if (!Equals(pointerTypeRef.InnerType, valType))
+                    {
+                        throw new Exception("Value type does not match pointer type");
+                    }
+
+                    break;
                 case ReferenceTypeRef:
                     throw new NotImplementedException();
                 default:
@@ -983,7 +994,9 @@ namespace Oxide.Compiler.Backend.Llvm
                 case BorrowTypeRef borrowTypeRef:
                     innerTypeRef = borrowTypeRef.InnerType;
                     break;
-                case PointerTypeRef:
+                case PointerTypeRef pointerTypeRef:
+                    innerTypeRef = pointerTypeRef.InnerType;
+                    break;
                 case ReferenceTypeRef:
                     throw new NotImplementedException();
                 default:

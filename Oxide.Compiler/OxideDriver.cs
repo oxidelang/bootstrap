@@ -17,6 +17,8 @@ namespace Oxide.Compiler
             _store = new IrStore();
 
             var inbuilt = new IrUnit();
+            inbuilt.Add(PrimitiveType.USize);
+            inbuilt.Add(PrimitiveType.U8);
             inbuilt.Add(PrimitiveType.I32);
             inbuilt.Add(PrimitiveType.Bool);
             _store.AddUnit(inbuilt);
@@ -59,7 +61,10 @@ namespace Oxide.Compiler
             backend.Begin();
             backend.Compile();
             backend.Complete(path);
-            backend.Run();
+
+            Console.WriteLine("Running");
+            var runner = new LlvmRunner(backend);
+            runner.Run();
         }
     }
 }
