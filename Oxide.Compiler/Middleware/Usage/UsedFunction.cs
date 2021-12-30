@@ -21,12 +21,15 @@ namespace Oxide.Compiler.Middleware.Usage
             );
         }
 
-        public void MarkVersion(ImmutableArray<TypeRef> version)
+        public bool MarkVersion(ImmutableArray<TypeRef> version)
         {
             if (Versions.Add(version))
             {
                 Console.WriteLine($" - New func version {Name}");
+                return true;
             }
+
+            return false;
         }
     }
 }

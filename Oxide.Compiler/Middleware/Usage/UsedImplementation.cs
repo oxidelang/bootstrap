@@ -17,7 +17,7 @@ namespace Oxide.Compiler.Middleware.Usage
             Functions = new Dictionary<string, UsedFunction>();
         }
 
-        public void MarkFunction(Function func, ImmutableArray<TypeRef> generics)
+        public bool MarkFunction(Function func, ImmutableArray<TypeRef> generics)
         {
             var funcName = func.Name.Parts.Single();
 
@@ -27,7 +27,7 @@ namespace Oxide.Compiler.Middleware.Usage
                 Functions.Add(funcName, function);
             }
 
-            function.MarkVersion(generics);
+            return function.MarkVersion(generics);
         }
     }
 }

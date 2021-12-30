@@ -1006,9 +1006,6 @@ namespace Oxide.Compiler.Frontend
             {
                 case OxideParser.Pass_unary_expressionContext passUnaryExpressionContext:
                     return ParseBaseExpression(passUnaryExpressionContext.base_expression());
-                case OxideParser.Box_unary_expressionContext boxUnaryExpressionContext:
-                    throw new NotImplementedException("Box expression");
-                    break;
                 case OxideParser.Minus_unary_expressionContext minusUnaryExpressionContext:
                     throw new NotImplementedException("Minus expression");
                     break;
@@ -1129,11 +1126,6 @@ namespace Oxide.Compiler.Frontend
                 throw new Exception($"Cannot access {methodName} on value with no type");
             }
 
-            if (ctx.type_generic_params() != null)
-            {
-                throw new NotImplementedException("Generics");
-            }
-
             var baseType = baseExp.Type.GetBaseType();
             ConcreteTypeRef iface;
             Function func;
@@ -1174,6 +1166,14 @@ namespace Oxide.Compiler.Frontend
             if (func == null)
             {
                 throw new Exception($"Method not found {methodName}");
+            }
+
+            var methodGenerics = ImmutableArray<TypeRef>.Empty;
+            if (ctx.method_generics != null)
+            {
+                methodGenerics = ctx.method_generics.type().Select(ParseType).ToImmutableArray();
+                functionContext = new GenericContext(functionContext, func.GenericParams, methodGenerics,
+                    functionContext.ThisRef);
             }
 
             var argumentCtxs = ctx.arguments() != null
@@ -1281,7 +1281,7 @@ namespace Oxide.Compiler.Frontend
                 CurrentBlock.AddInstruction(new StaticCallInst
                 {
                     Id = ++LastInstId,
-                    TargetMethod = func.Name,
+                    TargetMethod = new ConcreteTypeRef(func.Name, methodGenerics),
                     TargetImplementation = iface,
                     TargetType = baseType,
                     Arguments = argIds.ToImmutableList(),
@@ -1294,7 +1294,7 @@ namespace Oxide.Compiler.Frontend
             CurrentBlock.AddInstruction(new StaticCallInst
             {
                 Id = ++LastInstId,
-                TargetMethod = func.Name,
+                TargetMethod = new ConcreteTypeRef(func.Name, methodGenerics),
                 TargetImplementation = iface,
                 TargetType = baseType,
                 Arguments = argIds.ToImmutableList(),
@@ -1569,9 +1569,12 @@ namespace Oxide.Compiler.Frontend
                 functionContext = GenericContext.Default;
             }
 
+            var methodGenerics = ImmutableArray<TypeRef>.Empty;
             if (ctx.method_generics != null)
             {
-                throw new NotImplementedException("Generic method params in function call expressions not implemented");
+                methodGenerics = ctx.method_generics.type().Select(ParseType).ToImmutableArray();
+                functionContext = new GenericContext(functionContext, functionDef.GenericParams, methodGenerics,
+                    functionContext.ThisRef);
             }
 
             if (argumentCtxs.Length != functionDef.Parameters.Count)
@@ -1622,7 +1625,7 @@ namespace Oxide.Compiler.Frontend
                 {
                     Id = ++LastInstId,
                     TargetType = targetType,
-                    TargetMethod = targetMethod,
+                    TargetMethod = new ConcreteTypeRef(targetMethod, methodGenerics),
                     TargetImplementation = targetImplementation,
                     Arguments = argIds.ToImmutableList(),
                     ResultSlot = resultDec.Id
@@ -1635,7 +1638,7 @@ namespace Oxide.Compiler.Frontend
             {
                 Id = ++LastInstId,
                 TargetType = targetType,
-                TargetMethod = targetMethod,
+                TargetMethod = new ConcreteTypeRef(targetMethod, methodGenerics),
                 TargetImplementation = targetImplementation,
                 Arguments = argIds.ToImmutableList(),
             });

@@ -15,7 +15,8 @@ namespace Oxide.Compiler.Middleware.Usage
         private IrStore Store => Manager.Store;
 
         public Dictionary<QualifiedName, UsedType> UsedTypes { get; private set; }
-        public HashSet<QualifiedName> UsedFunctions { get; private set; }
+
+        public Dictionary<QualifiedName, UsedFunction> UsedFunctions { get; private set; }
 
         public UsagePass(MiddlewareManager manager)
         {
@@ -25,28 +26,42 @@ namespace Oxide.Compiler.Middleware.Usage
         public void Analyse(IrUnit unit)
         {
             Console.WriteLine("Analysing usage");
-            UsedFunctions = new HashSet<QualifiedName>();
+            UsedFunctions = new Dictionary<QualifiedName, UsedFunction>();
             UsedTypes = new Dictionary<QualifiedName, UsedType>();
 
             foreach (var objects in unit.Objects.Values)
             {
                 if (objects is Function { IsExported: true } func)
                 {
-                    ProcessFunction(func);
+                    if (!func.GenericParams.IsEmpty)
+                    {
+                        throw new Exception("Cannot export function with generic parameters");
+                    }
+
+                    if (MarkFunction(func, ImmutableArray<TypeRef>.Empty))
+                    {
+                        ProcessFunction(func, ImmutableArray<TypeRef>.Empty);
+                    }
                 }
             }
         }
 
-        private void ProcessFunction(Function func)
+        private bool MarkFunction(Function func, ImmutableArray<TypeRef> generics)
         {
-            if (!UsedFunctions.Add(func.Name))
+            if (!UsedFunctions.TryGetValue(func.Name, out var function))
             {
-                return;
+                function = new UsedFunction(func.Name);
+                UsedFunctions.Add(func.Name, function);
             }
 
+            return function.MarkVersion(generics);
+        }
+
+        private void ProcessFunction(Function func, ImmutableArray<TypeRef> generics)
+        {
             Console.WriteLine($" - New function: {func.Name}");
 
-            var functionContext = GenericContext.Default;
+            var functionContext = new GenericContext(null, func.GenericParams, generics, null);
 
             if (func.IsExtern || !func.HasBody)
             {
@@ -67,28 +82,42 @@ namespace Oxide.Compiler.Middleware.Usage
                 {
                     if (instruction is StaticCallInst staticCallInst)
                     {
+                        var mappedGenerics = staticCallInst
+                            .TargetMethod
+                            .GenericParams
+                            .Select(x => functionContext.ResolveRef(x))
+                            .ToImmutableArray();
+
                         if (staticCallInst.TargetType != null)
                         {
                             var targetConcrete = (ConcreteTypeRef)functionContext.ResolveRef(staticCallInst.TargetType);
                             var (imp, targetFunc) = Store.LookupImplementation(
                                 targetConcrete,
                                 staticCallInst.TargetImplementation,
-                                staticCallInst.TargetMethod.Parts.Single()
+                                staticCallInst.TargetMethod.Name.Parts.Single()
                             );
+
 
                             var usedVersion = MarkConcreteType(targetConcrete);
                             var usedImp = usedVersion.MarkImplementation(imp.Interface);
-                            usedImp.MarkFunction(targetFunc, ImmutableArray<TypeRef>.Empty);
+
+                            if (usedImp.MarkFunction(targetFunc, mappedGenerics))
+                            {
+                                ProcessFunction(targetFunc, mappedGenerics);
+                            }
                         }
                         else
                         {
-                            var calledFunc = Store.Lookup<Function>(staticCallInst.TargetMethod);
+                            var calledFunc = Store.Lookup<Function>(staticCallInst.TargetMethod.Name);
                             if (calledFunc == null)
                             {
                                 throw new Exception($"Failed to resolve call {staticCallInst.TargetMethod}");
                             }
 
-                            ProcessFunction(calledFunc);
+                            if (MarkFunction(calledFunc, mappedGenerics))
+                            {
+                                ProcessFunction(calledFunc, mappedGenerics);
+                            }
                         }
                     }
                 }

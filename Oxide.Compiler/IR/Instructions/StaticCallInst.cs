@@ -10,7 +10,7 @@ namespace Oxide.Compiler.IR.Instructions
 
         public ConcreteTypeRef TargetImplementation { get; init; }
 
-        public QualifiedName TargetMethod { get; init; }
+        public ConcreteTypeRef TargetMethod { get; init; }
 
         public ImmutableList<int> Arguments { get; init; }
 
@@ -36,8 +36,7 @@ namespace Oxide.Compiler.IR.Instructions
                 }
             }
 
-            writer.WriteQn(TargetMethod);
-            writer.Write($" ({string.Join(", ", Arguments.Select(x => $"${x}"))})");
+            writer.Write($"{TargetMethod} ({string.Join(", ", Arguments.Select(x => $"${x}"))})");
         }
     }
 }

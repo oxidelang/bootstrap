@@ -20,7 +20,7 @@ FOR:        'for';
 VAR:        'var';
 FUNC:       'func';
 UNSAFE:     'unsafe';
-BOX:        'box';
+//BOX:        'box';
 ALIAS:      'alias';
 
 REF:        'ref';
@@ -305,14 +305,14 @@ unary_expression
 	| AMP MUT? unary_expression #ref_unary_expression
 	| STAR unary_expression #deref_unary_expression
 //	| LBRACK type RBRACK unary_expression #cast_unary_expression
-	| BOX unary_expression #box_unary_expression
+//	| BOX unary_expression #box_unary_expression
 	;
 
 base_expression
     : DERIVED? LBRACK expression RBRACK #bracket_base_expression
     | literal #literal_base_expression
     | DERIVED? THIS_FIELD #this_base_expression
-    | base_expression PERIOD name type_generic_params? LBRACK arguments? RBRACK #method_call_base_expression
+    | base_expression PERIOD name method_generics=type_generic_params? LBRACK arguments? RBRACK #method_call_base_expression
     | base_expression PERIOD name #access_base_expression
     | DERIVED? qualified_name (qn_generics=type_generic_params DCOLON qualified_name)? method_generics=type_generic_params? LBRACK arguments? RBRACK #function_call_base_expression
     | DERIVED? qualified_name (type_generic_params DCOLON qualified_name)? #qualified_base_expression

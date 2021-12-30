@@ -28,7 +28,7 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private Dictionary<ConcreteTypeRef, uint> _typeSizeStore;
 
-        private Dictionary<Function, LLVMValueRef> _functionRefs;
+        private Dictionary<FunctionRef, LLVMValueRef> _functionRefs;
 
         private LLVMTargetDataRef DataLayout { get; set; }
 
@@ -40,7 +40,7 @@ namespace Oxide.Compiler.Backend.Llvm
             _typeStore = new Dictionary<ConcreteTypeRef, LLVMTypeRef>();
             _typeStore.Add(PrimitiveType.I32Ref, LLVMTypeRef.Int32);
             _typeStore.Add(PrimitiveType.BoolRef, LLVMTypeRef.Int1);
-            _functionRefs = new Dictionary<Function, LLVMValueRef>();
+            _functionRefs = new Dictionary<FunctionRef, LLVMValueRef>();
         }
 
         public void Begin()
@@ -58,10 +58,21 @@ namespace Oxide.Compiler.Backend.Llvm
                 CreateType(usedType);
             }
 
-            foreach (var funcName in Middleware.Usage.UsedFunctions)
+            foreach (var usedFunc in Middleware.Usage.UsedFunctions.Values)
             {
-                var func = Store.Lookup<Function>(funcName);
-                CreateFunction(func, null, null);
+                var func = Store.Lookup<Function>(usedFunc.Name);
+
+                foreach (var version in usedFunc.Versions)
+                {
+                    var key = new FunctionRef
+                    {
+                        TargetMethod = new ConcreteTypeRef(usedFunc.Name, version)
+                    };
+
+                    var context = new GenericContext(null, func.GenericParams, version, null);
+
+                    CreateFunction(key, func, context);
+                }
             }
 
             // Compile functions
@@ -70,21 +81,40 @@ namespace Oxide.Compiler.Backend.Llvm
                 CompileType(usedType);
             }
 
-            foreach (var funcName in Middleware.Usage.UsedFunctions)
+            foreach (var usedFunc in Middleware.Usage.UsedFunctions.Values)
             {
-                var func = Store.Lookup<Function>(funcName);
-                CompileFunction(func, GenericContext.Default);
+                var func = Store.Lookup<Function>(usedFunc.Name);
+
+                foreach (var version in usedFunc.Versions)
+                {
+                    var key = new FunctionRef
+                    {
+                        TargetMethod = new ConcreteTypeRef(usedFunc.Name, version)
+                    };
+
+                    CompileFunction(key, func, GenericContext.Default);
+                }
             }
         }
 
-        private void CreateFunction(Function func, string namePrefix, GenericContext context)
+        private void CreateFunction(FunctionRef key, Function func, GenericContext context)
         {
-            if (!func.GenericParams.IsEmpty)
+            var funcSb = new StringBuilder();
+            if (key.TargetType != null)
             {
-                throw new NotImplementedException("Generic function support is not implemented");
+                funcSb.Append(GenerateName(key.TargetType));
+                funcSb.Append('#');
             }
 
-            var funcName = $"{namePrefix}{(namePrefix != null ? "#" : "")}{func.Name}";
+            if (key.TargetImplementation != null)
+            {
+                funcSb.Append(GenerateName(key.TargetType));
+                funcSb.Append('#');
+            }
+
+            funcSb.Append(GenerateName(key.TargetMethod));
+
+            var funcName = funcSb.ToString();
             var paramTypes = new List<LLVMTypeRef>();
             foreach (var paramDef in func.Parameters)
             {
@@ -96,7 +126,7 @@ namespace Oxide.Compiler.Backend.Llvm
             var returnType = ConvertType(returnTypeRef);
             var funcType = LLVMTypeRef.CreateFunction(returnType, paramTypes.ToArray());
             var funcRef = Module.AddFunction(funcName, funcType);
-            _functionRefs.Add(func, funcRef);
+            _functionRefs.Add(key, funcRef);
         }
 
         private void CreateType(UsedType usedType)
@@ -131,10 +161,25 @@ namespace Oxide.Compiler.Backend.Llvm
         {
             foreach (var usedFunc in usedImp.Functions.Values)
             {
-                var (imp, func) = Store.LookupImplementation(context.ThisRef, usedImp.Interface,
-                    usedFunc.Name.Parts.Single());
-                var baseName = $"{imp.Target}#{(imp.Interface != null ? imp.Interface.ToString() : "direct")}";
-                CreateFunction(func, baseName, context);
+                var (imp, func) = Store.LookupImplementation(
+                    context.ThisRef,
+                    usedImp.Interface,
+                    usedFunc.Name.Parts.Single()
+                );
+
+                foreach (var version in usedFunc.Versions)
+                {
+                    var key = new FunctionRef
+                    {
+                        TargetType = imp.Target,
+                        TargetImplementation = imp.Interface,
+                        TargetMethod = new ConcreteTypeRef(usedFunc.Name, version),
+                    };
+
+                    var funcContext = new GenericContext(context, func.GenericParams, version, context.ThisRef);
+
+                    CreateFunction(key, func, funcContext);
+                }
             }
         }
 
@@ -170,21 +215,37 @@ namespace Oxide.Compiler.Backend.Llvm
         {
             foreach (var usedFunc in usedImp.Functions.Values)
             {
-                var (imp, func) = Store.LookupImplementation(context.ThisRef, usedImp.Interface,
-                    usedFunc.Name.Parts.Single());
-                CompileFunction(func, context);
+                var (imp, func) = Store.LookupImplementation(
+                    context.ThisRef,
+                    usedImp.Interface,
+                    usedFunc.Name.Parts.Single()
+                );
+
+                foreach (var version in usedFunc.Versions)
+                {
+                    var key = new FunctionRef
+                    {
+                        TargetType = imp.Target,
+                        TargetImplementation = imp.Interface,
+                        TargetMethod = new ConcreteTypeRef(usedFunc.Name, version)
+                    };
+
+                    var funcContext = new GenericContext(context, func.GenericParams, version, context.ThisRef);
+
+                    CompileFunction(key, func, funcContext);
+                }
             }
         }
 
-        private void CompileFunction(Function func, GenericContext context)
+        private void CompileFunction(FunctionRef key, Function func, GenericContext context)
         {
             var funcGen = new FunctionGenerator(this);
-            funcGen.Compile(func, context);
+            funcGen.Compile(key, func, context);
         }
 
-        public LLVMValueRef GetFunctionRef(Function func)
+        public LLVMValueRef GetFunctionRef(FunctionRef key)
         {
-            if (_functionRefs.TryGetValue(func, out var funcRef))
+            if (_functionRefs.TryGetValue(key, out var funcRef))
             {
                 return funcRef;
             }

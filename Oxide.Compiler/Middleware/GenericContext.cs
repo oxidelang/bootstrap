@@ -53,6 +53,8 @@ namespace Oxide.Compiler.Middleware
         {
             switch (typeRef)
             {
+                case null:
+                    return null;
                 case ConcreteTypeRef concreteTypeRef:
                     return new ConcreteTypeRef(
                         concreteTypeRef.Name,

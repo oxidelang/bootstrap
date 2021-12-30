@@ -8,6 +8,7 @@ using Oxide.Compiler.IR.Instructions;
 using Oxide.Compiler.IR.TypeRefs;
 using Oxide.Compiler.IR.Types;
 using Oxide.Compiler.Middleware;
+using Oxide.Compiler.Middleware.Usage;
 
 namespace Oxide.Compiler.Backend.Llvm
 {
@@ -40,7 +41,7 @@ namespace Oxide.Compiler.Backend.Llvm
             Backend = backend;
         }
 
-        public void Compile(Function func, GenericContext context)
+        public void Compile(FunctionRef key, Function func, GenericContext context)
         {
             _func = func;
             FunctionContext = context;
@@ -52,7 +53,7 @@ namespace Oxide.Compiler.Backend.Llvm
 
             Builder = Backend.Context.CreateBuilder();
 
-            _funcRef = Backend.GetFunctionRef(func);
+            _funcRef = Backend.GetFunctionRef(key);
             if (func.IsExtern)
             {
                 // _funcRef.Linkage = LLVMLinkage.LLVMExternalLinkage;
@@ -653,6 +654,7 @@ namespace Oxide.Compiler.Backend.Llvm
         {
             Function funcDef;
             GenericContext funcContext;
+            FunctionRef key;
 
             if (inst.TargetType != null)
             {
@@ -660,7 +662,7 @@ namespace Oxide.Compiler.Backend.Llvm
                 (_, funcDef) = Store.LookupImplementation(
                     targetType,
                     inst.TargetImplementation,
-                    inst.TargetMethod.Parts.Single()
+                    inst.TargetMethod.Name.Parts.Single()
                 );
 
                 var type = Store.Lookup(targetType.Name);
@@ -670,11 +672,23 @@ namespace Oxide.Compiler.Backend.Llvm
                     targetType.GenericParams,
                     targetType
                 );
+
+                key = new FunctionRef
+                {
+                    TargetType = targetType,
+                    TargetImplementation = inst.TargetImplementation,
+                    TargetMethod = inst.TargetMethod
+                };
             }
             else
             {
-                funcDef = Store.Lookup<Function>(inst.TargetMethod);
+                funcDef = Store.Lookup<Function>(inst.TargetMethod.Name);
                 funcContext = GenericContext.Default;
+
+                key = new FunctionRef
+                {
+                    TargetMethod = inst.TargetMethod
+                };
             }
 
             if (funcDef == null)
@@ -682,8 +696,14 @@ namespace Oxide.Compiler.Backend.Llvm
                 throw new Exception($"Failed to find unit for {inst.TargetMethod}");
             }
 
+            if (inst.TargetMethod.GenericParams.Length > 0)
+            {
+                funcContext = new GenericContext(funcContext, funcDef.GenericParams, inst.TargetMethod.GenericParams,
+                    funcContext.ThisRef);
+            }
+
             var name = $"inst_{inst.Id}";
-            var funcRef = Backend.GetFunctionRef(funcDef);
+            var funcRef = Backend.GetFunctionRef(key);
 
             if (funcDef.Parameters.Count != inst.Arguments.Count)
             {
