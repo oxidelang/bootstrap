@@ -17,10 +17,11 @@ namespace Oxide.Compiler
             _store = new IrStore();
 
             var inbuilt = new IrUnit();
-            inbuilt.Add(PrimitiveType.USize);
-            inbuilt.Add(PrimitiveType.U8);
-            inbuilt.Add(PrimitiveType.I32);
-            inbuilt.Add(PrimitiveType.Bool);
+            foreach (var type in PrimitiveType.Types.Values)
+            {
+                inbuilt.Add(type);
+            }
+
             _store.AddUnit(inbuilt);
         }
 

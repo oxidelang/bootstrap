@@ -26,6 +26,11 @@ namespace Oxide.Compiler.IR
             switch (a)
             {
                 case BaseTypeRef baseTypeRef:
+                    if (PrimitiveType.IsPrimitiveInt(a) && PrimitiveType.IsPrimitiveInt(b))
+                    {
+                        return (true, false);
+                    }
+
                     return (Equals(baseTypeRef, b), false);
                 case BorrowTypeRef:
                 {
@@ -44,7 +49,28 @@ namespace Oxide.Compiler.IR
                 case PointerTypeRef:
                     return (true, b is not PointerTypeRef);
                 case ReferenceTypeRef referenceTypeRef:
-                    throw new NotImplementedException();
+                    switch (b)
+                    {
+                        case BaseTypeRef:
+                        case ReferenceTypeRef:
+                            return (false, false);
+                        case BorrowTypeRef otherBorrow:
+                            if (!Equals(referenceTypeRef.InnerType, otherBorrow.InnerType))
+                            {
+                                return (false, false);
+                            }
+
+                            return (true, false);
+                        case PointerTypeRef otherPointer:
+                            if (!Equals(referenceTypeRef.InnerType, otherPointer.InnerType))
+                            {
+                                return (false, false);
+                            }
+
+                            return (true, true);
+                        default:
+                            throw new ArgumentOutOfRangeException(nameof(b));
+                    }
                 default:
                     throw new ArgumentOutOfRangeException(nameof(a));
             }

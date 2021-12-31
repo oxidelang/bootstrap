@@ -25,10 +25,10 @@ namespace Oxide.Compiler.Frontend
             Package = cu.package().qualified_name().Parse(true);
 
             Imports = new List<Import>();
-            Imports.Add(new Import(PrimitiveType.USize.Name, "usize"));
-            Imports.Add(new Import(PrimitiveType.U8.Name, "u8"));
-            Imports.Add(new Import(PrimitiveType.I32.Name, "i32"));
-            Imports.Add(new Import(PrimitiveType.Bool.Name, "bool"));
+            foreach (var name in PrimitiveType.TypeRefs.Values)
+            {
+                Imports.Add(new Import(name.Name, name.Name.Parts.Last()));
+            }
 
             foreach (var importStmt in cu.import_stmt())
             {

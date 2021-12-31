@@ -1,49 +1,84 @@
+using System;
+using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using Oxide.Compiler.IR.TypeRefs;
 
 namespace Oxide.Compiler.IR.Types
 {
     public class PrimitiveType : OxType
     {
-        public static PrimitiveType USize = new()
+        public static ImmutableDictionary<PrimitiveKind, ConcreteTypeRef> TypeRefs;
+        public static ImmutableDictionary<PrimitiveKind, PrimitiveType> Types;
+        public static PrimitiveKind[] Integers = { PrimitiveKind.USize, PrimitiveKind.U8, PrimitiveKind.I32 };
+
+        static PrimitiveType()
         {
-            Name = new QualifiedName(true, new[] { "std", "usize" }),
-            Visibility = Visibility.Public,
-            GenericParams = ImmutableList<string>.Empty,
-            Kind = PrimitiveKind.USize,
-        };
+            var types = new Dictionary<PrimitiveKind, PrimitiveType>();
+            var typeRefs = new Dictionary<PrimitiveKind, ConcreteTypeRef>();
 
-        public static ConcreteTypeRef USizeRef = new(USize.Name, ImmutableArray<TypeRef>.Empty);
+            foreach (var kind in Enum.GetValues<PrimitiveKind>())
+            {
+                var type = new PrimitiveType
+                {
+                    Name = new QualifiedName(true, new[] { "std", Enum.GetName(kind)!.ToLower() }),
+                    Visibility = Visibility.Public,
+                    GenericParams = ImmutableList<string>.Empty,
+                    Kind = kind,
+                };
+                types.Add(kind, type);
+                typeRefs.Add(kind, new ConcreteTypeRef(type.Name, ImmutableArray<TypeRef>.Empty));
+            }
 
-        public static PrimitiveType U8 = new()
+            TypeRefs = typeRefs.ToImmutableDictionary();
+            Types = types.ToImmutableDictionary();
+        }
+
+        public static ConcreteTypeRef GetRef(PrimitiveKind kind)
         {
-            Name = new QualifiedName(true, new[] { "std", "u8" }),
-            Visibility = Visibility.Public,
-            GenericParams = ImmutableList<string>.Empty,
-            Kind = PrimitiveKind.U8,
-        };
+            return TypeRefs[kind];
+        }
 
-        public static ConcreteTypeRef U8Ref = new(U8.Name, ImmutableArray<TypeRef>.Empty);
-
-        public static PrimitiveType I32 = new()
+        public static bool IsPrimitiveInt(TypeRef tref)
         {
-            Name = new QualifiedName(true, new[] { "std", "i32" }),
-            Visibility = Visibility.Public,
-            GenericParams = ImmutableList<string>.Empty,
-            Kind = PrimitiveKind.I32,
-        };
+            return Integers.Any(kind => Equals(tref, TypeRefs[kind]));
+        }
 
-        public static ConcreteTypeRef I32Ref = new(I32.Name, ImmutableArray<TypeRef>.Empty);
-
-        public static PrimitiveType Bool = new()
+        public static PrimitiveKind GetKind(TypeRef typeRef)
         {
-            Name = new QualifiedName(true, new[] { "std", "bool" }),
-            Visibility = Visibility.Public,
-            GenericParams = ImmutableList<string>.Empty,
-            Kind = PrimitiveKind.Bool,
-        };
+            foreach (var pair in TypeRefs)
+            {
+                if (Equals(pair.Value, typeRef))
+                {
+                    return pair.Key;
+                }
+            }
 
-        public static ConcreteTypeRef BoolRef = new(Bool.Name, ImmutableArray<TypeRef>.Empty);
+            throw new Exception($"Unable to find {typeRef}");
+        }
+
+        public static int GetWidth(PrimitiveKind kind)
+        {
+            return kind switch
+            {
+                PrimitiveKind.Bool => 1,
+                PrimitiveKind.USize => 64,
+                PrimitiveKind.U8 => 8,
+                PrimitiveKind.I32 => 32,
+                _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
+            };
+        }
+
+        public static bool IsSigned(PrimitiveKind kind)
+        {
+            return kind switch
+            {
+                PrimitiveKind.USize or PrimitiveKind.U8 => false,
+                PrimitiveKind.I32 => true,
+                _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
+            };
+        }
+
 
         public PrimitiveKind Kind { get; init; }
     }

@@ -49,13 +49,12 @@ namespace Oxide.Compiler.Backend.Llvm
             _intrinsics = new Dictionary<QualifiedName, IntrinsicMapper>();
 
             // TODO: Check target size
-            _typeStore.Add(PrimitiveType.USizeRef, LLVMTypeRef.Int64);
-            _typeStore.Add(PrimitiveType.U8Ref, LLVMTypeRef.Int8);
-            _typeStore.Add(PrimitiveType.I32Ref, LLVMTypeRef.Int32);
-            _typeStore.Add(PrimitiveType.BoolRef, LLVMTypeRef.Int1);
+            _typeStore.Add(PrimitiveKind.USize.GetRef(), LLVMTypeRef.Int64);
+            _typeStore.Add(PrimitiveKind.U8.GetRef(), LLVMTypeRef.Int8);
+            _typeStore.Add(PrimitiveKind.I32.GetRef(), LLVMTypeRef.Int32);
+            _typeStore.Add(PrimitiveKind.Bool.GetRef(), LLVMTypeRef.Int1);
 
             _intrinsics.Add(new QualifiedName(true, new[] { "std", "size_of" }), LlvmIntrinsics.SizeOf);
-            _intrinsics.Add(new QualifiedName(true, new[] { "std", "size_of_box" }), LlvmIntrinsics.SizeOfBox);
         }
 
         public void Begin()

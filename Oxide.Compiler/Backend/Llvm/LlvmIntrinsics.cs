@@ -21,31 +21,10 @@ public static class LlvmIntrinsics
 
         var casted = generator.Builder.BuildPtrToInt(
             size,
-            generator.Backend.ConvertType(PrimitiveType.USizeRef),
+            generator.Backend.ConvertType(PrimitiveKind.USize.GetRef()),
             $"inst_{inst.Id}_size"
         );
 
-        generator.StoreSlot(inst.ResultSlot.Value, casted, PrimitiveType.USizeRef);
-    }
-
-    public static void SizeOfBox(FunctionGenerator generator, StaticCallInst inst, FunctionRef key)
-    {
-        var targetType = key.TargetMethod.GenericParams[0];
-        var converted = generator.Backend.GetBoxType(targetType);
-
-        var nullPtr = LLVMValueRef.CreateConstPointerNull(LLVMTypeRef.CreatePointer(converted, 0));
-
-        var size = generator.Builder.BuildGEP(nullPtr, new[]
-        {
-            LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 1),
-        }, $"inst_{inst.Id}_size");
-
-        var casted = generator.Builder.BuildPtrToInt(
-            size,
-            generator.Backend.ConvertType(PrimitiveType.USizeRef),
-            $"inst_{inst.Id}_size"
-        );
-
-        generator.StoreSlot(inst.ResultSlot.Value, casted, PrimitiveType.USizeRef);
+        generator.StoreSlot(inst.ResultSlot.Value, casted, PrimitiveKind.USize.GetRef());
     }
 }

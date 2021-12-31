@@ -102,11 +102,13 @@ namespace Oxide.Compiler.Frontend
         public override SlotDeclaration GenerateRef(BodyParser parser, Block block, bool mutable)
         {
             SlotDeclaration baseSlot;
+            TypeRef varType;
             switch (BaseAccess.Type)
             {
                 case BaseTypeRef:
                 {
                     baseSlot = BaseAccess.GenerateRef(parser, block, mutable);
+                    varType = new BorrowTypeRef(FieldType, mutable);
                     break;
                 }
                 case BorrowTypeRef borrowTypeRef:
@@ -122,10 +124,25 @@ namespace Oxide.Compiler.Frontend
                     }
 
                     baseSlot = BaseAccess.GenerateMove(parser, block);
+                    varType = new BorrowTypeRef(FieldType, mutable);
                     break;
                 }
                 case PointerTypeRef pointerTypeRef:
-                    throw new NotImplementedException();
+                {
+                    if (mutable && !pointerTypeRef.MutableRef)
+                    {
+                        throw new Exception("Cannot mutably borrow field from non-mutable pointer");
+                    }
+
+                    if (!pointerTypeRef.InnerType.IsBaseType)
+                    {
+                        throw new Exception("Cannot borrow field from deeply nested pointed variable");
+                    }
+
+                    baseSlot = BaseAccess.GenerateMove(parser, block);
+                    varType = new PointerTypeRef(FieldType, mutable);
+                    break;
+                }
                 case ReferenceTypeRef referenceTypeRef:
                     throw new Exception("Unsupported");
                 default:
@@ -137,7 +154,7 @@ namespace Oxide.Compiler.Frontend
                 Id = ++parser.LastSlotId,
                 Mutable = false,
                 Name = null,
-                Type = new BorrowTypeRef(FieldType, mutable)
+                Type = varType
             });
 
             block.AddInstruction(new FieldBorrowInst

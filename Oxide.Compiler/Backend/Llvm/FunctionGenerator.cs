@@ -326,11 +326,11 @@ namespace Oxide.Compiler.Backend.Llvm
             {
                 case PrimitiveKind.I32:
                     value = LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong)(int)inst.Value, true);
-                    valType = PrimitiveType.I32Ref;
+                    valType = PrimitiveKind.I32.GetRef();
                     break;
                 case PrimitiveKind.Bool:
                     value = LLVMValueRef.CreateConstInt(LLVMTypeRef.Int1, (ulong)((bool)inst.Value ? 1 : 0), true);
-                    valType = PrimitiveType.BoolRef;
+                    valType = PrimitiveKind.Bool.GetRef();
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
@@ -424,7 +424,7 @@ namespace Oxide.Compiler.Backend.Llvm
                     throw new ArgumentOutOfRangeException();
             }
 
-            StoreSlot(inst.ResultSlot, value, PrimitiveType.BoolRef);
+            StoreSlot(inst.ResultSlot, value, PrimitiveKind.Bool.GetRef());
         }
 
         private void CompileAllocStructInst(AllocStructInst inst)
@@ -501,7 +501,7 @@ namespace Oxide.Compiler.Backend.Llvm
             if (inst.ConditionSlot.HasValue)
             {
                 var (condType, cond) = LoadSlot(inst.ConditionSlot.Value, $"inst_{inst.Id}_cond");
-                if (!Equals(condType, PrimitiveType.BoolRef))
+                if (!Equals(condType, PrimitiveKind.Bool.GetRef()))
                 {
                     throw new Exception("Invalid condition type");
                 }
@@ -871,7 +871,7 @@ namespace Oxide.Compiler.Backend.Llvm
                 $"inst_{inst.Id}_faddr"
             );
 
-            if (!Equals(fieldType, PrimitiveType.I32Ref))
+            if (!Equals(fieldType, PrimitiveKind.I32.GetRef()))
             {
                 throw new NotImplementedException("Field moves");
                 // TODO: moves
@@ -900,6 +900,7 @@ namespace Oxide.Compiler.Backend.Llvm
             switch (slotType)
             {
                 case BorrowTypeRef borrowTypeRef:
+                {
                     if (borrowTypeRef.InnerType is not ConcreteTypeRef concreteTypeRef)
                     {
                         throw new Exception("Cannot borrow field from non borrowed direct type");
@@ -912,9 +913,24 @@ namespace Oxide.Compiler.Backend.Llvm
 
                     structType = concreteTypeRef;
                     break;
+                }
                 case BaseTypeRef:
                     throw new Exception("Cannot borrow field from base type");
-                case PointerTypeRef:
+                case PointerTypeRef pointerTypeRef:
+                {
+                    if (pointerTypeRef.InnerType is not ConcreteTypeRef concreteTypeRef)
+                    {
+                        throw new Exception("Cannot borrow field from non borrowed direct type");
+                    }
+
+                    if (!pointerTypeRef.MutableRef && inst.Mutable)
+                    {
+                        throw new Exception("Cannot mutably borrow from non-mutable borrow");
+                    }
+
+                    structType = concreteTypeRef;
+                    break;
+                }
                 case ReferenceTypeRef:
                     throw new NotImplementedException();
                 default:
@@ -926,6 +942,21 @@ namespace Oxide.Compiler.Backend.Llvm
             var fieldDef = structDef.Fields[index];
             var structContext = new GenericContext(null, structDef.GenericParams, structType.GenericParams, null);
 
+            TypeRef targetType = slotType switch
+            {
+                BorrowTypeRef => new BorrowTypeRef(
+                    structContext.ResolveRef(fieldDef.Type),
+                    inst.Mutable
+                ),
+                BaseTypeRef => throw new Exception("Cannot borrow field from base type"),
+                PointerTypeRef => new PointerTypeRef(
+                    structContext.ResolveRef(fieldDef.Type),
+                    inst.Mutable
+                ),
+                ReferenceTypeRef => throw new NotImplementedException(),
+                _ => throw new ArgumentOutOfRangeException(nameof(slotType))
+            };
+
             var addr = Builder.BuildInBoundsGEP(
                 slotVal,
                 new[]
@@ -935,7 +966,7 @@ namespace Oxide.Compiler.Backend.Llvm
                 },
                 $"inst_{inst.Id}_addr"
             );
-            StoreSlot(inst.TargetSlot, addr, new BorrowTypeRef(structContext.ResolveRef(fieldDef.Type), inst.Mutable));
+            StoreSlot(inst.TargetSlot, addr, targetType);
         }
 
         private void CompileStoreIndirectInst(StoreIndirectInst inst)
@@ -1018,6 +1049,17 @@ namespace Oxide.Compiler.Backend.Llvm
             var targetType = FunctionContext.ResolveRef(inst.TargetType);
             var targetLlvmType = Backend.ConvertType(targetType);
 
+            var (castable, unsafeCast) = Store.CanCastTypes(type, targetType);
+            if (!castable)
+            {
+                throw new Exception($"Cannot cast from {type} to {targetType}");
+            }
+
+            if (!CurrentBlock.Scope.Unsafe && unsafeCast)
+            {
+                throw new Exception($"Cast from {type} to {targetType} is unsafe");
+            }
+
             LLVMValueRef converted;
 
             switch (type)
@@ -1026,6 +1068,30 @@ namespace Oxide.Compiler.Backend.Llvm
                     if (Equals(baseTypeRef, targetType))
                     {
                         converted = value;
+                    }
+                    else if (PrimitiveType.IsPrimitiveInt(type) && PrimitiveType.IsPrimitiveInt(targetType))
+                    {
+                        var fromKind = PrimitiveType.GetKind(type);
+                        var fromWidth = PrimitiveType.GetWidth(fromKind);
+                        var toKind = PrimitiveType.GetKind(targetType);
+                        var toWidth = PrimitiveType.GetWidth(toKind);
+
+                        if (toWidth == fromWidth)
+                        {
+                            converted = value;
+                        }
+                        else if (toWidth < fromWidth)
+                        {
+                            converted = Builder.BuildTrunc(value, targetLlvmType, $"inst_{inst.Id}_trunc");
+                        }
+                        else if (PrimitiveType.IsSigned(fromKind))
+                        {
+                            converted = Builder.BuildSExt(value, targetLlvmType, $"inst_{inst.Id}_sext");
+                        }
+                        else
+                        {
+                            converted = Builder.BuildZExt(value, targetLlvmType, $"inst_{inst.Id}_zext");
+                        }
                     }
                     else
                     {
@@ -1058,8 +1124,20 @@ namespace Oxide.Compiler.Backend.Llvm
                     converted = value;
                     break;
                 }
-                case ReferenceTypeRef referenceTypeRef:
-                    throw new NotImplementedException();
+                case ReferenceTypeRef:
+                {
+                    switch (targetType)
+                    {
+                        case BorrowTypeRef:
+                        case PointerTypeRef:
+                            converted = GetBoxValuePtr(value, $"inst_{inst.Id}_ptr");
+                            break;
+                        default:
+                            throw new ArgumentOutOfRangeException(nameof(targetType));
+                    }
+
+                    break;
+                }
                 default:
                     throw new ArgumentOutOfRangeException(nameof(type));
             }
@@ -1067,6 +1145,19 @@ namespace Oxide.Compiler.Backend.Llvm
             converted = Builder.BuildBitCast(converted, targetLlvmType, $"inst_{inst.Id}_cast");
 
             StoreSlot(inst.ResultSlot, converted, targetType);
+        }
+
+        public LLVMValueRef GetBoxValuePtr(LLVMValueRef valueRef, string name)
+        {
+            return Builder.BuildInBoundsGEP(
+                valueRef,
+                new[]
+                {
+                    LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0),
+                    LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 1)
+                },
+                name
+            );
         }
 
         private void CompileAllocVariantInst(AllocVariantInst inst)
@@ -1131,8 +1222,8 @@ namespace Oxide.Compiler.Backend.Llvm
                 throw new NotImplementedException("Non direct types");
             }
 
-            return Equals(concreteTypeRef.Name, PrimitiveType.I32.Name) ||
-                   Equals(concreteTypeRef.Name, PrimitiveType.Bool.Name);
+            return Equals(concreteTypeRef, PrimitiveKind.I32.GetRef()) ||
+                   Equals(concreteTypeRef, PrimitiveKind.Bool.GetRef());
         }
 
         private bool IsSignedInteger(TypeRef typeRef)
@@ -1142,8 +1233,8 @@ namespace Oxide.Compiler.Backend.Llvm
                 throw new NotImplementedException("Non direct types");
             }
 
-            return Equals(concreteTypeRef.Name, PrimitiveType.I32.Name) ||
-                   Equals(concreteTypeRef.Name, PrimitiveType.Bool.Name);
+            return Equals(concreteTypeRef, PrimitiveKind.I32.GetRef()) ||
+                   Equals(concreteTypeRef, PrimitiveKind.Bool.GetRef());
         }
 
         private bool IsCopyType(TypeRef type)

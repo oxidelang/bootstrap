@@ -370,7 +370,7 @@ namespace Oxide.Compiler.Frontend
                 {
                     var condSlot = ParseExpression(simpleIfConditionContext.expression())
                         .GenerateMove(this, CurrentBlock);
-                    if (!Equals(condSlot.Type, PrimitiveType.BoolRef))
+                    if (!Equals(condSlot.Type, PrimitiveKind.Bool.GetRef()))
                     {
                         throw new Exception("Non-bool value");
                     }
@@ -855,7 +855,7 @@ namespace Oxide.Compiler.Frontend
             var resultSlot = CurrentScope.DefineSlot(new SlotDeclaration
             {
                 Id = ++LastSlotId,
-                Type = PrimitiveType.BoolRef
+                Type = PrimitiveKind.Bool.GetRef()
             });
 
             CurrentBlock.AddInstruction(new ComparisonInst
@@ -1845,7 +1845,7 @@ namespace Oxide.Compiler.Frontend
                         ConstType = PrimitiveKind.I32,
                         Value = val
                     });
-                    slotType = PrimitiveType.I32Ref;
+                    slotType = PrimitiveKind.I32.GetRef();
                     break;
                 }
                 case OxideParser.Outer_bool_literalContext outerBoolLiteralContext:
@@ -1861,7 +1861,7 @@ namespace Oxide.Compiler.Frontend
                                 ConstType = PrimitiveKind.Bool,
                                 Value = true
                             });
-                            slotType = PrimitiveType.BoolRef;
+                            slotType = PrimitiveKind.Bool.GetRef();
                             break;
                         }
                         case OxideParser.False_boolean_literalContext:
@@ -1873,7 +1873,7 @@ namespace Oxide.Compiler.Frontend
                                 ConstType = PrimitiveKind.Bool,
                                 Value = false
                             });
-                            slotType = PrimitiveType.BoolRef;
+                            slotType = PrimitiveKind.Bool.GetRef();
                             break;
                         }
                         default:
