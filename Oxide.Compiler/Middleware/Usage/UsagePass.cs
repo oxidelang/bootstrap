@@ -61,7 +61,12 @@ namespace Oxide.Compiler.Middleware.Usage
         {
             Console.WriteLine($" - New function: {func.Name}");
 
-            var functionContext = new GenericContext(parentContext, func.GenericParams, generics, null);
+            var functionContext = new GenericContext(
+                parentContext,
+                func.GenericParams,
+                generics,
+                parentContext?.ThisRef
+            );
 
             if (func.IsExtern || !func.HasBody)
             {
@@ -72,7 +77,11 @@ namespace Oxide.Compiler.Middleware.Usage
             {
                 foreach (var slot in scope.Slots.Values)
                 {
-                    MarkConcreteType((ConcreteTypeRef)functionContext.ResolveRef(slot.Type.GetBaseType()));
+                    MarkConcreteType(
+                        (ConcreteTypeRef)functionContext
+                            .ResolveRef(slot.Type.GetBaseType())
+                            .GetBaseType()
+                    );
                 }
             }
 
@@ -90,7 +99,9 @@ namespace Oxide.Compiler.Middleware.Usage
 
                         if (staticCallInst.TargetType != null)
                         {
-                            var targetConcrete = (ConcreteTypeRef)functionContext.ResolveRef(staticCallInst.TargetType);
+                            var targetConcrete = (ConcreteTypeRef)functionContext
+                                .ResolveRef(staticCallInst.TargetType)
+                                .GetBaseType();
                             var resolved = Store.LookupImplementation(
                                 targetConcrete,
                                 staticCallInst.TargetImplementation,
