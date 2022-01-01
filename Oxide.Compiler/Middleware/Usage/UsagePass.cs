@@ -40,7 +40,7 @@ namespace Oxide.Compiler.Middleware.Usage
 
                     if (MarkFunction(func, ImmutableArray<TypeRef>.Empty))
                     {
-                        ProcessFunction(func, ImmutableArray<TypeRef>.Empty);
+                        ProcessFunction(func, ImmutableArray<TypeRef>.Empty, null);
                     }
                 }
             }
@@ -57,11 +57,11 @@ namespace Oxide.Compiler.Middleware.Usage
             return function.MarkVersion(generics);
         }
 
-        private void ProcessFunction(Function func, ImmutableArray<TypeRef> generics)
+        private void ProcessFunction(Function func, ImmutableArray<TypeRef> generics, GenericContext parentContext)
         {
             Console.WriteLine($" - New function: {func.Name}");
 
-            var functionContext = new GenericContext(null, func.GenericParams, generics, null);
+            var functionContext = new GenericContext(parentContext, func.GenericParams, generics, null);
 
             if (func.IsExtern || !func.HasBody)
             {
@@ -91,19 +91,20 @@ namespace Oxide.Compiler.Middleware.Usage
                         if (staticCallInst.TargetType != null)
                         {
                             var targetConcrete = (ConcreteTypeRef)functionContext.ResolveRef(staticCallInst.TargetType);
-                            var (imp, targetFunc) = Store.LookupImplementation(
+                            var resolved = Store.LookupImplementation(
                                 targetConcrete,
                                 staticCallInst.TargetImplementation,
                                 staticCallInst.TargetMethod.Name.Parts.Single()
                             );
 
+                            var impContext = new GenericContext(null, resolved.ImplementationGenerics, targetConcrete);
 
                             var usedVersion = MarkConcreteType(targetConcrete);
-                            var usedImp = usedVersion.MarkImplementation(imp.Interface);
+                            var usedImp = usedVersion.MarkImplementation(resolved.Interface);
 
-                            if (usedImp.MarkFunction(targetFunc, mappedGenerics))
+                            if (usedImp.MarkFunction(resolved.Function, mappedGenerics))
                             {
-                                ProcessFunction(targetFunc, mappedGenerics);
+                                ProcessFunction(resolved.Function, mappedGenerics, impContext);
                             }
                         }
                         else
@@ -116,7 +117,7 @@ namespace Oxide.Compiler.Middleware.Usage
 
                             if (MarkFunction(calledFunc, mappedGenerics))
                             {
-                                ProcessFunction(calledFunc, mappedGenerics);
+                                ProcessFunction(calledFunc, mappedGenerics, null);
                             }
                         }
                     }

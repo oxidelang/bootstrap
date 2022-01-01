@@ -174,24 +174,31 @@ namespace Oxide.Compiler.Backend.Llvm
         {
             foreach (var usedFunc in usedImp.Functions.Values)
             {
-                var (imp, func) = Store.LookupImplementation(
+                var resolved = Store.LookupImplementation(
                     context.ThisRef,
                     usedImp.Interface,
                     usedFunc.Name.Parts.Single()
                 );
 
+                var impContext = new GenericContext(context, resolved.ImplementationGenerics, context.ThisRef);
+
                 foreach (var version in usedFunc.Versions)
                 {
                     var key = new FunctionRef
                     {
-                        TargetType = imp.Target,
-                        TargetImplementation = imp.Interface,
+                        TargetType = context.ThisRef,
+                        TargetImplementation = resolved.Interface,
                         TargetMethod = new ConcreteTypeRef(usedFunc.Name, version),
                     };
 
-                    var funcContext = new GenericContext(context, func.GenericParams, version, context.ThisRef);
+                    var funcContext = new GenericContext(
+                        impContext,
+                        resolved.Function.GenericParams,
+                        version,
+                        impContext.ThisRef
+                    );
 
-                    CreateFunction(key, func, funcContext);
+                    CreateFunction(key, resolved.Function, funcContext);
                 }
             }
         }
@@ -228,24 +235,31 @@ namespace Oxide.Compiler.Backend.Llvm
         {
             foreach (var usedFunc in usedImp.Functions.Values)
             {
-                var (imp, func) = Store.LookupImplementation(
+                var resolved = Store.LookupImplementation(
                     context.ThisRef,
                     usedImp.Interface,
                     usedFunc.Name.Parts.Single()
                 );
 
+                var impContext = new GenericContext(context, resolved.ImplementationGenerics, context.ThisRef);
+
                 foreach (var version in usedFunc.Versions)
                 {
                     var key = new FunctionRef
                     {
-                        TargetType = imp.Target,
-                        TargetImplementation = imp.Interface,
+                        TargetType = context.ThisRef,
+                        TargetImplementation = resolved.Interface,
                         TargetMethod = new ConcreteTypeRef(usedFunc.Name, version)
                     };
 
-                    var funcContext = new GenericContext(context, func.GenericParams, version, context.ThisRef);
+                    var funcContext = new GenericContext(
+                        impContext,
+                        resolved.Function.GenericParams,
+                        version,
+                        impContext.ThisRef
+                    );
 
-                    CompileFunction(key, func, funcContext);
+                    CompileFunction(key, resolved.Function, funcContext);
                 }
             }
         }

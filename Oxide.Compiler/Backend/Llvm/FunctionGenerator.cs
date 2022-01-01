@@ -661,11 +661,12 @@ namespace Oxide.Compiler.Backend.Llvm
                     FunctionContext.ResolveRefs(inst.TargetMethod.GenericParams)
                 );
 
-                (_, funcDef) = Store.LookupImplementation(
+                var resolved = Store.LookupImplementation(
                     targetType,
                     inst.TargetImplementation,
                     targetMethod.Name.Parts.Single()
                 );
+                funcDef = resolved.Function;
 
                 var type = Store.Lookup(targetType.Name);
                 funcContext = new GenericContext(

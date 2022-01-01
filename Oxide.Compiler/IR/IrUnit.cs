@@ -199,12 +199,12 @@ namespace Oxide.Compiler.IR
             return null;
         }
 
-        public (Implementation imp, Function function) LookupImplementation(IrStore store, ConcreteTypeRef target,
-            ConcreteTypeRef iface, string func)
+        public ResolvedFunction LookupImplementation(IrStore store, ConcreteTypeRef target, ConcreteTypeRef iface,
+            string func)
         {
             if (!Implementations.TryGetValue(target.Name, out var imps))
             {
-                return (null, null);
+                return null;
             }
 
             foreach (var imp in imps)
@@ -219,12 +219,16 @@ namespace Oxide.Compiler.IR
                     continue;
                 }
 
-                if (iface != null && iface.GenericParams != null && iface.GenericParams.Length > 0)
+                // TODO: Replace with more advance resolution system
+                var impContext = new GenericContext(null, knownGenerics.ToImmutableDictionary(), null);
+
+                ConcreteTypeRef ifaceRef = null;
+                if (imp.Interface != null)
                 {
-                    throw new NotImplementedException("Generics");
+                    ifaceRef = (ConcreteTypeRef)impContext.ResolveRef(imp.Interface);
                 }
 
-                if (!Equals(imp.Interface, iface))
+                if (!Equals(ifaceRef, iface))
                 {
                     continue;
                 }
@@ -241,11 +245,16 @@ namespace Oxide.Compiler.IR
                         throw new NotImplementedException("Generics");
                     }
 
-                    return (imp, function);
+                    return new ResolvedFunction
+                    {
+                        Interface = ifaceRef,
+                        ImplementationGenerics = impContext.Generics,
+                        Function = function
+                    };
                 }
             }
 
-            return (null, null);
+            return null;
         }
     }
 }

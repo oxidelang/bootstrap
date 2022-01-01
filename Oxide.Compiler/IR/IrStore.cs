@@ -153,21 +153,10 @@ namespace Oxide.Compiler.IR
                 .FirstOrDefault(result => result != null);
         }
 
-        public (Implementation imp, Function function) LookupImplementation(ConcreteTypeRef target,
-            ConcreteTypeRef iface,
-            string func)
+        public ResolvedFunction LookupImplementation(ConcreteTypeRef target, ConcreteTypeRef iface, string func)
         {
-            foreach (var unit in _units)
-            {
-                var (i, f) = unit.LookupImplementation(this, target, iface, func);
-
-                if (i != null)
-                {
-                    return (i, f);
-                }
-            }
-
-            return (null, null);
+            return _units.Select(unit => unit.LookupImplementation(this, target, iface, func))
+                .FirstOrDefault(result => result != null);
         }
     }
 }
