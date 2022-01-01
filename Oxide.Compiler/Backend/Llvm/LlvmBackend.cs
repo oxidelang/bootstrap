@@ -30,8 +30,6 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private Dictionary<ConcreteTypeRef, uint> _typeSizeStore;
 
-        private Dictionary<TypeRef, LLVMTypeRef> _boxTypeStore;
-
         private Dictionary<FunctionRef, LLVMValueRef> _functionRefs;
 
         private LLVMTargetDataRef DataLayout { get; set; }
@@ -44,7 +42,6 @@ namespace Oxide.Compiler.Backend.Llvm
             Middleware = middleware;
             _typeSizeStore = new Dictionary<ConcreteTypeRef, uint>();
             _typeStore = new Dictionary<ConcreteTypeRef, LLVMTypeRef>();
-            _boxTypeStore = new Dictionary<TypeRef, LLVMTypeRef>();
             _functionRefs = new Dictionary<FunctionRef, LLVMValueRef>();
             _intrinsics = new Dictionary<QualifiedName, IntrinsicMapper>();
 
@@ -54,7 +51,7 @@ namespace Oxide.Compiler.Backend.Llvm
             _typeStore.Add(PrimitiveKind.I32.GetRef(), LLVMTypeRef.Int32);
             _typeStore.Add(PrimitiveKind.Bool.GetRef(), LLVMTypeRef.Int1);
 
-            _intrinsics.Add(new QualifiedName(true, new[] { "std", "size_of" }), LlvmIntrinsics.SizeOf);
+            _intrinsics.Add(QualifiedName.From("std", "size_of"), LlvmIntrinsics.SizeOf);
         }
 
         public void Begin()
@@ -300,21 +297,7 @@ namespace Oxide.Compiler.Backend.Llvm
 
         public LLVMTypeRef GetBoxType(TypeRef typeRef)
         {
-            if (_boxTypeStore.TryGetValue(typeRef, out var boxType))
-            {
-                return boxType;
-            }
-
-            boxType = Context.CreateNamedStruct($"box[{GenerateName(typeRef)}]");
-            _boxTypeStore.Add(typeRef, boxType);
-
-            boxType.StructSetBody(new[]
-            {
-                LLVMTypeRef.Int64,
-                ConvertType(typeRef),
-            }, false);
-
-            return boxType;
+            return ResolveConcreteType(ConcreteTypeRef.From(QualifiedName.From("std", "Box"), typeRef));
         }
 
         private LLVMTypeRef ResolveConcreteType(ConcreteTypeRef typeRef)

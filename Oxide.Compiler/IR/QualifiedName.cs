@@ -17,6 +17,11 @@ namespace Oxide.Compiler.IR
             Parts = parts.ToImmutableArray();
         }
 
+        public static QualifiedName From(params string[] parts)
+        {
+            return new QualifiedName(true, parts);
+        }
+
         protected bool Equals(QualifiedName other)
         {
             return IsAbsolute == other.IsAbsolute &&

@@ -1149,12 +1149,15 @@ namespace Oxide.Compiler.Backend.Llvm
 
         public LLVMValueRef GetBoxValuePtr(LLVMValueRef valueRef, string name)
         {
+            var structDef = Store.Lookup<Struct>(QualifiedName.From("std", "Box"));
+            var index = structDef.Fields.FindIndex(x => x.Name == "value");
+
             return Builder.BuildInBoundsGEP(
                 valueRef,
                 new[]
                 {
                     LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0),
-                    LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 1)
+                    LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong)index)
                 },
                 name
             );

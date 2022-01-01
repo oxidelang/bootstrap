@@ -20,7 +20,7 @@ namespace Oxide.Compiler.Middleware
         public void Process(IrUnit unit)
         {
             // TODO: Remove
-            var mainFunc = unit.Lookup<Function>(new QualifiedName(true, new[] { "examples", "main" }));
+            var mainFunc = unit.Lookup<Function>(QualifiedName.From("examples", "main"));
             mainFunc.IsExported = true;
 
             // TODO: Add pass management

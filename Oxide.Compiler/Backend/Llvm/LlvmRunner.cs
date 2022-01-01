@@ -31,10 +31,7 @@ namespace Oxide.Compiler.Backend.Llvm
                     engine,
                     new FunctionRef
                     {
-                        TargetMethod = new ConcreteTypeRef(
-                            new QualifiedName(true, new[] { "std", "debug_int" }),
-                            ImmutableArray<TypeRef>.Empty
-                        )
+                        TargetMethod = ConcreteTypeRef.From(QualifiedName.From("std", "debug_int"))
                     },
                     DebugIntImp
                 );
@@ -43,10 +40,7 @@ namespace Oxide.Compiler.Backend.Llvm
                     engine,
                     new FunctionRef
                     {
-                        TargetMethod = new ConcreteTypeRef(
-                            new QualifiedName(true, new[] { "std", "debug_bool" }),
-                            ImmutableArray<TypeRef>.Empty
-                        )
+                        TargetMethod = ConcreteTypeRef.From(QualifiedName.From("std", "debug_bool"))
                     },
                     DebugBoolImp
                 );
@@ -55,10 +49,7 @@ namespace Oxide.Compiler.Backend.Llvm
                     engine,
                     new FunctionRef
                     {
-                        TargetMethod = new ConcreteTypeRef(
-                            new QualifiedName(true, new[] { "std", "alloc" }),
-                            ImmutableArray<TypeRef>.Empty
-                        )
+                        TargetMethod = ConcreteTypeRef.From(QualifiedName.From("std", "alloc"))
                     },
                     AllocImp
                 );
@@ -67,10 +58,7 @@ namespace Oxide.Compiler.Backend.Llvm
                     engine,
                     new FunctionRef
                     {
-                        TargetMethod = new ConcreteTypeRef(
-                            new QualifiedName(true, new[] { "examples", "main" }),
-                            ImmutableArray<TypeRef>.Empty
-                        )
+                        TargetMethod = ConcreteTypeRef.From(QualifiedName.From("examples", "main"))
                     }
                 );
 

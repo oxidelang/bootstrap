@@ -21,7 +21,7 @@ namespace Oxide.Compiler.IR.Types
             {
                 var type = new PrimitiveType
                 {
-                    Name = new QualifiedName(true, new[] { "std", Enum.GetName(kind)!.ToLower() }),
+                    Name = QualifiedName.From("std", Enum.GetName(kind)!.ToLower()),
                     Visibility = Visibility.Public,
                     GenericParams = ImmutableList<string>.Empty,
                     Kind = kind,

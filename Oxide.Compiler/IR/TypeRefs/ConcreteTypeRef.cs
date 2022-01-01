@@ -17,6 +17,11 @@ namespace Oxide.Compiler.IR.TypeRefs
             GenericParams = genericParams;
         }
 
+        public static ConcreteTypeRef From(QualifiedName qn, params TypeRef[] generics)
+        {
+            return new ConcreteTypeRef(qn, generics.ToImmutableArray());
+        }
+
         protected bool Equals(ConcreteTypeRef other)
         {
             return Equals(Name, other.Name) &&
@@ -48,6 +53,7 @@ namespace Oxide.Compiler.IR.TypeRefs
                 sb.Append(string.Join(", ", GenericParams));
                 sb.Append('>');
             }
+
             sb.Append("]");
 
             return sb.ToString();
