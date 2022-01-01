@@ -436,6 +436,8 @@ namespace Oxide.Compiler.Frontend
                         _ => throw new ArgumentOutOfRangeException()
                     };
                 }
+                case OxideParser.This_typeContext:
+                    return new ThisTypeRef();
                 case OxideParser.Derived_typeContext derivedTypeContext:
                 {
                     var baseRef = ParseType(derivedTypeContext.type(), genericTypes);

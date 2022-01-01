@@ -28,6 +28,7 @@ WEAK:       'weak';
 DERIVED:    '~';
 
 THIS_FIELD: 'this';
+THIS_TYPE:  'This';
 
 RETURN: 'return';
 IF:     'if';
@@ -372,6 +373,7 @@ type
     : type_flags type #flagged_type
     | direct_type #direct_type_base
     | LARROW type AS direct_type RARROW DCOLON name #derived_type
+    | THIS_TYPE #this_type
     ;
 
 direct_type
