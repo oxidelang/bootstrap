@@ -1167,11 +1167,6 @@ namespace Oxide.Compiler.Backend.Llvm
         {
             var variant = Store.Lookup<Variant>(inst.VariantType.Name);
             var variantTypeRef = FunctionContext.ResolveRef(inst.VariantType);
-            var variantItemRef = new ConcreteTypeRef(
-                new QualifiedName(true, inst.VariantType.Name.Parts.Add(inst.ItemName)),
-                inst.VariantType.GenericParams
-            );
-            var variantItemType = Backend.ConvertType(variantItemRef);
 
             var variantValue = ZeroInit(variantTypeRef);
             StoreSlot(inst.SlotId, variantValue, variantTypeRef);
@@ -1192,6 +1187,12 @@ namespace Oxide.Compiler.Backend.Llvm
             Builder.BuildStore(LLVMValueRef.CreateConstInt(LLVMTypeRef.Int8, (ulong)index), typeAddr);
 
             if (inst.ItemSlot is not { } slotId) return;
+
+            var variantItemRef = new ConcreteTypeRef(
+                new QualifiedName(true, inst.VariantType.Name.Parts.Add(inst.ItemName)),
+                inst.VariantType.GenericParams
+            );
+            var variantItemType = Backend.ConvertType(variantItemRef);
 
             // Store variant value
             var valueAddr = Builder.BuildInBoundsGEP(
