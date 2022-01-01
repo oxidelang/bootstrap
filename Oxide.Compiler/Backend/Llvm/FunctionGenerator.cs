@@ -433,18 +433,29 @@ namespace Oxide.Compiler.Backend.Llvm
             StoreSlot(inst.SlotId, ZeroInit(structType), structType);
         }
 
+
         private LLVMValueRef ZeroInit(TypeRef tref)
         {
-            if (tref is not ConcreteTypeRef concreteTypeRef)
+            switch (tref)
             {
-                throw new NotImplementedException("Zero init of non direct type not implemented");
+                case ConcreteTypeRef concreteTypeRef:
+                    return ZeroInitConcreteType(concreteTypeRef);
+                case BorrowTypeRef:
+                case PointerTypeRef:
+                case ReferenceTypeRef:
+                    return LLVMValueRef.CreateConstPointerNull(Backend.ConvertType(tref));
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(tref));
             }
+        }
 
+        private LLVMValueRef ZeroInitConcreteType(ConcreteTypeRef concreteTypeRef)
+        {
             var val = Store.Lookup(concreteTypeRef.Name);
             switch (val)
             {
                 case null:
-                    throw new Exception($"Unable to resolve {tref}");
+                    throw new Exception($"Unable to resolve {concreteTypeRef}");
                 case PrimitiveType primitiveType:
                     switch (primitiveType.Kind)
                     {
@@ -519,6 +530,7 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private void CompileJumpVariantInst(JumpVariantInst inst)
         {
+            var variantItemTypeRef = (ConcreteTypeRef) FunctionContext.ResolveRef(inst.VariantItemType);
             var (varType, rawVarRef) = GetSlotRef(inst.VariantSlot);
 
             LLVMValueRef varRef;
@@ -540,9 +552,9 @@ namespace Oxide.Compiler.Backend.Llvm
             var expectedVarType = new ConcreteTypeRef(
                 new QualifiedName(
                     true,
-                    inst.VariantItemType.Name.Parts.RemoveAt(inst.VariantItemType.Name.Parts.Length - 1)
+                    variantItemTypeRef.Name.Parts.RemoveAt(variantItemTypeRef.Name.Parts.Length - 1)
                 ),
-                inst.VariantItemType.GenericParams
+                variantItemTypeRef.GenericParams
             );
 
             if (!Equals(varType.GetBaseType(), expectedVarType))
@@ -551,7 +563,7 @@ namespace Oxide.Compiler.Backend.Llvm
             }
 
             var variant = Store.Lookup<Variant>(expectedVarType.Name);
-            var itemName = inst.VariantItemType.Name.Parts.Last();
+            var itemName = variantItemTypeRef.Name.Parts.Last();
             var index = variant.Items.FindIndex(x => x.Name == itemName);
 
             var typeAddr = Builder.BuildInBoundsGEP(
@@ -601,7 +613,7 @@ namespace Oxide.Compiler.Backend.Llvm
                 },
                 $"inst_{inst.Id}_iaddr"
             );
-            var variantItemType = Backend.ConvertType(inst.VariantItemType);
+            var variantItemType = Backend.ConvertType(variantItemTypeRef);
             var castedAddr = Builder.BuildBitCast(
                 itemAddr,
                 LLVMTypeRef.CreatePointer(variantItemType, 0),
@@ -611,10 +623,10 @@ namespace Oxide.Compiler.Backend.Llvm
             switch (varType)
             {
                 case BaseTypeRef:
-                    if (IsCopyType(inst.VariantItemType))
+                    if (IsCopyType(variantItemTypeRef))
                     {
                         var value = Builder.BuildLoad(castedAddr, $"inst_{inst.Id}_copy");
-                        StoreSlot(inst.ItemSlot, value, inst.VariantItemType, true);
+                        StoreSlot(inst.ItemSlot, value, variantItemTypeRef, true);
                     }
                     else
                     {
@@ -627,7 +639,7 @@ namespace Oxide.Compiler.Backend.Llvm
                         inst.ItemSlot,
                         castedAddr,
                         new BorrowTypeRef(
-                            inst.VariantItemType,
+                            variantItemTypeRef,
                             borrowTypeRef.MutableRef
                         ),
                         true
@@ -1167,7 +1179,7 @@ namespace Oxide.Compiler.Backend.Llvm
         private void CompileAllocVariantInst(AllocVariantInst inst)
         {
             var variant = Store.Lookup<Variant>(inst.VariantType.Name);
-            var variantTypeRef = FunctionContext.ResolveRef(inst.VariantType);
+            var variantTypeRef = (ConcreteTypeRef)FunctionContext.ResolveRef(inst.VariantType);
 
             var variantValue = ZeroInit(variantTypeRef);
             StoreSlot(inst.SlotId, variantValue, variantTypeRef);
@@ -1190,8 +1202,8 @@ namespace Oxide.Compiler.Backend.Llvm
             if (inst.ItemSlot is not { } slotId) return;
 
             var variantItemRef = new ConcreteTypeRef(
-                new QualifiedName(true, inst.VariantType.Name.Parts.Add(inst.ItemName)),
-                inst.VariantType.GenericParams
+                new QualifiedName(true, variantTypeRef.Name.Parts.Add(inst.ItemName)),
+                variantTypeRef.GenericParams
             );
             var variantItemType = Backend.ConvertType(variantItemRef);
 
