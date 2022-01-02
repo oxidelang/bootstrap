@@ -150,15 +150,15 @@ namespace Oxide.Compiler.Frontend
             }
         }
 
-        private void ParseAssignStatement(OxideParser.Assign_statementContext assignStatementContext)
+        private void ParseAssignStatement(OxideParser.Assign_statementContext inst)
         {
-            var exp = ParseExpression(assignStatementContext.expression()).GenerateMove(this, CurrentBlock);
+            var exp = ParseExpression(inst.expression()).GenerateMove(this, CurrentBlock);
             if (exp == null)
             {
                 throw new Exception($"No value returned");
             }
 
-            switch (assignStatementContext.assign_target())
+            switch (inst.assign_target())
             {
                 case OxideParser.Deref_assign_targetContext derefAssignTargetContext:
                 {
@@ -169,6 +169,7 @@ namespace Oxide.Compiler.Frontend
                     }
 
                     var addrSlot = addr.GenerateMove(this, CurrentBlock);
+                    TypeRef targetType;
                     switch (addrSlot.Type)
                     {
                         case BorrowTypeRef borrowTypeRef:
@@ -177,6 +178,7 @@ namespace Oxide.Compiler.Frontend
                                 throw new Exception("Cannot store into non-mutable pointer");
                             }
 
+                            targetType = borrowTypeRef.InnerType;
                             break;
                         case PointerTypeRef pointerTypeRef:
                             if (!pointerTypeRef.MutableRef)
@@ -184,6 +186,7 @@ namespace Oxide.Compiler.Frontend
                                 throw new Exception("Cannot store into non-mutable pointer");
                             }
 
+                            targetType = pointerTypeRef.InnerType;
                             break;
                         case ReferenceTypeRef referenceTypeRef:
                             throw new Exception("Cannot store into reference type");
@@ -196,11 +199,49 @@ namespace Oxide.Compiler.Frontend
                             throw new ArgumentOutOfRangeException();
                     }
 
+                    int valueSlot;
+                    if (inst.assign_op() is OxideParser.Equal_assign_opContext)
+                    {
+                        valueSlot = exp.Id;
+                    }
+                    else
+                    {
+                        var tempDec = CurrentScope.DefineSlot(new SlotDeclaration
+                        {
+                            Id = ++LastSlotId,
+                            Name = null,
+                            Type = targetType,
+                            Mutable = true
+                        });
+                        valueSlot = tempDec.Id;
+
+                        CurrentBlock.AddInstruction(new LoadIndirectInst
+                        {
+                            Id = ++LastInstId,
+                            TargetSlot = valueSlot,
+                            AddressSlot = addrSlot.Id
+                        });
+
+                        CurrentBlock.AddInstruction(new ArithmeticInst
+                        {
+                            Id = ++LastInstId,
+                            ResultSlot = valueSlot,
+                            LhsValue = valueSlot,
+                            RhsValue = exp.Id,
+                            Op = inst.assign_op() switch
+                            {
+                                OxideParser.Minus_assign_opContext => ArithmeticInst.Operation.Minus,
+                                OxideParser.Plus_assign_opContext => ArithmeticInst.Operation.Add,
+                                _ => throw new ArgumentOutOfRangeException()
+                            }
+                        });
+                    }
+
                     CurrentBlock.AddInstruction(new StoreIndirectInst
                     {
                         Id = ++LastInstId,
                         TargetSlot = addrSlot.Id,
-                        ValueSlot = exp.Id
+                        ValueSlot = valueSlot
                     });
                     break;
                 }
@@ -241,11 +282,49 @@ namespace Oxide.Compiler.Frontend
                     );
                     var fieldSlot = fieldTgt.GenerateRef(this, CurrentBlock, true);
 
+                    int valueSlot;
+                    if (inst.assign_op() is OxideParser.Equal_assign_opContext)
+                    {
+                        valueSlot = exp.Id;
+                    }
+                    else
+                    {
+                        var tempDec = CurrentScope.DefineSlot(new SlotDeclaration
+                        {
+                            Id = ++LastSlotId,
+                            Name = null,
+                            Type = fieldType,
+                            Mutable = true
+                        });
+                        valueSlot = tempDec.Id;
+
+                        CurrentBlock.AddInstruction(new LoadIndirectInst
+                        {
+                            Id = ++LastInstId,
+                            TargetSlot = valueSlot,
+                            AddressSlot = fieldSlot.Id
+                        });
+
+                        CurrentBlock.AddInstruction(new ArithmeticInst
+                        {
+                            Id = ++LastInstId,
+                            ResultSlot = valueSlot,
+                            LhsValue = valueSlot,
+                            RhsValue = exp.Id,
+                            Op = inst.assign_op() switch
+                            {
+                                OxideParser.Minus_assign_opContext => ArithmeticInst.Operation.Minus,
+                                OxideParser.Plus_assign_opContext => ArithmeticInst.Operation.Add,
+                                _ => throw new ArgumentOutOfRangeException()
+                            }
+                        });
+                    }
+
                     CurrentBlock.AddInstruction(new StoreIndirectInst
                     {
                         Id = ++LastInstId,
                         TargetSlot = fieldSlot.Id,
-                        ValueSlot = exp.Id
+                        ValueSlot = valueSlot
                     });
                     break;
                 }
@@ -259,12 +338,32 @@ namespace Oxide.Compiler.Frontend
                         throw new Exception($"Cannot assign {exp.Type} to {varDec.Type}");
                     }
 
-                    CurrentBlock.AddInstruction(new MoveInst
+                    if (inst.assign_op() is OxideParser.Equal_assign_opContext)
                     {
-                        Id = ++LastInstId,
-                        DestSlot = varDec.Id,
-                        SrcSlot = exp.Id
-                    });
+                        CurrentBlock.AddInstruction(new MoveInst
+                        {
+                            Id = ++LastInstId,
+                            DestSlot = varDec.Id,
+                            SrcSlot = exp.Id
+                        });
+                    }
+                    else
+                    {
+                        CurrentBlock.AddInstruction(new ArithmeticInst
+                        {
+                            Id = ++LastInstId,
+                            ResultSlot = varDec.Id,
+                            LhsValue = varDec.Id,
+                            RhsValue = exp.Id,
+                            Op = inst.assign_op() switch
+                            {
+                                OxideParser.Minus_assign_opContext => ArithmeticInst.Operation.Minus,
+                                OxideParser.Plus_assign_opContext => ArithmeticInst.Operation.Add,
+                                _ => throw new ArgumentOutOfRangeException()
+                            }
+                        });
+                    }
+
                     break;
                 }
                 default:

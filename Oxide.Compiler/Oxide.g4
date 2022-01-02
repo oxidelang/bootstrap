@@ -49,7 +49,9 @@ PERIOD: '.';
 COMMA:  ',';
 
 PLUS:       '+';
+PLUSEQL:    '+=';
 MINUS:      '-';
+MINUSEQL:   '-=';
 EQUAL:      '=';
 NOTEQ:      '!=';
 EQUALTO:    '==';
@@ -222,7 +224,13 @@ statement
     ;
 
 assign_statement
-    : assign_target EQUAL expression SEMI
+    : assign_target assign_op expression SEMI
+    ;
+
+assign_op
+    : EQUAL #equal_assign_op
+    | PLUSEQL #plus_assign_op
+    | MINUSEQL #minus_assign_op
     ;
 
 assign_target
