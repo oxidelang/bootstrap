@@ -139,6 +139,15 @@ namespace Oxide.Compiler.Backend.Llvm
             var returnType = ConvertType(returnTypeRef);
             var funcType = LLVMTypeRef.CreateFunction(returnType, paramTypes.ToArray());
             var funcRef = Module.AddFunction(funcName, funcType);
+
+            if (func.AlwaysInline)
+            {
+                funcRef.AddAttribute(
+                    LlvmAttributes.Target.Function,
+                    Context.CreateEnumAttribute(LlvmAttributes.AttrKind.AlwaysInline)
+                );
+            }
+
             _functionRefs.Add(key, funcRef);
         }
 
@@ -473,6 +482,7 @@ namespace Oxide.Compiler.Backend.Llvm
                 LLVMPassManagerBuilderRef passManagerBuilder = LLVM.PassManagerBuilderCreate();
                 passManagerBuilder.SetOptLevel(3);
                 var passManager = LLVMPassManagerRef.Create();
+                passManager.AddAlwaysInlinerPass();
                 passManagerBuilder.PopulateModulePassManager(passManager);
                 passManager.Run(Module);
             }
