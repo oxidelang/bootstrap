@@ -139,6 +139,9 @@ namespace Oxide.Compiler.Frontend
                 case OxideParser.Expression_statementContext expressionStatementContext:
                     ParseExpression(expressionStatementContext.expression());
                     break;
+                case OxideParser.Loop_statement_topContext loopStatementTopContext:
+                    ParseLoopStatement(loopStatementTopContext.loop_statement());
+                    break;
                 case OxideParser.Variable_statement_topContext variableStatementTopContext:
                     ParseVariableStatement(variableStatementTopContext.variable_statement());
                     break;
@@ -148,6 +151,57 @@ namespace Oxide.Compiler.Frontend
                 default:
                     throw new ArgumentOutOfRangeException(nameof(ctx));
             }
+        }
+
+        private void ParseLoopStatement(OxideParser.Loop_statementContext ctx)
+        {
+            var originalScope = CurrentScope;
+            var originalBlock = CurrentBlock;
+
+            // Configure jump paths
+            var returnBlock = NewBlock(originalScope);
+            PushScope(false);
+            var condBlock = NewBlock(CurrentScope);
+            RestoreScope(originalScope);
+            PushScope(false);
+            var bodyBlock = NewBlock(CurrentScope);
+            RestoreScope(originalScope);
+
+            // Create initial jump
+            MakeCurrent(originalBlock);
+            CurrentBlock.AddInstruction(new JumpInst
+            {
+                Id = ++LastInstId,
+                TargetBlock = condBlock.Id,
+            });
+
+            // Create condition block
+            MakeCurrent(condBlock);
+            var condSlot = ParseExpression(ctx.expression()).GenerateMove(this, CurrentBlock);
+            if (!Equals(condSlot.Type, PrimitiveKind.Bool.GetRef()))
+            {
+                throw new Exception("Non-bool value");
+            }
+
+            CurrentBlock.AddInstruction(new JumpInst
+            {
+                Id = ++LastInstId,
+                ConditionSlot = condSlot.Id,
+                TargetBlock = bodyBlock.Id,
+                ElseBlock = returnBlock.Id
+            });
+
+            // Create loop body
+            MakeCurrent(bodyBlock);
+            ParseBlock(ctx.block());
+            CurrentBlock.AddInstruction(new JumpInst
+            {
+                Id = ++LastInstId,
+                TargetBlock = condBlock.Id
+            });
+
+            // Continue in return block
+            MakeCurrent(returnBlock);
         }
 
         private void ParseAssignStatement(OxideParser.Assign_statementContext inst)

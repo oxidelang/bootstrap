@@ -33,6 +33,7 @@ THIS_TYPE:  'This';
 RETURN: 'return';
 IF:     'if';
 ELSE:   'else';
+WHILE:  'while';
 
 LBRACK: '(';
 RBRACK: ')';
@@ -221,6 +222,7 @@ statement
     | block_expression #block_expression_statement
     | variable_statement #variable_statement_top
     | assign_statement #assign_statement_top
+    | loop_statement #loop_statement_top
     ;
 
 assign_statement
@@ -237,6 +239,10 @@ assign_target
     : base_expression PERIOD name #field_assign_target
     | qualified_name (type_generic_params DCOLON qualified_name)? #qualified_assign_target
     | STAR unary_expression #deref_assign_target
+    ;
+
+loop_statement
+    : WHILE expression block
     ;
 
 expression
