@@ -395,7 +395,7 @@ namespace Oxide.Compiler.Frontend
                     var finalBlock = CurrentBlock;
                     if (finalBlock.HasTerminated)
                     {
-                        throw new NotImplementedException("TODO");
+                        return null;
                     }
 
                     var returnBlock = NewBlock(originalScope);
