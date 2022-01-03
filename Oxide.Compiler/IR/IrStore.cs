@@ -4,6 +4,7 @@ using System.Collections.Immutable;
 using System.Linq;
 using Oxide.Compiler.IR.TypeRefs;
 using Oxide.Compiler.IR.Types;
+using Oxide.Compiler.Middleware.Usage;
 
 namespace Oxide.Compiler.IR
 {
@@ -75,6 +76,65 @@ namespace Oxide.Compiler.IR
                     throw new ArgumentOutOfRangeException(nameof(a));
             }
         }
+
+        public CopyProperties GetCopyProperties(TypeRef type)
+        {
+            switch (type)
+            {
+                case BorrowTypeRef:
+                case PointerTypeRef:
+                    return new CopyProperties
+                    {
+                        CanCopy = true,
+                        BitwiseCopy = true
+                    };
+                case ReferenceTypeRef referenceTypeRef:
+                    return new CopyProperties
+                    {
+                        CanCopy = true,
+                        BitwiseCopy = false,
+                        CopyMethod = new FunctionRef
+                        {
+                            TargetMethod = ConcreteTypeRef.From(
+                                QualifiedName.From(
+                                    "std",
+                                    referenceTypeRef.StrongRef ? "box_copy_strong" : "box_copy_weak"
+                                ),
+                                referenceTypeRef.InnerType
+                            )
+                        }
+                    };
+                case ConcreteTypeRef concreteTypeRef:
+                {
+                    var baseType = Lookup(concreteTypeRef.Name);
+                    switch (baseType)
+                    {
+                        case PrimitiveType primitiveType:
+                            return new CopyProperties
+                            {
+                                CanCopy = true,
+                                BitwiseCopy = true
+                            };
+                        case Struct @struct:
+                            // TODO
+                            return new CopyProperties
+                            {
+                                CanCopy = false
+                            };
+                        case Interface @interface:
+                        case Variant variant:
+                            throw new NotImplementedException();
+                        default:
+                            throw new ArgumentOutOfRangeException(nameof(baseType));
+                    }
+                }
+                case BaseTypeRef baseTypeRef:
+                    throw new Exception("Unresolved");
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(type));
+            }
+        }
+
 
         public void AddUnit(IrUnit unit)
         {

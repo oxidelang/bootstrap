@@ -55,48 +55,23 @@ namespace Oxide.Compiler.Frontend
                     throw new ArgumentOutOfRangeException();
             }
 
-            var baseFieldType = FieldType.GetBaseType() switch
+            var varSlot = block.Scope.DefineSlot(new SlotDeclaration
             {
-                ConcreteTypeRef concreteTypeRef => concreteTypeRef,
-                ThisTypeRef or DerivedTypeRef or GenericTypeRef => throw new NotImplementedException(),
-                _ => throw new ArgumentOutOfRangeException()
-            };
+                Id = ++parser.LastSlotId,
+                Mutable = false,
+                Name = null,
+                Type = FieldType
+            });
 
-            var fieldType = parser.Lookup(baseFieldType.Name);
-            if (fieldType == null)
+            block.AddInstruction(new FieldMoveInst
             {
-                throw new Exception($"Failed to find {baseFieldType.Name}");
-            }
+                Id = ++parser.LastInstId,
+                BaseSlot = baseSlot.Id,
+                TargetField = FieldName,
+                TargetSlot = varSlot.Id
+            });
 
-            switch (fieldType)
-            {
-                case PrimitiveType primitiveType:
-                {
-                    var varSlot = block.Scope.DefineSlot(new SlotDeclaration
-                    {
-                        Id = ++parser.LastSlotId,
-                        Mutable = false,
-                        Name = null,
-                        Type = FieldType
-                    });
-
-                    block.AddInstruction(new FieldMoveInst
-                    {
-                        Id = ++parser.LastInstId,
-                        BaseSlot = baseSlot.Id,
-                        TargetField = FieldName,
-                        TargetSlot = varSlot.Id
-                    });
-
-                    return varSlot;
-                }
-                case Interface @interface:
-                case Struct @struct:
-                case Variant variant:
-                    throw new NotImplementedException("Field moves");
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(fieldType));
-            }
+            return varSlot;
         }
 
         public override SlotDeclaration GenerateRef(BodyParser parser, Block block, bool mutable)

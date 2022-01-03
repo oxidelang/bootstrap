@@ -59,7 +59,7 @@ namespace Oxide.Compiler.Middleware.Usage
 
         private void ProcessFunction(Function func, ImmutableArray<TypeRef> generics, GenericContext parentContext)
         {
-            Console.WriteLine($" - New function: {func.Name}");
+            Console.WriteLine($" - Processing function: {func.Name}");
 
             var functionContext = new GenericContext(
                 parentContext,
@@ -73,15 +73,14 @@ namespace Oxide.Compiler.Middleware.Usage
                 return;
             }
 
+            var slotTypes = new Dictionary<int, TypeRef>();
             foreach (var scope in func.Scopes)
             {
                 foreach (var slot in scope.Slots.Values)
                 {
-                    MarkConcreteType(
-                        (ConcreteTypeRef)functionContext
-                            .ResolveRef(slot.Type.GetBaseType())
-                            .GetBaseType()
-                    );
+                    var slotType = functionContext.ResolveRef(slot.Type);
+                    slotTypes.Add(slot.Id, slotType);
+                    MarkConcreteType((ConcreteTypeRef)slotType.GetBaseType());
                 }
             }
 
@@ -91,47 +90,71 @@ namespace Oxide.Compiler.Middleware.Usage
                 {
                     if (instruction is StaticCallInst staticCallInst)
                     {
-                        var mappedGenerics = staticCallInst
-                            .TargetMethod
-                            .GenericParams
-                            .Select(x => functionContext.ResolveRef(x))
-                            .ToImmutableArray();
-
-                        if (staticCallInst.TargetType != null)
+                        ProcessFunctionRef(
+                            staticCallInst.TargetType,
+                            staticCallInst.TargetImplementation,
+                            staticCallInst.TargetMethod,
+                            functionContext
+                        );
+                    }
+                    else if (instruction is MoveInst moveInst)
+                    {
+                        var slotType = slotTypes[moveInst.SrcSlot];
+                        var copyProperties = Store.GetCopyProperties(slotType);
+                        if (copyProperties.CopyMethod != null)
                         {
-                            var targetConcrete = (ConcreteTypeRef)functionContext
-                                .ResolveRef(staticCallInst.TargetType)
-                                .GetBaseType();
-                            var resolved = Store.LookupImplementation(
-                                targetConcrete,
-                                staticCallInst.TargetImplementation,
-                                staticCallInst.TargetMethod.Name.Parts.Single()
+                            ProcessFunctionRef(
+                                copyProperties.CopyMethod.TargetType,
+                                copyProperties.CopyMethod.TargetImplementation,
+                                copyProperties.CopyMethod.TargetMethod,
+                                functionContext
                             );
-
-                            var impContext = new GenericContext(null, resolved.ImplementationGenerics, targetConcrete);
-
-                            var usedVersion = MarkConcreteType(targetConcrete);
-                            var usedImp = usedVersion.MarkImplementation(resolved.Interface);
-
-                            if (usedImp.MarkFunction(resolved.Function, mappedGenerics))
-                            {
-                                ProcessFunction(resolved.Function, mappedGenerics, impContext);
-                            }
-                        }
-                        else
-                        {
-                            var calledFunc = Store.Lookup<Function>(staticCallInst.TargetMethod.Name);
-                            if (calledFunc == null)
-                            {
-                                throw new Exception($"Failed to resolve call {staticCallInst.TargetMethod}");
-                            }
-
-                            if (MarkFunction(calledFunc, mappedGenerics))
-                            {
-                                ProcessFunction(calledFunc, mappedGenerics, null);
-                            }
                         }
                     }
+                }
+            }
+        }
+
+        private void ProcessFunctionRef(BaseTypeRef targetType, ConcreteTypeRef targetImp, ConcreteTypeRef targetMethod,
+            GenericContext functionContext)
+        {
+            var mappedGenerics = targetMethod
+                .GenericParams
+                .Select(x => functionContext.ResolveRef(x))
+                .ToImmutableArray();
+
+            if (targetType != null)
+            {
+                var targetConcrete = (ConcreteTypeRef)functionContext
+                    .ResolveRef(targetType)
+                    .GetBaseType();
+                var resolved = Store.LookupImplementation(
+                    targetConcrete,
+                    targetImp,
+                    targetMethod.Name.Parts.Single()
+                );
+
+                var impContext = new GenericContext(null, resolved.ImplementationGenerics, targetConcrete);
+
+                var usedVersion = MarkConcreteType(targetConcrete);
+                var usedImp = usedVersion.MarkImplementation(resolved.Interface);
+
+                if (usedImp.MarkFunction(resolved.Function, mappedGenerics))
+                {
+                    ProcessFunction(resolved.Function, mappedGenerics, impContext);
+                }
+            }
+            else
+            {
+                var calledFunc = Store.Lookup<Function>(targetMethod.Name);
+                if (calledFunc == null)
+                {
+                    throw new Exception($"Failed to resolve call {targetMethod}");
+                }
+
+                if (MarkFunction(calledFunc, mappedGenerics))
+                {
+                    ProcessFunction(calledFunc, mappedGenerics, null);
                 }
             }
         }

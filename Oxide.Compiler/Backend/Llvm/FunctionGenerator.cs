@@ -309,13 +309,103 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private void CompileMoveInst(MoveInst inst)
         {
-            var (type, value) = LoadSlot(inst.SrcSlot, $"inst_{inst.Id}_load");
-            // if (!IsCopyType(type))
-            // {
-            //     TODO: Check validity
-            // }
+            var (type, value) = GetSlotRef(inst.SrcSlot);
+            var properties = Store.GetCopyProperties(type);
 
-            StoreSlot(inst.DestSlot, value, type);
+            // TODO: Remove once lifetimes are tracked
+            if (!properties.CanCopy)
+            {
+                properties = new CopyProperties
+                {
+                    CanCopy = true,
+                    BitwiseCopy = true
+                };
+            }
+
+            LLVMValueRef destValue;
+            if (properties.CanCopy)
+            {
+                destValue = GenerateCopy(type, properties, value, $"inst_{inst.Id}");
+            }
+            else
+            {
+                throw new NotImplementedException("Moves");
+            }
+
+            StoreSlot(inst.DestSlot, destValue, type);
+        }
+
+        private LLVMValueRef GenerateCopy(TypeRef type, CopyProperties properties, LLVMValueRef pointer, string name)
+        {
+            if (!properties.CanCopy)
+            {
+                throw new ArgumentException("Invalid copy properties");
+            }
+
+            if (properties.BitwiseCopy)
+            {
+                return Builder.BuildLoad(pointer, $"{name}_copy");
+            }
+
+            var targetMethod = properties.CopyMethod.TargetMethod;
+
+            Function funcDef;
+            GenericContext funcContext;
+
+            if (properties.CopyMethod.TargetType != null)
+            {
+                throw new NotImplementedException();
+            }
+            else
+            {
+                funcDef = Store.Lookup<Function>(targetMethod.Name);
+                funcContext = GenericContext.Default;
+            }
+
+            if (funcDef == null)
+            {
+                throw new Exception($"Failed to find unit for {targetMethod}");
+            }
+
+            if (targetMethod.GenericParams.Length > 0)
+            {
+                funcContext = new GenericContext(
+                    funcContext,
+                    funcDef.GenericParams,
+                    targetMethod.GenericParams,
+                    funcContext.ThisRef
+                );
+            }
+
+            var funcRef = Backend.GetFunctionRef(properties.CopyMethod);
+
+            if (funcDef.Parameters.Count != 1)
+            {
+                throw new Exception("Invalid number of arguments");
+            }
+
+            var param = funcDef.Parameters[0];
+            var paramType = funcContext.ResolveRef(param.Type);
+
+            var matches = paramType switch
+            {
+                BorrowTypeRef borrowTypeRef => Equals(borrowTypeRef.InnerType, type) && !borrowTypeRef.MutableRef,
+                PointerTypeRef pointerTypeRef => Equals(pointerTypeRef.InnerType, type) && !pointerTypeRef.MutableRef,
+                _ => throw new ArgumentOutOfRangeException(nameof(paramType))
+            };
+
+            if (!matches)
+            {
+                throw new Exception($"Argument does not match parameter type for {param.Name}");
+            }
+
+            var returnType = funcContext.ResolveRef(funcDef.ReturnType);
+            if (!Equals(returnType, type))
+            {
+                throw new Exception("Copy function does not return expected value");
+            }
+
+            return Builder.BuildCall(funcRef, new[] { pointer }, $"{name}_copyfunc");
         }
 
         private void CompileConstInst(ConstInst inst)
@@ -530,7 +620,7 @@ namespace Oxide.Compiler.Backend.Llvm
 
         private void CompileJumpVariantInst(JumpVariantInst inst)
         {
-            var variantItemTypeRef = (ConcreteTypeRef) FunctionContext.ResolveRef(inst.VariantItemType);
+            var variantItemTypeRef = (ConcreteTypeRef)FunctionContext.ResolveRef(inst.VariantItemType);
             var (varType, rawVarRef) = GetSlotRef(inst.VariantSlot);
 
             LLVMValueRef varRef;
@@ -623,17 +713,22 @@ namespace Oxide.Compiler.Backend.Llvm
             switch (varType)
             {
                 case BaseTypeRef:
-                    if (IsCopyType(variantItemTypeRef))
+                {
+                    var properties = Store.GetCopyProperties(variantItemTypeRef);
+
+                    LLVMValueRef destValue;
+                    if (properties.CanCopy)
                     {
-                        var value = Builder.BuildLoad(castedAddr, $"inst_{inst.Id}_copy");
-                        StoreSlot(inst.ItemSlot, value, variantItemTypeRef, true);
+                        destValue = GenerateCopy(variantItemTypeRef, properties, castedAddr, $"inst_{inst.Id}_copy");
                     }
                     else
                     {
-                        throw new NotImplementedException("Field moves");
+                        throw new NotImplementedException("Moves");
                     }
 
+                    StoreSlot(inst.ItemSlot, destValue, variantItemTypeRef, true);
                     break;
+                }
                 case BorrowTypeRef borrowTypeRef:
                     StoreSlot(
                         inst.ItemSlot,
@@ -884,16 +979,12 @@ namespace Oxide.Compiler.Backend.Llvm
                 $"inst_{inst.Id}_faddr"
             );
 
-            if (!Equals(fieldType, PrimitiveKind.I32.GetRef()))
-            {
-                throw new NotImplementedException("Field moves");
-                // TODO: moves
-            }
+            var properties = Store.GetCopyProperties(fieldType);
 
-            if (IsCopyType(fieldType))
+            LLVMValueRef destValue;
+            if (properties.CanCopy)
             {
-                var value = Builder.BuildLoad(addr, $"inst_{inst.Id}_copy");
-                StoreSlot(inst.TargetSlot, value, fieldType);
+                destValue = GenerateCopy(fieldType, properties, addr, $"inst_{inst.Id}");
             }
             else if (!isDirect)
             {
@@ -903,6 +994,8 @@ namespace Oxide.Compiler.Backend.Llvm
             {
                 throw new NotImplementedException("Field moves");
             }
+
+            StoreSlot(inst.TargetSlot, destValue, fieldType);
         }
 
         private void CompileFieldBorrowInst(FieldBorrowInst inst)
@@ -1047,13 +1140,19 @@ namespace Oxide.Compiler.Backend.Llvm
                     throw new ArgumentOutOfRangeException(nameof(addr));
             }
 
-            if (!IsCopyType(innerTypeRef))
+            var properties = Store.GetCopyProperties(innerTypeRef);
+
+            LLVMValueRef destValue;
+            if (properties.CanCopy)
             {
-                throw new Exception("Cannot deref non-copyable type");
+                destValue = GenerateCopy(innerTypeRef, properties, addr, $"inst_{inst.Id}");
+            }
+            else
+            {
+                throw new NotImplementedException("Moves");
             }
 
-            var value = Builder.BuildLoad(addr, $"inst_{inst.Id}_load");
-            StoreSlot(inst.TargetSlot, value, innerTypeRef);
+            StoreSlot(inst.TargetSlot, destValue, innerTypeRef);
         }
 
         private void CompileCastInst(CastInst inst)
@@ -1240,6 +1339,7 @@ namespace Oxide.Compiler.Backend.Llvm
             }
 
             return Equals(concreteTypeRef, PrimitiveKind.I32.GetRef()) ||
+                   Equals(concreteTypeRef, PrimitiveKind.USize.GetRef()) ||
                    Equals(concreteTypeRef, PrimitiveKind.Bool.GetRef());
         }
 
@@ -1252,39 +1352,6 @@ namespace Oxide.Compiler.Backend.Llvm
 
             return Equals(concreteTypeRef, PrimitiveKind.I32.GetRef()) ||
                    Equals(concreteTypeRef, PrimitiveKind.Bool.GetRef());
-        }
-
-        private bool IsCopyType(TypeRef type)
-        {
-            switch (type)
-            {
-                case BorrowTypeRef:
-                case PointerTypeRef:
-                    return true;
-                case ReferenceTypeRef:
-                    return false;
-                case ConcreteTypeRef concreteTypeRef:
-                {
-                    var baseType = Store.Lookup(concreteTypeRef.Name);
-                    switch (baseType)
-                    {
-                        case PrimitiveType primitiveType:
-                            return true;
-                        case Struct @struct:
-                            // TODO
-                            return false;
-                        case Interface @interface:
-                        case Variant variant:
-                            throw new NotImplementedException();
-                        default:
-                            throw new ArgumentOutOfRangeException(nameof(baseType));
-                    }
-                }
-                case BaseTypeRef baseTypeRef:
-                    throw new Exception("Unresolved");
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(type));
-            }
         }
     }
 }
