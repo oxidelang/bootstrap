@@ -1,18 +1,17 @@
 using System.Linq;
 using Oxide.Compiler.IR;
 
-namespace Oxide.Compiler.Frontend
+namespace Oxide.Compiler.Frontend;
+
+public class Import
 {
-    public class Import
+    public QualifiedName Source { get; }
+
+    public string Target { get; }
+
+    public Import(QualifiedName source, string target)
     {
-        public QualifiedName Source { get; }
-
-        public string Target { get; }
-
-        public Import(QualifiedName source, string target)
-        {
-            Source = source;
-            Target = target ?? source.Parts.Last();
-        }
+        Source = source;
+        Target = target ?? source.Parts.Last();
     }
 }

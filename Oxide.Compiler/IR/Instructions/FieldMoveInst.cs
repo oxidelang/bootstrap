@@ -1,16 +1,15 @@
-namespace Oxide.Compiler.IR.Instructions
+namespace Oxide.Compiler.IR.Instructions;
+
+public class FieldMoveInst : Instruction
 {
-    public class FieldMoveInst : Instruction
+    public int TargetSlot { get; init; }
+
+    public int BaseSlot { get; init; }
+
+    public string TargetField { get; init; }
+
+    public override void WriteIr(IrWriter writer)
     {
-        public int TargetSlot { get; init; }
-
-        public int BaseSlot { get; init; }
-
-        public string TargetField { get; init; }
-
-        public override void WriteIr(IrWriter writer)
-        {
-            writer.Write($"fieldmove ${TargetSlot} ${BaseSlot} {TargetField}");
-        }
+        writer.Write($"fieldmove ${TargetSlot} ${BaseSlot} {TargetField}");
     }
 }

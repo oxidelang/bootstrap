@@ -1,9 +1,8 @@
-namespace Oxide.Compiler.IR.TypeRefs
-{
-    public abstract class TypeRef
-    {
-        public virtual bool IsBaseType => false;
+namespace Oxide.Compiler.IR.TypeRefs;
 
-        public abstract BaseTypeRef GetBaseType();
-    }
+public abstract class TypeRef
+{
+    public virtual bool IsBaseType => false;
+
+    public abstract BaseTypeRef GetBaseType();
 }

@@ -1,26 +1,25 @@
 using System.Collections.Immutable;
 using Oxide.Compiler.IR.TypeRefs;
 
-namespace Oxide.Compiler.IR.Types
+namespace Oxide.Compiler.IR.Types;
+
+public class Function : OxObj
 {
-    public class Function : OxObj
-    {
-        public ImmutableList<Parameter> Parameters { get; init; }
+    public ImmutableList<Parameter> Parameters { get; init; }
 
-        public TypeRef ReturnType { get; init; }
+    public TypeRef ReturnType { get; init; }
 
-        public bool IsExtern { get; init; }
+    public bool IsExtern { get; init; }
 
-        public bool AlwaysInline { get; set; }
+    public bool AlwaysInline { get; set; }
 
-        public bool IsExported { get; set; }
+    public bool IsExported { get; set; }
 
-        public bool HasBody { get; init; }
+    public bool HasBody { get; init; }
 
-        public ImmutableList<Scope> Scopes { get; set; }
+    public ImmutableList<Scope> Scopes { get; set; }
 
-        public ImmutableList<Block> Blocks { get; set; }
+    public ImmutableList<Block> Blocks { get; set; }
 
-        public int EntryBlock { get; set; }
-    }
+    public int EntryBlock { get; set; }
 }

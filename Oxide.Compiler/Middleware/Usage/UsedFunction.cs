@@ -5,31 +5,30 @@ using Oxide.Compiler.IR;
 using Oxide.Compiler.IR.TypeRefs;
 using Oxide.Compiler.Utils;
 
-namespace Oxide.Compiler.Middleware.Usage
+namespace Oxide.Compiler.Middleware.Usage;
+
+public class UsedFunction
 {
-    public class UsedFunction
+    public QualifiedName Name { get; }
+
+    public HashSet<ImmutableArray<TypeRef>> Versions { get; init; }
+
+    public UsedFunction(QualifiedName name)
     {
-        public QualifiedName Name { get; }
+        Name = name;
+        Versions = new HashSet<ImmutableArray<TypeRef>>(
+            new SequenceEqualityComparer<ImmutableArray<TypeRef>>()
+        );
+    }
 
-        public HashSet<ImmutableArray<TypeRef>> Versions { get; init; }
-
-        public UsedFunction(QualifiedName name)
+    public bool MarkVersion(ImmutableArray<TypeRef> version)
+    {
+        if (Versions.Add(version))
         {
-            Name = name;
-            Versions = new HashSet<ImmutableArray<TypeRef>>(
-                new SequenceEqualityComparer<ImmutableArray<TypeRef>>()
-            );
+            Console.WriteLine($" - New func version {Name}");
+            return true;
         }
 
-        public bool MarkVersion(ImmutableArray<TypeRef> version)
-        {
-            if (Versions.Add(version))
-            {
-                Console.WriteLine($" - New func version {Name}");
-                return true;
-            }
-
-            return false;
-        }
+        return false;
     }
 }

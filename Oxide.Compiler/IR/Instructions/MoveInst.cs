@@ -1,14 +1,13 @@
-namespace Oxide.Compiler.IR.Instructions
+namespace Oxide.Compiler.IR.Instructions;
+
+public class MoveInst : Instruction
 {
-    public class MoveInst : Instruction
+    public int SrcSlot { get; init; }
+
+    public int DestSlot { get; init; }
+
+    public override void WriteIr(IrWriter writer)
     {
-        public int SrcSlot { get; init; }
-
-        public int DestSlot { get; init; }
-
-        public override void WriteIr(IrWriter writer)
-        {
-            writer.Write($"move ${DestSlot} ${SrcSlot}");
-        }
+        writer.Write($"move ${DestSlot} ${SrcSlot}");
     }
 }

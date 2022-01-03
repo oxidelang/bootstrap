@@ -1,7 +1,6 @@
-namespace Oxide.Compiler.IR.Types
+namespace Oxide.Compiler.IR.Types;
+
+public abstract class OxType : OxObj
 {
-    public abstract class OxType : OxObj
-    {
         
-    }
 }

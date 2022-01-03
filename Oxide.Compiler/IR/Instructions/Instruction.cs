@@ -1,11 +1,10 @@
-namespace Oxide.Compiler.IR.Instructions
+namespace Oxide.Compiler.IR.Instructions;
+
+public abstract class Instruction
 {
-    public abstract class Instruction
-    {
-        public int Id { get; init; }
+    public int Id { get; init; }
 
-        public virtual bool Terminal => false;
+    public virtual bool Terminal => false;
 
-        public abstract void WriteIr(IrWriter writer);
-    }
+    public abstract void WriteIr(IrWriter writer);
 }

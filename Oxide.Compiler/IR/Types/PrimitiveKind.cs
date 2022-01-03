@@ -1,10 +1,9 @@
-namespace Oxide.Compiler.IR.Types
+namespace Oxide.Compiler.IR.Types;
+
+public enum PrimitiveKind
 {
-    public enum PrimitiveKind
-    {
-        USize,
-        U8,
-        I32,
-        Bool
-    }
+    USize,
+    U8,
+    I32,
+    Bool
 }

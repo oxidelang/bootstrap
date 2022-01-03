@@ -1,11 +1,10 @@
-﻿namespace Oxide.Compiler
+﻿namespace Oxide.Compiler;
+
+class Program
 {
-    class Program
+    static void Main(string[] args)
     {
-        static void Main(string[] args)
-        {
-            var driver = new OxideDriver();
-            driver.Compile(args[0]);
-        }
+        var driver = new OxideDriver();
+        driver.Compile(args[0]);
     }
 }

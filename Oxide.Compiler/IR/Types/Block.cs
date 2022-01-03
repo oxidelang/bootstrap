@@ -2,46 +2,45 @@ using System;
 using System.Collections.Generic;
 using Oxide.Compiler.IR.Instructions;
 
-namespace Oxide.Compiler.IR.Types
+namespace Oxide.Compiler.IR.Types;
+
+public class Block
 {
-    public class Block
+    public int Id { get; init; }
+
+    public bool HasInstructions => Instructions.Count > 0;
+
+    public List<Instruction> Instructions { get; private set; }
+
+    private readonly HashSet<int> _incomingBlocks;
+
+    private readonly HashSet<int> _outgoingBlocks;
+
+    public Scope Scope { get; init; }
+
+    public bool HasTerminated;
+
+    public Block()
     {
-        public int Id { get; init; }
+        Instructions = new List<Instruction>();
+        _incomingBlocks = new HashSet<int>();
+        _outgoingBlocks = new HashSet<int>();
+        HasTerminated = false;
+    }
 
-        public bool HasInstructions => Instructions.Count > 0;
-
-        public List<Instruction> Instructions { get; private set; }
-
-        private readonly HashSet<int> _incomingBlocks;
-
-        private readonly HashSet<int> _outgoingBlocks;
-
-        public Scope Scope { get; init; }
-
-        public bool HasTerminated;
-
-        public Block()
+    public Instruction AddInstruction(Instruction instruction)
+    {
+        if (HasTerminated)
         {
-            Instructions = new List<Instruction>();
-            _incomingBlocks = new HashSet<int>();
-            _outgoingBlocks = new HashSet<int>();
-            HasTerminated = false;
+            throw new Exception("Block has terminated");
         }
 
-        public Instruction AddInstruction(Instruction instruction)
+        if (instruction.Terminal)
         {
-            if (HasTerminated)
-            {
-                throw new Exception("Block has terminated");
-            }
-
-            if (instruction.Terminal)
-            {
-                HasTerminated = true;
-            }
+            HasTerminated = true;
+        }
             
-            Instructions.Add(instruction);
-            return instruction;
-        }
+        Instructions.Add(instruction);
+        return instruction;
     }
 }

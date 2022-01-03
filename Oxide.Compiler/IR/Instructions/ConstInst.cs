@@ -1,26 +1,25 @@
 using System;
 using Oxide.Compiler.IR.Types;
 
-namespace Oxide.Compiler.IR.Instructions
+namespace Oxide.Compiler.IR.Instructions;
+
+public class ConstInst : Instruction
 {
-    public class ConstInst : Instruction
-    {
-        public int TargetSlot { get; init; }
+    public int TargetSlot { get; init; }
         
-        public PrimitiveKind ConstType { get; init; }
+    public PrimitiveKind ConstType { get; init; }
 
-        public object Value { get; init; }
+    public object Value { get; init; }
 
-        public override void WriteIr(IrWriter writer)
+    public override void WriteIr(IrWriter writer)
+    {
+        var type = ConstType switch
         {
-            var type = ConstType switch
-            {
-                PrimitiveKind.I32 => "i32",
-                PrimitiveKind.Bool => "bool",
-                _ => throw new ArgumentOutOfRangeException()
-            };
+            PrimitiveKind.I32 => "i32",
+            PrimitiveKind.Bool => "bool",
+            _ => throw new ArgumentOutOfRangeException()
+        };
 
-            writer.Write($"const ${TargetSlot} {type} {Value}");
-        }
+        writer.Write($"const ${TargetSlot} {type} {Value}");
     }
 }

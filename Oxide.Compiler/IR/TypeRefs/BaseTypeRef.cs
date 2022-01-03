@@ -1,12 +1,11 @@
-namespace Oxide.Compiler.IR.TypeRefs
-{
-    public abstract class BaseTypeRef : TypeRef
-    {
-        public override bool IsBaseType => true;
+namespace Oxide.Compiler.IR.TypeRefs;
 
-        public override BaseTypeRef GetBaseType()
-        {
-            return this;
-        }
+public abstract class BaseTypeRef : TypeRef
+{
+    public override bool IsBaseType => true;
+
+    public override BaseTypeRef GetBaseType()
+    {
+        return this;
     }
 }

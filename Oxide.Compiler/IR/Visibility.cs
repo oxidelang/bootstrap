@@ -1,8 +1,7 @@
-namespace Oxide.Compiler.IR
+namespace Oxide.Compiler.IR;
+
+public enum Visibility
 {
-    public enum Visibility
-    {
-        Private,
-        Public
-    }
+    Private,
+    Public
 }
