@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Immutable;
+using Oxide.Compiler.Middleware.Lifetimes;
 
 namespace Oxide.Compiler.IR.Instructions;
 
@@ -25,5 +27,20 @@ public class ArithmeticInst : Instruction
         };
 
         writer.Write($"arithmetic ${ResultSlot} {op} ${LhsValue} ${RhsValue}");
+    }
+
+    public override InstructionEffects GetEffects()
+    {
+        return new InstructionEffects(
+            new InstructionEffects.ReadData[]
+            {
+                InstructionEffects.ReadData.Access(LhsValue, false),
+                InstructionEffects.ReadData.Access(RhsValue, false)
+            }.ToImmutableArray(),
+            new[]
+            {
+                InstructionEffects.WriteData.New(ResultSlot)
+            }.ToImmutableArray()
+        );
     }
 }

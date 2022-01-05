@@ -12,6 +12,10 @@ public class Block
 
     public List<Instruction> Instructions { get; private set; }
 
+    public Instruction FirstInstruction => Instructions[0];
+
+    public Instruction LastInstruction => Instructions[^1];
+
     private readonly HashSet<int> _incomingBlocks;
 
     private readonly HashSet<int> _outgoingBlocks;
@@ -39,7 +43,7 @@ public class Block
         {
             HasTerminated = true;
         }
-            
+
         Instructions.Add(instruction);
         return instruction;
     }

@@ -1,6 +1,8 @@
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using Oxide.Compiler.IR.TypeRefs;
+using Oxide.Compiler.Middleware.Lifetimes;
 
 namespace Oxide.Compiler.IR.Instructions;
 
@@ -37,5 +39,27 @@ public class StaticCallInst : Instruction
         }
 
         writer.Write($"{TargetMethod} ({string.Join(", ", Arguments.Select(x => $"${x}"))})");
+    }
+
+    public override InstructionEffects GetEffects()
+    {
+        // TODO: Detect borrowed returns
+
+        var reads = new List<InstructionEffects.ReadData>();
+        foreach (var arg in Arguments)
+        {
+            reads.Add(InstructionEffects.ReadData.Access(arg, true));
+        }
+
+        var writes = new List<InstructionEffects.WriteData>();
+        if (ResultSlot.HasValue)
+        {
+            writes.Add(InstructionEffects.WriteData.New(ResultSlot.Value));
+        }
+
+        return new InstructionEffects(
+            reads.ToImmutableArray(),
+            writes.ToImmutableArray()
+        );
     }
 }

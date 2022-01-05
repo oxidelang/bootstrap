@@ -1,4 +1,6 @@
+using System.Collections.Immutable;
 using Oxide.Compiler.IR.TypeRefs;
+using Oxide.Compiler.Middleware.Lifetimes;
 
 namespace Oxide.Compiler.IR.Instructions;
 
@@ -18,5 +20,24 @@ public class JumpVariantInst : Instruction
     {
         writer.Write(
             $"jumpvariant ${VariantSlot} {VariantItemType} {ItemSlot} #{TargetBlock} #{ElseBlock}");
+    }
+
+    public override InstructionEffects GetEffects()
+    {
+        return new InstructionEffects(
+            new[]
+            {
+                InstructionEffects.ReadData.Access(VariantSlot, false)
+            }.ToImmutableArray(),
+            new[]
+            {
+                InstructionEffects.WriteData.Borrow(ItemSlot, VariantSlot, false, TargetBlock)
+            }.ToImmutableArray(),
+            new[]
+            {
+                TargetBlock,
+                ElseBlock
+            }.ToImmutableArray()
+        );
     }
 }

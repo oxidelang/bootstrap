@@ -1,4 +1,6 @@
+using System.Collections.Immutable;
 using Oxide.Compiler.IR.TypeRefs;
+using Oxide.Compiler.Middleware.Lifetimes;
 
 namespace Oxide.Compiler.IR.Instructions;
 
@@ -13,5 +15,19 @@ public class CastInst : Instruction
         writer.Write($"cast ${ResultSlot} ");
         writer.WriteType(TargetType);
         writer.Write($" ${SourceSlot}");
+    }
+
+    public override InstructionEffects GetEffects()
+    {
+        return new InstructionEffects(
+            new InstructionEffects.ReadData[]
+            {
+                InstructionEffects.ReadData.Access(SourceSlot, true)
+            }.ToImmutableArray(),
+            new[]
+            {
+                InstructionEffects.WriteData.New(ResultSlot)
+            }.ToImmutableArray()
+        );
     }
 }

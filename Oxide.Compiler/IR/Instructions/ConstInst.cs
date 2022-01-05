@@ -1,12 +1,14 @@
 using System;
+using System.Collections.Immutable;
 using Oxide.Compiler.IR.Types;
+using Oxide.Compiler.Middleware.Lifetimes;
 
 namespace Oxide.Compiler.IR.Instructions;
 
 public class ConstInst : Instruction
 {
     public int TargetSlot { get; init; }
-        
+
     public PrimitiveKind ConstType { get; init; }
 
     public object Value { get; init; }
@@ -21,5 +23,16 @@ public class ConstInst : Instruction
         };
 
         writer.Write($"const ${TargetSlot} {type} {Value}");
+    }
+
+    public override InstructionEffects GetEffects()
+    {
+        return new InstructionEffects(
+            ImmutableArray<InstructionEffects.ReadData>.Empty,
+            new[]
+            {
+                InstructionEffects.WriteData.New(TargetSlot)
+            }.ToImmutableArray()
+        );
     }
 }

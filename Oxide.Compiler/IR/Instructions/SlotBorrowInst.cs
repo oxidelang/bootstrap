@@ -1,3 +1,6 @@
+using System.Collections.Immutable;
+using Oxide.Compiler.Middleware.Lifetimes;
+
 namespace Oxide.Compiler.IR.Instructions;
 
 public class SlotBorrowInst : Instruction
@@ -11,5 +14,19 @@ public class SlotBorrowInst : Instruction
     public override void WriteIr(IrWriter writer)
     {
         writer.Write($"slotborrow ${TargetSlot} ${BaseSlot} {(Mutable ? "mut" : "readonly")}");
+    }
+
+    public override InstructionEffects GetEffects()
+    {
+        return new InstructionEffects(
+            new[]
+            {
+                InstructionEffects.ReadData.Access(BaseSlot, false)
+            }.ToImmutableArray(),
+            new[]
+            {
+                InstructionEffects.WriteData.Borrow(TargetSlot, BaseSlot, Mutable)
+            }.ToImmutableArray()
+        );
     }
 }

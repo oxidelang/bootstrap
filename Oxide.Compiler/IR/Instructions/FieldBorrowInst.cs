@@ -1,3 +1,6 @@
+using System.Collections.Immutable;
+using Oxide.Compiler.Middleware.Lifetimes;
+
 namespace Oxide.Compiler.IR.Instructions;
 
 public class FieldBorrowInst : Instruction
@@ -13,5 +16,19 @@ public class FieldBorrowInst : Instruction
     public override void WriteIr(IrWriter writer)
     {
         writer.Write($"fieldborrow ${TargetSlot} ${BaseSlot} {TargetField} {(Mutable ? "mut" : "readonly")}");
+    }
+
+    public override InstructionEffects GetEffects()
+    {
+        return new InstructionEffects(
+            new[]
+            {
+                InstructionEffects.ReadData.AccessField(BaseSlot, false, TargetField)
+            }.ToImmutableArray(),
+            new[]
+            {
+                InstructionEffects.WriteData.Field(TargetSlot, BaseSlot, TargetField, Mutable)
+            }.ToImmutableArray()
+        );
     }
 }
