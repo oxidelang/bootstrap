@@ -28,6 +28,9 @@ public class MiddlewareManager
 
         Lifetime.Analyse(unit, outputDest);
 
+        var lifetimeChecker = new LifetimeCheckPass(this);
+        lifetimeChecker.Analyse(unit);
+
         // TODO: Add pass management
         Usage.Analyse(unit);
     }

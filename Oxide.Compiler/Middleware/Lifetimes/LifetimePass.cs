@@ -18,9 +18,6 @@ public class LifetimePass
     public Dictionary<Function, FunctionLifetime> FunctionLifetimes { get; private set; }
 
     private FunctionLifetime _functionLifetime;
-
-    private Dictionary<int, int> _valueMap;
-    private Dictionary<int, HashSet<int>> _valueRequirements;
     private Dictionary<int, Block> _blocks;
     private Dictionary<int, SlotDeclaration> _slots;
 
@@ -62,9 +59,6 @@ public class LifetimePass
             Entry = func.EntryBlock
         };
         FunctionLifetimes.Add(func, _functionLifetime);
-
-        _valueMap = new Dictionary<int, int>();
-        _valueRequirements = new Dictionary<int, HashSet<int>>();
 
         // Extract slots
         _slots = new Dictionary<int, SlotDeclaration>();
@@ -144,13 +138,13 @@ public class LifetimePass
         {
             updated = false;
 
-            foreach (var pair in _valueRequirements)
+            foreach (var pair in _functionLifetime.ValueRequirements)
             {
                 // var value = pair.Key;
                 var currentRequires = pair.Value.ToArray();
                 foreach (var requires in currentRequires)
                 {
-                    foreach (var nestedRequires in _valueRequirements[requires])
+                    foreach (var nestedRequires in _functionLifetime.ValueRequirements[requires])
                     {
                         if (pair.Value.Add(nestedRequires))
                         {
@@ -171,6 +165,24 @@ public class LifetimePass
         foreach (var block in func.Blocks)
         {
             ProcessBlockMissing(block);
+        }
+
+        // Store list of active slots
+        foreach (var block in func.Blocks)
+        {
+            foreach (var inst in block.Instructions)
+            {
+                var lifetime = GetLifetime(inst);
+
+                foreach (var slotId in _slots.Keys)
+                {
+                    var slot = lifetime.GetSlot(slotId);
+                    if (slot.Status != SlotStatus.NoValue)
+                    {
+                        lifetime.ActiveSlots.Add(slotId);
+                    }
+                }
+            }
         }
     }
 
@@ -250,7 +262,7 @@ public class LifetimePass
 
         var referenceSource = write.ReferenceSource.Value;
 
-        var reqs = _valueRequirements[slot.Value];
+        var reqs = _functionLifetime.ValueRequirements[slot.Value];
 
         SlotState refSlot;
         if (lifetime.Overwritten.Contains(referenceSource))
@@ -417,9 +429,9 @@ public class LifetimePass
                 var slot = lifetime.GetSlot(slotId);
                 if (slot.Status == SlotStatus.Active)
                 {
-                    foreach (var required in _valueRequirements[slot.Value])
+                    foreach (var required in _functionLifetime.ValueRequirements[slot.Value])
                     {
-                        var requiredSlot = _valueMap[required];
+                        var requiredSlot = _functionLifetime.ValueMap[required];
                         var visited = new HashSet<int>();
                         TraceReadInner(lifetime, requiredSlot, true, visited);
                     }
@@ -448,8 +460,8 @@ public class LifetimePass
     private int AllocateValue(int slot)
     {
         var newId = _lastValueId++;
-        _valueMap.Add(newId, slot);
-        _valueRequirements.Add(newId, new HashSet<int>());
+        _functionLifetime.ValueMap.Add(newId, slot);
+        _functionLifetime.ValueRequirements.Add(newId, new HashSet<int>());
         return newId;
     }
 
@@ -528,7 +540,7 @@ public class LifetimePass
                     slotIds.Add(slot.Id);
                 }
             }
-            
+
             foreach (var slot in slotIds)
             {
                 worksheet.Cell(1, 6 + slot).SetText($"Slot {slot}");

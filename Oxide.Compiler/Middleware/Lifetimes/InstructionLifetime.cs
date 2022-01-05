@@ -22,13 +22,13 @@ public class InstructionLifetime
 
     public HashSet<int> Overwritten { get; }
 
-    // public HashSet<int> IncomingValues { get; }
+    public HashSet<int> ActiveSlots { get; }
 
     public InstructionLifetime()
     {
         Slots = new Dictionary<int, SlotState>();
         Overwritten = new HashSet<int>();
-        // IncomingValues = new HashSet<int>();
+        ActiveSlots = new HashSet<int>();
     }
 
     public SlotState GetSlot(int id)
