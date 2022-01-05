@@ -15,10 +15,9 @@ public class LifetimePass
     private MiddlewareManager Manager { get; }
     private IrStore Store => Manager.Store;
 
-    private FunctionLifetime _functionLifetime;
-    private Dictionary<int, InstructionLifetime> _instructionLifetimes;
+    public Dictionary<Function, FunctionLifetime> FunctionLifetimes { get; private set; }
 
-    private Function _currentFunc;
+    private FunctionLifetime _functionLifetime;
 
     private Dictionary<int, int> _valueMap;
     private Dictionary<int, HashSet<int>> _valueRequirements;
@@ -32,9 +31,11 @@ public class LifetimePass
         Manager = manager;
     }
 
-    public void Analyse(IrUnit unit)
+    public void Analyse(IrUnit unit, string outputDest)
     {
-        Console.WriteLine("Analysing usage");
+        Console.WriteLine("Analysing lifetimes");
+
+        FunctionLifetimes = new Dictionary<Function, FunctionLifetime>();
 
         foreach (var objects in unit.Objects.Values)
         {
@@ -43,22 +44,24 @@ public class LifetimePass
                 ProcessFunction(func);
             }
         }
+
+        GenerateDebug($"{outputDest}\\lifetimes.xlsx");
     }
 
     private void ProcessFunction(Function func)
     {
-        if (func.IsExtern || !func.HasBody || func.Name.Parts[0] != "examples")
+        if (func.IsExtern || !func.HasBody)
         {
             return;
         }
 
-        Console.WriteLine($" - Processing function: {func.Name}");
-        _currentFunc = func;
+        Console.WriteLine($" - Processing function {func.Name}");
 
         _functionLifetime = new FunctionLifetime
         {
             Entry = func.EntryBlock
         };
+        FunctionLifetimes.Add(func, _functionLifetime);
 
         _valueMap = new Dictionary<int, int>();
         _valueRequirements = new Dictionary<int, HashSet<int>>();
@@ -74,13 +77,13 @@ public class LifetimePass
         }
 
         _blocks = new Dictionary<int, Block>();
-        _instructionLifetimes = new Dictionary<int, InstructionLifetime>();
         _lastValueId = 1;
 
         // Get effects
         foreach (var block in func.Blocks)
         {
             _blocks.Add(block.Id, block);
+            _functionLifetime.IncomingBlocks.Add(block.Id, new HashSet<int>());
 
             InstructionLifetime last = null;
             foreach (var inst in block.Instructions)
@@ -105,7 +108,7 @@ public class LifetimePass
                     }
                 }
 
-                _instructionLifetimes.Add(inst.Id, lifetime);
+                _functionLifetime.InstructionLifetimes.Add(inst.Id, lifetime);
 
                 if (last != null)
                 {
@@ -123,8 +126,7 @@ public class LifetimePass
 
             foreach (var target in effects.Jumps)
             {
-                var lifetime = GetBlockLifetime(target);
-                lifetime.IncomingBlocks.Add(block.Id);
+                _functionLifetime.IncomingBlocks[target].Add(block.Id);
             }
 
             InitBlock(block, block.Id == func.EntryBlock);
@@ -140,7 +142,6 @@ public class LifetimePass
         var updated = true;
         while (updated)
         {
-            Console.WriteLine("Requirement round");
             updated = false;
 
             foreach (var pair in _valueRequirements)
@@ -160,14 +161,6 @@ public class LifetimePass
             }
         }
 
-        foreach (var pair in _valueRequirements)
-        {
-            if (pair.Value.Count > 0)
-            {
-                Console.WriteLine($" {pair.Key}: {(string.Join(", ", pair.Value))}");
-            }
-        }
-
         // Process borrows
         foreach (var block in func.Blocks)
         {
@@ -179,16 +172,10 @@ public class LifetimePass
         {
             ProcessBlockMissing(block);
         }
-
-
-        GenerateDebug(
-            "C:\\Users\\chand\\Projects\\Oxide\\bootstrap\\Oxide.Compiler\\examples\\lists\\lifetimes\\p1.xlsx");
     }
 
     private void InitBlock(Block block, bool entry)
     {
-        Console.WriteLine($"Block {block.Id}");
-
         // At entry, start with parameter values
         if (entry)
         {
@@ -236,8 +223,6 @@ public class LifetimePass
 
     private void ProcessBlock(Block block)
     {
-        Console.WriteLine($"Process Block {block.Id}");
-
         foreach (var inst in block.Instructions)
         {
             var lifetime = GetLifetime(inst);
@@ -300,11 +285,6 @@ public class LifetimePass
         var visited = new HashSet<int>();
         TraceReadInner(lifetime, read.Slot, true, visited);
 
-        if (currentState.Status == SlotStatus.Error)
-        {
-            return;
-        }
-
         if (currentState.Status != SlotStatus.Active)
         {
             return;
@@ -319,11 +299,6 @@ public class LifetimePass
     private void TraceReadInner(InstructionLifetime lifetime, int slot, bool first, HashSet<int> visited)
     {
         var currentState = lifetime.GetSlot(slot);
-        if (currentState.Status == SlotStatus.Unused)
-        {
-            currentState.MarkUsed();
-            return;
-        }
 
         // Check if this slot has already been processed
         if (currentState.Status != SlotStatus.Unprocessed && (!first || !lifetime.Overwritten.Contains(slot)))
@@ -335,40 +310,31 @@ public class LifetimePass
         {
             TraceReadInner(lifetime.Previous, slot, false, visited);
 
-            if (currentState.Status != SlotStatus.Active)
+            if (currentState.Status == SlotStatus.Active)
             {
-                var previousSlot = lifetime.Previous.GetSlot(slot);
+                return;
+            }
 
-                switch (previousSlot.Status)
-                {
-                    case SlotStatus.Active:
-                        currentState.Propagate(previousSlot);
-                        break;
-                    case SlotStatus.Error:
-                    case SlotStatus.Moved:
-                    case SlotStatus.NoValue:
-                        currentState.Error();
-                        break;
-                    case SlotStatus.Unused:
-                    case SlotStatus.Unprocessed:
-                        // throw new Exception("Unexpected state");
-                        currentState.Error();
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException();
-                }
+            var previousSlot = lifetime.Previous.GetSlot(slot);
+
+            if (previousSlot.Status == SlotStatus.Active)
+            {
+                currentState.Propagate(previousSlot);
+            }
+            else
+            {
+                currentState.Error();
             }
         }
         else
         {
-            var blockLifetime = GetBlockLifetime(lifetime.Block.Id);
             var incomingStates = new List<SlotState>();
 
-            foreach (var incBlock in blockLifetime.IncomingBlocks)
+            foreach (var incBlock in _functionLifetime.IncomingBlocks[lifetime.Block.Id])
             {
+                // Don't revisit blocks
                 if (visited.Contains(incBlock))
                 {
-                    Console.WriteLine($"Skipping {incBlock} due to already visiting");
                     continue;
                 }
 
@@ -380,30 +346,15 @@ public class LifetimePass
                 visited.Remove(incBlock);
 
                 var otherSlot = otherLifetime.GetSlot(slot);
-                switch (otherSlot.Status)
+                if (otherSlot.Status == SlotStatus.Unprocessed)
                 {
-                    case SlotStatus.Active:
-                    case SlotStatus.Error:
-                    case SlotStatus.Moved:
-                    case SlotStatus.NoValue:
-                        incomingStates.Add(otherSlot);
-                        break;
-                    case SlotStatus.Unused:
-                    case SlotStatus.Unprocessed:
-                        throw new Exception("Unexpected state");
-                    // currentState.Error();
-                    // break;
-                    default:
-                        throw new ArgumentOutOfRangeException();
+                    throw new Exception("Unexpected state");
                 }
+
+                incomingStates.Add(otherSlot);
             }
 
-            if (incomingStates.Count == 0)
-            {
-                Console.WriteLine("No incoming");
-                currentState.Error();
-            }
-            else if (incomingStates.Any(x => x.Status != SlotStatus.Active))
+            if (incomingStates.Count == 0 || incomingStates.Any(x => x.Status != SlotStatus.Active))
             {
                 currentState.Error();
             }
@@ -457,8 +408,6 @@ public class LifetimePass
 
     private void ProcessBlockBorrows(Block block)
     {
-        Console.WriteLine($"Block Borrows {block.Id}");
-
         foreach (var inst in block.Instructions)
         {
             var lifetime = GetLifetime(inst);
@@ -481,8 +430,6 @@ public class LifetimePass
 
     private void ProcessBlockMissing(Block block)
     {
-        Console.WriteLine($"Block Missing {block.Id}");
-
         foreach (var inst in block.Instructions)
         {
             var lifetime = GetLifetime(inst);
@@ -492,166 +439,7 @@ public class LifetimePass
                 var slot = lifetime.GetSlot(slotId);
                 if (slot.Status == SlotStatus.Unprocessed)
                 {
-                    var visited = new HashSet<int>();
-                    FillMissingInner(lifetime, slotId, visited);
-                }
-            }
-        }
-    }
-
-    private void FillMissingInner(InstructionLifetime lifetime, int slot, HashSet<int> visited)
-    {
-        var currentState = lifetime.GetSlot(slot);
-        if (currentState.Status != SlotStatus.Unprocessed)
-        {
-            return;
-        }
-
-        if (lifetime.Previous != null)
-        {
-            var previousSlot = lifetime.Previous.GetSlot(slot);
-            if (previousSlot.Status == SlotStatus.Unprocessed)
-            {
-                FillMissingInner(lifetime.Previous, slot, visited);
-                
-                if (currentState.Status != SlotStatus.Unprocessed)
-                {
-                    return;
-                }
-            }
-
-            switch (previousSlot.Status)
-            {
-                case SlotStatus.Unprocessed:
-                    // throw new Exception("Unexpected state");
-                    return;
-                case SlotStatus.Moved:
-                case SlotStatus.NoValue:
-                    currentState.NoValue();
-                    break;
-                case SlotStatus.Active:
-                    if (previousSlot.Borrowed)
-                    {
-                        currentState.NoValue();
-                    }
-                    else
-                    {
-                        currentState.Propagate(previousSlot, true);
-                        currentState.Status = SlotStatus.Unused;
-                    }
-
-                    break;
-                case SlotStatus.Unused:
-                    currentState.Propagate(previousSlot, true);
-                    currentState.Status = SlotStatus.Unused;
-                    break;
-                case SlotStatus.Error:
-                    currentState.Error();
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
-        }
-        else
-        {
-            var blockLifetime = GetBlockLifetime(lifetime.Block.Id);
-            var incomingStates = new List<SlotState>();
-
-            foreach (var incBlock in blockLifetime.IncomingBlocks)
-            {
-                if (visited.Contains(incBlock))
-                {
-                    Console.WriteLine($"Skipping {incBlock} due to already visiting");
-                    continue;
-                }
-
-                var otherBlock = _blocks[incBlock];
-                var otherLifetime = GetLifetime(otherBlock.LastInstruction);
-
-                var otherSlot = otherLifetime.GetSlot(slot);
-                if (otherSlot.Status == SlotStatus.Unprocessed)
-                {
-                    visited.Add(incBlock);
-                    FillMissingInner(otherLifetime, slot, visited);
-                    visited.Remove(incBlock);
-                    
-                    if (currentState.Status != SlotStatus.Unprocessed)
-                    {
-                        return;
-                    }
-                }
-
-                // if (otherSlot.Status == SlotStatus.Unprocessed)
-                // {
-                //     // throw new Exception("Unexpected state");
-                // }
-
-                if (otherSlot.Status != SlotStatus.Unprocessed)
-                {
-                    incomingStates.Add(otherSlot);
-                }
-            }
-
-            if (incomingStates.Count == 0)
-            {
-                // Console.WriteLine("No incoming");
-                // currentState.Error();
-                return;
-            }
-            else if (incomingStates.Any(x => x.Borrowed))
-            {
-                currentState.NoValue();
-            }
-            else
-            {
-                var firstState = incomingStates[0];
-                var matches = true;
-
-                for (var i = 1; i < incomingStates.Count; i++)
-                {
-                    var otherState = incomingStates[i];
-                    if (otherState.Value != firstState.Value || otherState.Status != firstState.Status)
-                    {
-                        matches = false;
-                    }
-                }
-
-                if (matches)
-                {
-                    switch (firstState.Status)
-                    {
-                        case SlotStatus.Unprocessed:
-                            throw new Exception("Unexpected state");
-                        case SlotStatus.Moved:
-                        case SlotStatus.NoValue:
-                            currentState.NoValue();
-                            break;
-                        case SlotStatus.Active:
-                            if (firstState.Borrowed)
-                            {
-                                currentState.NoValue();
-                            }
-                            else
-                            {
-                                currentState.Propagate(firstState, true);
-                                currentState.Status = SlotStatus.Unused;
-                            }
-
-                            break;
-                        case SlotStatus.Unused:
-                            currentState.Propagate(firstState, true);
-                            currentState.Status = SlotStatus.Unused;
-                            break;
-                        case SlotStatus.Error:
-                            currentState.Error();
-                            break;
-                        default:
-                            throw new ArgumentOutOfRangeException();
-                    }
-                }
-                else
-                {
-                    currentState.NoValue();
+                    slot.NoValue();
                 }
             }
         }
@@ -665,14 +453,9 @@ public class LifetimePass
         return newId;
     }
 
-    private BlockLifetime GetBlockLifetime(int id)
-    {
-        return _functionLifetime.GetBlock(id);
-    }
-
     private InstructionLifetime GetLifetime(Instruction inst)
     {
-        return _instructionLifetimes[inst.Id];
+        return _functionLifetime.InstructionLifetimes[inst.Id];
     }
 
     private bool IsSlotCopy(int slot)
@@ -723,50 +506,66 @@ public class LifetimePass
     public void GenerateDebug(string fileName)
     {
         using var workbook = new XLWorkbook();
-        var worksheet = workbook.Worksheets.Add("Sample Sheet");
 
-        worksheet.Cell(1, 1).SetText("Id");
-        worksheet.Cell(1, 2).SetText("Inst");
-        worksheet.Cell(1, 3).SetText("Reads");
-        worksheet.Cell(1, 4).SetText("Writes");
-        worksheet.Cell(1, 5).SetText("Jumps");
-
-        foreach (var slot in _slots.Values)
+        foreach (var pair in FunctionLifetimes)
         {
-            worksheet.Cell(1, 6 + slot.Id).SetText($"Slot {slot.Id}");
-        }
+            var func = pair.Key;
+            var funcLifetime = pair.Value;
 
-        var row = 2;
+            var worksheet = workbook.Worksheets.Add($"Func {func.Name.ToString().Replace(':', '_')}");
 
-        foreach (var block in _currentFunc.Blocks)
-        {
-            var blockLifetime = GetBlockLifetime(block.Id);
-            worksheet.Cell(row, 1).SetText($"Block {block.Id}");
-            worksheet.Cell(row, 2).SetText("Incoming=" + string.Join(",", blockLifetime.IncomingBlocks.ToArray()));
-            row++;
+            worksheet.Cell(1, 1).SetText("Id");
+            worksheet.Cell(1, 2).SetText("Inst");
+            worksheet.Cell(1, 3).SetText("Reads");
+            worksheet.Cell(1, 4).SetText("Writes");
+            worksheet.Cell(1, 5).SetText("Jumps");
 
-            foreach (var inst in block.Instructions)
+            var slotIds = new HashSet<int>();
+            foreach (var scope in func.Scopes)
             {
-                var lifetime = GetLifetime(inst);
-                var effects = lifetime.Effects;
-
-                worksheet.Cell(row, 1).SetText($"{inst.Id}");
-
-                var writer = new IrWriter();
-                inst.WriteIr(writer);
-                worksheet.Cell(row, 2).SetText(writer.Generate());
-
-                worksheet.Cell(row, 3).SetText(string.Join(",", effects.Reads.Select(x => x.Slot)));
-                worksheet.Cell(row, 4).SetText(string.Join(",", effects.Writes.Select(x => x.Slot)));
-                worksheet.Cell(row, 5).SetText(string.Join(',', effects.Jumps));
-
-                foreach (var slot in _slots.Values)
+                foreach (var slot in scope.Slots.Values)
                 {
-                    var slotState = lifetime.GetSlot(slot.Id);
-                    worksheet.Cell(row, 6 + slot.Id).SetText(slotState.ToDebugString());
+                    slotIds.Add(slot.Id);
                 }
+            }
+            
+            foreach (var slot in slotIds)
+            {
+                worksheet.Cell(1, 6 + slot).SetText($"Slot {slot}");
+            }
 
+            var row = 2;
+
+            foreach (var block in func.Blocks)
+            {
+                worksheet.Cell(row, 1).SetText($"Block {block.Id}");
+                worksheet.Cell(row, 2)
+                    .SetText("Incoming=" + string.Join(",", funcLifetime.IncomingBlocks[block.Id].ToArray()));
                 row++;
+
+                foreach (var inst in block.Instructions)
+                {
+                    var lifetime = funcLifetime.InstructionLifetimes[inst.Id];
+                    var effects = lifetime.Effects;
+
+                    worksheet.Cell(row, 1).SetText($"{inst.Id}");
+
+                    var writer = new IrWriter();
+                    inst.WriteIr(writer);
+                    worksheet.Cell(row, 2).SetText(writer.Generate());
+
+                    worksheet.Cell(row, 3).SetText(string.Join(",", effects.Reads.Select(x => x.Slot)));
+                    worksheet.Cell(row, 4).SetText(string.Join(",", effects.Writes.Select(x => x.Slot)));
+                    worksheet.Cell(row, 5).SetText(string.Join(',', effects.Jumps));
+
+                    foreach (var slot in slotIds)
+                    {
+                        var slotState = lifetime.GetSlot(slot);
+                        worksheet.Cell(row, 6 + slot).SetText(slotState.ToDebugString());
+                    }
+
+                    row++;
+                }
             }
         }
 

@@ -6,6 +6,5 @@ public enum SlotStatus
     NoValue,
     Active,
     Moved,
-    Unused,
     Error
 }

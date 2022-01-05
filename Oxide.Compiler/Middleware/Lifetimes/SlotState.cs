@@ -79,16 +79,6 @@ public class SlotState
         Status = SlotStatus.Moved;
     }
 
-    public void MarkUsed()
-    {
-        if (Status != SlotStatus.Unused)
-        {
-            throw new Exception("Cannot mark non-unused as active");
-        }
-
-        Status = SlotStatus.Active;
-    }
-
     public void Error()
     {
         Status = SlotStatus.Error;
@@ -110,8 +100,6 @@ public class SlotState
                 return $"Active({inner})";
             case SlotStatus.Moved:
                 return $"Moved({inner})";
-            case SlotStatus.Unused:
-                return $"Unused({inner})";
             case SlotStatus.Error:
                 return "Error";
             default:

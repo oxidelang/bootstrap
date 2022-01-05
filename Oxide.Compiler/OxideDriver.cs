@@ -49,7 +49,7 @@ public class OxideDriver
 
         Console.WriteLine("Running middleware");
         var middleware = new MiddlewareManager(_store);
-        middleware.Process(unit);
+        middleware.Process(unit, path);
 
         Console.WriteLine("Dumping IR");
         writer = new IrWriter();

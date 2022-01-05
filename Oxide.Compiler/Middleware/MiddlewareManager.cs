@@ -20,13 +20,13 @@ public class MiddlewareManager
         Lifetime = new LifetimePass(this);
     }
 
-    public void Process(IrUnit unit)
+    public void Process(IrUnit unit, string outputDest)
     {
         // TODO: Remove
         var mainFunc = unit.Lookup<Function>(QualifiedName.From("examples", "main"));
         mainFunc.IsExported = true;
 
-        Lifetime.Analyse(unit);
+        Lifetime.Analyse(unit, outputDest);
 
         // TODO: Add pass management
         Usage.Analyse(unit);
