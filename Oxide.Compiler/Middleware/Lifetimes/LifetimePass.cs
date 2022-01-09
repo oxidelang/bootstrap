@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using ClosedXML.Excel;
+using Microsoft.VisualBasic;
 using Oxide.Compiler.IR;
 using Oxide.Compiler.IR.Instructions;
 using Oxide.Compiler.IR.TypeRefs;
@@ -285,7 +286,7 @@ public class LifetimePass
         }
         else
         {
-            throw new Exception("Missing value");
+            // throw new Exception("Missing value");
         }
     }
 
@@ -294,8 +295,8 @@ public class LifetimePass
         var isCopy = IsSlotCopy(read.Slot);
         var currentState = lifetime.GetSlot(read.Slot);
 
-        var visited = new HashSet<int>();
-        TraceReadInner(lifetime, read.Slot, true, visited);
+        var visited = new HashSet<(int, int)>();
+        TraceReadInner(lifetime, read.Slot, true, visited, "");
 
         if (currentState.Status != SlotStatus.Active)
         {
@@ -308,21 +309,22 @@ public class LifetimePass
         }
     }
 
-    private void TraceReadInner(InstructionLifetime lifetime, int slot, bool first, HashSet<int> visited)
+    private void TraceReadInner(InstructionLifetime lifetime, int slot, bool first, HashSet<(int, int)> visited, string order)
     {
         var currentState = lifetime.GetSlot(slot);
+        var checkProcessed = !first || !lifetime.Overwritten.Contains(slot);
 
         // Check if this slot has already been processed
-        if (currentState.Status != SlotStatus.Unprocessed && (!first || !lifetime.Overwritten.Contains(slot)))
+        if (currentState.Status != SlotStatus.Unprocessed && checkProcessed)
         {
             return;
         }
 
         if (lifetime.Previous != null)
         {
-            TraceReadInner(lifetime.Previous, slot, false, visited);
+            TraceReadInner(lifetime.Previous, slot, false, visited, order);
 
-            if (currentState.Status == SlotStatus.Active)
+            if (currentState.Status != SlotStatus.Unprocessed && checkProcessed)
             {
                 return;
             }
@@ -333,42 +335,60 @@ public class LifetimePass
             {
                 currentState.Propagate(previousSlot);
             }
-            else
+            else if (previousSlot.Status != SlotStatus.Unprocessed)
             {
-                currentState.Error();
+                currentState.Error("previous");
             }
         }
         else
         {
             var incomingStates = new List<SlotState>();
 
+            var skipped = "";
+
             foreach (var incBlock in _functionLifetime.IncomingBlocks[lifetime.Block.Id])
             {
+                var pathKey = (lifetime.Block.Id, incBlock);
+
                 // Don't revisit blocks
-                if (visited.Contains(incBlock))
+                if (visited.Contains(pathKey))
                 {
+                    skipped = $"{skipped} {incBlock}:visited ";
                     continue;
                 }
 
                 var otherBlock = _blocks[incBlock];
                 var otherLifetime = GetLifetime(otherBlock.LastInstruction);
 
-                visited.Add(incBlock);
-                TraceReadInner(otherLifetime, slot, false, visited);
-                visited.Remove(incBlock);
+                visited.Add(pathKey);
+                TraceReadInner(otherLifetime, slot, false, visited, $"{order} {pathKey.Id}-{pathKey.incBlock}");
+                visited.Remove(pathKey);
+
+                if (currentState.Status != SlotStatus.Unprocessed && checkProcessed)
+                {
+                    return;
+                }
 
                 var otherSlot = otherLifetime.GetSlot(slot);
                 if (otherSlot.Status == SlotStatus.Unprocessed)
                 {
-                    throw new Exception("Unexpected state");
+                    skipped = $"{skipped} {incBlock}:unprocessed";
+                    continue;
+                    // throw new Exception("Unexpected state");
                 }
 
                 incomingStates.Add(otherSlot);
             }
 
-            if (incomingStates.Count == 0 || incomingStates.Any(x => x.Status != SlotStatus.Active))
+            if (incomingStates.Count == 0)
             {
-                currentState.Error();
+                // currentState.Error($"No Incoming {skipped}");
+            }
+            else if (incomingStates.Any(x => x.Status != SlotStatus.Active))
+            {
+                currentState.Error(
+                    $"Invalid incoming: {string.Join(", ", incomingStates.Select(x => $"{x.Instruction.Block.Id}:{x.Status}").ToArray())}"
+                );
             }
             else
             {
@@ -398,21 +418,15 @@ public class LifetimePass
 
                 if (newValue)
                 {
-                    if (currentState.Status != SlotStatus.Active)
-                    {
-                        currentState.NewValue(AllocateValue(slot));
-                    }
+                    currentState.NewValue(AllocateValue(slot));
                 }
                 else if (matches)
                 {
-                    if (currentState.Status != SlotStatus.Active)
-                    {
-                        currentState.Propagate(firstState);
-                    }
+                    currentState.Propagate(firstState);
                 }
                 else
                 {
-                    currentState.Error();
+                    currentState.Error("Mismatch");
                 }
             }
         }
@@ -432,8 +446,8 @@ public class LifetimePass
                     foreach (var required in _functionLifetime.ValueRequirements[slot.Value])
                     {
                         var requiredSlot = _functionLifetime.ValueMap[required];
-                        var visited = new HashSet<int>();
-                        TraceReadInner(lifetime, requiredSlot, true, visited);
+                        var visited = new HashSet<(int, int)>();
+                        TraceReadInner(lifetime, requiredSlot, true, visited, "");
                     }
                 }
             }

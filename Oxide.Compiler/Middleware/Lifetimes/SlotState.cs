@@ -4,7 +4,9 @@ namespace Oxide.Compiler.Middleware.Lifetimes;
 
 public class SlotState
 {
-    // public int Slot { get; set; }
+    public int Slot { get; }
+
+    public InstructionLifetime Instruction { get; }
 
     public SlotStatus Status { get; set; } = SlotStatus.Unprocessed;
 
@@ -18,6 +20,14 @@ public class SlotState
 
     public bool MutableBorrow { get; private set; }
 
+    public string ErrorMessage { get; private set; }
+
+    public SlotState(int slot, InstructionLifetime instruction)
+    {
+        Slot = slot;
+        Instruction = instruction;
+    }
+
     public bool Matches(SlotState otherState, bool ignoreValue)
     {
         return Status == otherState.Status && (Value == otherState.Value || ignoreValue) &&
@@ -27,7 +37,7 @@ public class SlotState
 
     public void Propagate(SlotState previousSlot, bool skipChecks = false)
     {
-        if (!skipChecks && (previousSlot.Status != SlotStatus.Active || Value != 0))
+        if (!skipChecks && (previousSlot.Status != SlotStatus.Active || previousSlot.Value == 0))
         {
             throw new Exception("Cannot propagate non-active value");
         }
@@ -79,9 +89,12 @@ public class SlotState
         Status = SlotStatus.Moved;
     }
 
-    public void Error()
+    private static int errId =1;
+
+    public void Error(string msg)
     {
         Status = SlotStatus.Error;
+        ErrorMessage = (errId++).ToString() + msg;
     }
 
     public string ToDebugString()
@@ -101,7 +114,7 @@ public class SlotState
             case SlotStatus.Moved:
                 return $"Moved({inner})";
             case SlotStatus.Error:
-                return "Error";
+                return $"Error({ErrorMessage})";
             default:
                 throw new ArgumentOutOfRangeException();
         }

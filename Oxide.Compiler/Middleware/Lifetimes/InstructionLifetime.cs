@@ -38,7 +38,7 @@ public class InstructionLifetime
             return state;
         }
 
-        state = new SlotState();
+        state = new SlotState(id, this);
         Slots.Add(id, state);
         return state;
     }
