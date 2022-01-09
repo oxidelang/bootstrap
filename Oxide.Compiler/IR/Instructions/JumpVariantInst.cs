@@ -19,7 +19,7 @@ public class JumpVariantInst : Instruction
     public override void WriteIr(IrWriter writer)
     {
         writer.Write(
-            $"jumpvariant ${VariantSlot} {VariantItemType} {ItemSlot} #{TargetBlock} #{ElseBlock}");
+            $"jumpvariant ${VariantSlot} {VariantItemType} ${ItemSlot} #{TargetBlock} #{ElseBlock}");
     }
 
     public override InstructionEffects GetEffects()
