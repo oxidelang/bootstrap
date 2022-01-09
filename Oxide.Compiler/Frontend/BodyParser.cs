@@ -703,10 +703,6 @@ public class BodyParser
         MakeCurrent(trueBlock);
         var trueSlot = ParseBlock(ctx.body)?.GenerateMove(this, CurrentBlock);
         var trueFinalBlock = CurrentBlock;
-        if (trueFinalBlock.HasTerminated)
-        {
-            throw new NotImplementedException("TODO");
-        }
 
         SlotDeclaration falseSlot = null;
         Block falseFinalBlock = null;
@@ -717,15 +713,21 @@ public class BodyParser
                 ? ParseBlock(ctx.else_block)
                 : ParseIfExpression(ctx.else_if))?.GenerateMove(this, CurrentBlock);
             falseFinalBlock = CurrentBlock;
-            if (falseFinalBlock.HasTerminated)
-            {
-                throw new NotImplementedException("TODO");
-            }
         }
 
-        MakeCurrent(returnBlock);
+        if (hasElse && trueFinalBlock.HasTerminated && falseFinalBlock.HasTerminated)
+        {
+            MakeCurrent(trueBlock);
+            RemoveBlock(returnBlock);
+        }
+        else
+        {
+            MakeCurrent(returnBlock);
+        }
 
-        if (hasElse && trueSlot != null && falseSlot != null)
+
+        if (hasElse && trueSlot != null && falseSlot != null && !trueFinalBlock.HasTerminated &&
+            !falseFinalBlock.HasTerminated)
         {
             if (!Equals(trueSlot.Type, falseSlot.Type))
             {
@@ -740,39 +742,49 @@ public class BodyParser
                 Mutable = false
             });
 
-            trueFinalBlock.AddInstruction(new MoveInst
+            if (!trueFinalBlock.HasTerminated)
             {
-                Id = ++LastInstId,
-                SrcSlot = trueSlot.Id,
-                DestSlot = resultDec.Id,
-            });
+                trueFinalBlock.AddInstruction(new MoveInst
+                {
+                    Id = ++LastInstId,
+                    SrcSlot = trueSlot.Id,
+                    DestSlot = resultDec.Id,
+                });
+                trueFinalBlock.AddInstruction(new JumpInst
+                {
+                    Id = ++LastInstId,
+                    TargetBlock = returnBlock.Id
+                });
+            }
+
+            if (!falseFinalBlock.HasTerminated)
+            {
+                falseFinalBlock.AddInstruction(new MoveInst
+                {
+                    Id = ++LastInstId,
+                    SrcSlot = falseSlot.Id,
+                    DestSlot = resultDec.Id
+                });
+                falseFinalBlock.AddInstruction(new JumpInst
+                {
+                    Id = ++LastInstId,
+                    TargetBlock = returnBlock.Id
+                });
+            }
+
+            return new SlotUnrealisedAccess(resultDec);
+        }
+
+        if (!trueFinalBlock.HasTerminated)
+        {
             trueFinalBlock.AddInstruction(new JumpInst
             {
                 Id = ++LastInstId,
                 TargetBlock = returnBlock.Id
             });
-
-            falseFinalBlock.AddInstruction(new MoveInst
-            {
-                Id = ++LastInstId,
-                SrcSlot = falseSlot.Id,
-                DestSlot = resultDec.Id
-            });
-            falseFinalBlock.AddInstruction(new JumpInst
-            {
-                Id = ++LastInstId,
-                TargetBlock = returnBlock.Id
-            });
-
-            return new SlotUnrealisedAccess(resultDec);
         }
 
-        trueFinalBlock.AddInstruction(new JumpInst
-        {
-            Id = ++LastInstId,
-            TargetBlock = returnBlock.Id
-        });
-        if (hasElse)
+        if (hasElse && !falseFinalBlock.HasTerminated)
         {
             falseFinalBlock.AddInstruction(new JumpInst
             {
@@ -2082,6 +2094,11 @@ public class BodyParser
         };
         Blocks.Add(block.Id, block);
         return block;
+    }
+
+    private void RemoveBlock(Block block)
+    {
+        Blocks.Remove(block.Id);
     }
 
     private void MakeCurrent(Block block)
