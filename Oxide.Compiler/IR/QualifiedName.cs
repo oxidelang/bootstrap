@@ -22,6 +22,11 @@ public class QualifiedName
         return new QualifiedName(true, parts);
     }
 
+    public static QualifiedName FromRelative(params string[] parts)
+    {
+        return new QualifiedName(false, parts);
+    }
+
     protected bool Equals(QualifiedName other)
     {
         return IsAbsolute == other.IsAbsolute &&

@@ -353,7 +353,21 @@ public class FunctionGenerator
 
         if (properties.CopyMethod.TargetType != null)
         {
-            throw new NotImplementedException();
+            var targetType = properties.CopyMethod.TargetType;
+            var resolved = Store.LookupImplementation(
+                targetType,
+                properties.CopyMethod.TargetImplementation,
+                properties.CopyMethod.TargetMethod.Name.Parts.Single()
+            );
+            funcDef = resolved.Function;
+
+            var typeObj = Store.Lookup(targetType.Name);
+            funcContext = new GenericContext(
+                null,
+                typeObj.GenericParams,
+                targetType.GenericParams,
+                targetType
+            );
         }
         else
         {
@@ -1239,6 +1253,10 @@ public class FunctionGenerator
             {
                 switch (targetType)
                 {
+                    case ReferenceTypeRef referenceTypeRef:
+                        // TODO: Change counts
+                        converted = value;
+                        break;
                     case BorrowTypeRef:
                     case PointerTypeRef:
                         converted = GetBoxValuePtr(value, $"inst_{inst.Id}_ptr");

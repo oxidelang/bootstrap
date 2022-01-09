@@ -388,10 +388,9 @@ public class FileParser
             ifaceParams.AddRange(ctx.iface_generics.type().Select(x => ParseType(x, impGenerics)));
         }
 
-        if (ctx.where() != null)
-        {
-            throw new NotImplementedException("Where statements not implemented");
-        }
+        var constraints = ctx.where() != null
+            ? ParseWhere(ctx.where(), impGenerics)
+            : new WhereConstraints(ImmutableDictionary<string, ImmutableArray<TypeRef>>.Empty);
 
         if (!Implementations.TryGetValue(target, out var ifaces))
         {
@@ -402,7 +401,7 @@ public class FileParser
         var targetRef = new ConcreteTypeRef(target, tgtParams.ToImmutableArray());
         var ifaceRef = iface != null ? new ConcreteTypeRef(iface, ifaceParams.ToImmutableArray()) : null;
 
-        var imp = new Implementation(targetRef, ifaceRef, impGenerics.ToImmutableArray());
+        var imp = new Implementation(targetRef, ifaceRef, impGenerics.ToImmutableArray(), constraints);
         ifaces.Add(imp);
 
         if (ctx.impl_body() != null)
@@ -412,6 +411,23 @@ public class FileParser
                 imp.Functions.Add(ParseFunc(funcDef, imp, true, impGenerics));
             }
         }
+    }
+
+    private WhereConstraints ParseWhere(OxideParser.WhereContext ctx, ImmutableList<string> generics)
+    {
+        var constraints = new Dictionary<string, ImmutableArray<TypeRef>>();
+        foreach (var clauseCtx in ctx.where_clause())
+        {
+            var generic = clauseCtx.name().GetText();
+            if (!generics.Contains(generic))
+            {
+                throw new Exception($"Unknown generic param {generic}");
+            }
+
+            constraints.Add(generic, clauseCtx.type().Select(x => ParseType(x, generics)).ToImmutableArray());
+        }
+
+        return new WhereConstraints(constraints.ToImmutableDictionary());
     }
 
     public TypeRef ParseType(OxideParser.TypeContext ctx, ImmutableList<string> genericTypes)

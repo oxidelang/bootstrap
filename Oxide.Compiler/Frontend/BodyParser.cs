@@ -33,10 +33,12 @@ public class BodyParser
 
     public ConcreteTypeRef ThisType { get; }
 
+    public WhereConstraints Constraints { get; }
+
     private ImmutableArray<string> _parentGenerics;
 
     public BodyParser(IrStore store, IrUnit unit, FileParser fileParser, Function function,
-        ConcreteTypeRef thisType, ImmutableArray<string> parentGenerics)
+        ConcreteTypeRef thisType, ImmutableArray<string> parentGenerics, WhereConstraints constraints)
     {
         _store = store;
         _unit = unit;
@@ -49,6 +51,7 @@ public class BodyParser
         _lastBlockId = 0;
         LastSlotId = 0;
         _parentGenerics = parentGenerics;
+        Constraints = constraints;
     }
 
     public int ParseBody(OxideParser.BlockContext ctx)
@@ -1218,7 +1221,8 @@ public class BodyParser
                 throw new ArgumentOutOfRangeException();
         }
 
-        if (!IsCopyType(innerTypeRef))
+        var properties = _store.GetCopyProperties(innerTypeRef, Constraints);
+        if (!properties.CanCopy)
         {
             throw new Exception("Cannot deref non-copyable type");
         }
@@ -2104,40 +2108,6 @@ public class BodyParser
     public ResolvedFunction ResolveFunction(ConcreteTypeRef target, string functionName)
     {
         return _unit.ResolveFunction(_store, target, functionName) ?? _store.ResolveFunction(target, functionName);
-    }
-
-    private bool IsCopyType(TypeRef type)
-    {
-        switch (type)
-        {
-            case BorrowTypeRef:
-            case PointerTypeRef:
-                return true;
-            case ReferenceTypeRef:
-                return false;
-            case ConcreteTypeRef concreteTypeRef:
-            {
-                var baseType = Lookup(concreteTypeRef.Name);
-
-                switch (baseType)
-                {
-                    case PrimitiveType primitiveType:
-                        return true;
-                    case Struct @struct:
-                        // TODO
-                        return false;
-                    case Interface @interface:
-                    case Variant variant:
-                        throw new NotImplementedException();
-                    default:
-                        throw new ArgumentOutOfRangeException(nameof(baseType));
-                }
-            }
-            case BaseTypeRef baseTypeRef:
-                throw new Exception("Unresolved");
-            default:
-                throw new ArgumentOutOfRangeException(nameof(type));
-        }
     }
 
     private TypeRef ParseType(OxideParser.TypeContext ctx)

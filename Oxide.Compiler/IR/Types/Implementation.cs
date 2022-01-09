@@ -14,13 +14,15 @@ public class Implementation
 
     public ImmutableArray<string> GenericParams { get; }
 
-    public Implementation(ConcreteTypeRef target, ConcreteTypeRef @interface, ImmutableArray<string> genericParams)
+    public WhereConstraints Constraints { get; }
+
+    public Implementation(ConcreteTypeRef target, ConcreteTypeRef @interface, ImmutableArray<string> genericParams,
+        WhereConstraints constraints)
     {
         Target = target;
         Interface = @interface;
         Functions = new List<Function>();
         GenericParams = genericParams;
+        Constraints = constraints;
     }
-
-        
 }

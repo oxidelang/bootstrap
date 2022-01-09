@@ -53,8 +53,14 @@ public class IrStore
                 switch (b)
                 {
                     case BaseTypeRef:
-                    case ReferenceTypeRef:
                         return (false, false);
+                    case ReferenceTypeRef otherReference:
+                        if (!Equals(referenceTypeRef.InnerType, otherReference.InnerType))
+                        {
+                            return (false, false);
+                        }
+
+                        return (true, otherReference.StrongRef && !referenceTypeRef.StrongRef);
                     case BorrowTypeRef otherBorrow:
                         if (!Equals(referenceTypeRef.InnerType, otherBorrow.InnerType))
                         {
@@ -77,7 +83,7 @@ public class IrStore
         }
     }
 
-    public CopyProperties GetCopyProperties(TypeRef type)
+    public CopyProperties GetCopyProperties(TypeRef type, WhereConstraints constraints = null)
     {
         switch (type)
         {
@@ -109,24 +115,70 @@ public class IrStore
                 var baseType = Lookup(concreteTypeRef.Name);
                 switch (baseType)
                 {
-                    case PrimitiveType primitiveType:
+                    case PrimitiveType:
                         return new CopyProperties
                         {
                             CanCopy = true,
                             BitwiseCopy = true
                         };
-                    case Struct @struct:
-                        // TODO
+                    case Variant:
+                    case Struct:
+                    {
+                        var resolvedFunction = LookupImplementation(concreteTypeRef, CopyableType, "copy");
+                        if (resolvedFunction != null)
+                        {
+                            return new CopyProperties
+                            {
+                                CanCopy = true,
+                                BitwiseCopy = false,
+                                CopyMethod = new FunctionRef
+                                {
+                                    TargetType = concreteTypeRef,
+                                    TargetImplementation = CopyableType,
+                                    TargetMethod = ConcreteTypeRef.From(QualifiedName.FromRelative("copy"))
+                                }
+                            };
+                        }
+
                         return new CopyProperties
                         {
                             CanCopy = false
                         };
+                    }
                     case Interface @interface:
-                    case Variant variant:
                         throw new NotImplementedException();
+
                     default:
                         throw new ArgumentOutOfRangeException(nameof(baseType));
                 }
+            }
+            case GenericTypeRef genericTypeRef:
+            {
+                if (constraints == null)
+                {
+                    throw new Exception("Unresolved");
+                }
+
+                var paramConstraints = constraints.GetConstraints(genericTypeRef.Name);
+
+                if (paramConstraints.Any(x => Equals(x, CopyableType)))
+                {
+                    return new CopyProperties
+                    {
+                        CanCopy = true,
+                        BitwiseCopy = false,
+                        CopyMethod = new FunctionRef
+                        {
+                            TargetImplementation = CopyableType,
+                            TargetMethod = ConcreteTypeRef.From(QualifiedName.FromRelative("copy"))
+                        }
+                    };
+                }
+
+                return new CopyProperties
+                {
+                    CanCopy = false
+                };
             }
             case BaseTypeRef baseTypeRef:
                 throw new Exception("Unresolved");
@@ -135,6 +187,7 @@ public class IrStore
         }
     }
 
+    public static ConcreteTypeRef CopyableType = ConcreteTypeRef.From(QualifiedName.From("std", "Copyable"));
 
     public void AddUnit(IrUnit unit)
     {
