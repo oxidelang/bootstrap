@@ -32,7 +32,7 @@ public class UsedTypeVersion
 
         if (!Implementations.TryGetValue(iface, out var usedImp))
         {
-            Console.WriteLine($" - New implementation usage {iface} on {Type.Name}");
+            Console.WriteLine($" - New implementation usage {iface} on {Type.Name} {string.Join(", ", Generics)}");
             usedImp = new UsedImplementation(iface);
             Implementations.Add(iface, usedImp);
         }

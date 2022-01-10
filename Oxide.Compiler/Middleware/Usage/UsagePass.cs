@@ -81,6 +81,17 @@ public class UsagePass
                 var slotType = functionContext.ResolveRef(slot.Type);
                 slotTypes.Add(slot.Id, slotType);
                 MarkConcreteType((ConcreteTypeRef)slotType.GetBaseType());
+
+                var copyProperties = Store.GetCopyProperties(slotType);
+                if (copyProperties.CopyMethod != null)
+                {
+                    ProcessFunctionRef(
+                        copyProperties.CopyMethod.TargetType,
+                        copyProperties.CopyMethod.TargetImplementation,
+                        copyProperties.CopyMethod.TargetMethod,
+                        functionContext
+                    );
+                }
             }
         }
 
