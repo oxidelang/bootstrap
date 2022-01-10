@@ -1306,7 +1306,7 @@ public class BodyParser
                 var result = ResolveFunction(concreteTypeRef, methodName);
                 iface = result.Interface;
                 func = result.Function;
-                functionContext = new GenericContext(null, result.ImplementationGenerics, null);
+                functionContext = new GenericContext(null, result.ImplementationGenerics, concreteTypeRef);
                 break;
             }
             case DerivedTypeRef derivedTypeRef:
@@ -1324,7 +1324,7 @@ public class BodyParser
                 var result = ResolveFunction(concreteTypeRef, methodName);
                 iface = result.Interface;
                 func = result.Function;
-                functionContext = new GenericContext(null, result.ImplementationGenerics, null);
+                functionContext = new GenericContext(null, result.ImplementationGenerics, concreteTypeRef);
                 break;
             }
             default:
@@ -1360,51 +1360,7 @@ public class BodyParser
             throw new Exception("First param not 'this'");
         }
 
-        SlotDeclaration thisSlot;
-        switch (thisParam.Type)
-        {
-            case ConcreteTypeRef concreteTypeRef:
-            case DerivedTypeRef derivedTypeRef:
-            case GenericTypeRef genericTypeRef:
-                throw new Exception("Unexpected base type");
-            case ThisTypeRef thisTypeRef:
-            {
-                // TODO: Check type is "this"
-                thisSlot = baseExp.GenerateMove(this, CurrentBlock);
-                break;
-            }
-            case BorrowTypeRef borrowTypeRef:
-            {
-                // TODO: Check current type
-                switch (baseExp.Type)
-                {
-                    case BaseTypeRef:
-                        thisSlot = baseExp.GenerateRef(this, CurrentBlock, borrowTypeRef.MutableRef);
-                        break;
-                    case BorrowTypeRef existingRef:
-                        if (borrowTypeRef.MutableRef && !existingRef.MutableRef)
-                        {
-                            throw new Exception("Method requires mutable borrow");
-                        }
-
-                        thisSlot = baseExp.GenerateMove(this, CurrentBlock);
-                        break;
-                    case PointerTypeRef pointerTypeRef:
-                    case ReferenceTypeRef referenceTypeRef:
-                        throw new NotImplementedException();
-                    default:
-                        throw new ArgumentOutOfRangeException();
-                }
-
-                break;
-            }
-            case PointerTypeRef pointerTypeRef:
-            case ReferenceTypeRef referenceTypeRef:
-                throw new NotImplementedException();
-            default:
-                throw new ArgumentOutOfRangeException();
-        }
-
+        var thisSlot = CoerceType(functionContext.ResolveRef(thisParam.Type), baseExp);
         argIds.Add(thisSlot.Id);
 
         for (var i = 0; i < argumentCtxs.Length; i++)
@@ -1468,6 +1424,108 @@ public class BodyParser
             Arguments = argIds.ToImmutableList(),
         });
         return null;
+    }
+
+    private SlotDeclaration CoerceType(TypeRef targetType, UnrealisedAccess current)
+    {
+        switch (targetType)
+        {
+            case BaseTypeRef baseTypeRef:
+            {
+                if (!Equals(current.Type, baseTypeRef))
+                {
+                    throw new Exception("Type does not match expected");
+                }
+
+                return current.GenerateMove(this, CurrentBlock);
+            }
+            case BorrowTypeRef borrowTypeRef:
+            {
+                // TODO: Check current type
+                switch (current.Type)
+                {
+                    case BaseTypeRef:
+                    {
+                        if (!Equals(current.Type, borrowTypeRef.InnerType))
+                        {
+                            throw new Exception("Type does not match expected");
+                        }
+
+                        return current.GenerateRef(this, CurrentBlock, borrowTypeRef.MutableRef);
+                    }
+                    case BorrowTypeRef existingRef:
+                        if (borrowTypeRef.MutableRef && !existingRef.MutableRef)
+                        {
+                            throw new Exception("Method requires mutable borrow");
+                        }
+
+                        if (!Equals(current.Type, borrowTypeRef))
+                        {
+                            if (Equals(current.Type.GetBaseType(), borrowTypeRef.GetBaseType()) &&
+                                !Equals(existingRef.GetBaseType(),
+                                    existingRef.InnerType) // Ensure we don't deref type, just indirections
+                               )
+                            {
+                                var addrSlot = current.GenerateMove(this, CurrentBlock);
+                                var tempDec = CurrentScope.DefineSlot(new SlotDeclaration
+                                {
+                                    Id = ++LastSlotId,
+                                    Name = null,
+                                    Type = existingRef.InnerType,
+                                    Mutable = true
+                                });
+
+                                CurrentBlock.AddInstruction(new LoadIndirectInst
+                                {
+                                    Id = ++LastInstId,
+                                    TargetSlot = tempDec.Id,
+                                    AddressSlot = addrSlot.Id
+                                });
+
+                                return CoerceType(targetType, new SlotUnrealisedAccess(tempDec));
+                            }
+
+                            throw new Exception("Type does not match expected");
+                        }
+
+                        return current.GenerateMove(this, CurrentBlock);
+                    case PointerTypeRef pointerTypeRef:
+                        throw new NotImplementedException();
+                    case ReferenceTypeRef referenceTypeRef:
+                    {
+                        if (!Equals(referenceTypeRef.InnerType, borrowTypeRef.InnerType))
+                        {
+                            throw new Exception("Type does not match expected");
+                        }
+
+                        var refSlot = current.GenerateMove(this, CurrentBlock);
+                        var tempDec = CurrentScope.DefineSlot(new SlotDeclaration
+                        {
+                            Id = ++LastSlotId,
+                            Name = null,
+                            Type = borrowTypeRef,
+                            Mutable = true
+                        });
+
+                        CurrentBlock.AddInstruction(new RefBorrowInst
+                        {
+                            Id = ++LastInstId,
+                            SourceSlot = refSlot.Id,
+                            ResultSlot = tempDec.Id
+                        });
+
+                        return tempDec;
+                    }
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+            }
+            case PointerTypeRef pointerTypeRef:
+            case ReferenceTypeRef referenceTypeRef:
+                throw new NotImplementedException();
+            default:
+                throw new ArgumentOutOfRangeException();
+        }
     }
 
     private FieldUnrealisedAccess ParseAccessExpression(OxideParser.Access_base_expressionContext ctx)
