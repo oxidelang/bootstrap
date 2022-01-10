@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using ClosedXML.Excel;
-using Microsoft.VisualBasic;
 using Oxide.Compiler.IR;
 using Oxide.Compiler.IR.Instructions;
 using Oxide.Compiler.IR.TypeRefs;
@@ -35,11 +34,22 @@ public class LifetimePass
 
         FunctionLifetimes = new Dictionary<Function, FunctionLifetime>();
 
-        foreach (var objects in unit.Objects.Values)
+        foreach (var obj in unit.Objects.Values)
         {
-            if (objects is Function func)
+            if (obj is Function func)
             {
                 ProcessFunction(func);
+            }
+        }
+
+        foreach (var imps in unit.Implementations.Values)
+        {
+            foreach (var imp in imps)
+            {
+                foreach (var func in imp.Functions)
+                {
+                    ProcessFunction(func);
+                }
             }
         }
 
@@ -569,12 +579,13 @@ public class LifetimePass
     {
         using var workbook = new XLWorkbook();
 
+        var counter = 0;
         foreach (var pair in FunctionLifetimes)
         {
             var func = pair.Key;
             var funcLifetime = pair.Value;
 
-            var worksheet = workbook.Worksheets.Add($"Func {func.Name.ToString().Replace(':', '_')}");
+            var worksheet = workbook.Worksheets.Add($"{counter++} Func {func.Name.ToString().Replace(':', '_')}");
 
             worksheet.Cell(1, 1).SetText("Id");
             worksheet.Cell(1, 2).SetText("Inst");

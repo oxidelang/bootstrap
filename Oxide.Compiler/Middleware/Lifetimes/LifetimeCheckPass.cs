@@ -32,6 +32,17 @@ public class LifetimeCheckPass
                 ProcessFunction(func);
             }
         }
+
+        foreach (var imps in unit.Implementations.Values)
+        {
+            foreach (var imp in imps)
+            {
+                foreach (var func in imp.Functions)
+                {
+                    ProcessFunction(func);
+                }
+            }
+        }
     }
 
     private void ProcessFunction(Function func)
