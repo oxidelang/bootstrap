@@ -66,17 +66,22 @@ public class LifetimeCheckPass
                 {
                     var slot = lifetime.GetSlot(slotId);
 
-                    if (slot.Borrowed)
+                    if (slot.Status == SlotStatus.Error)
                     {
-                        var otherSlot = lifetime.GetSlot(slot.From);
-
-                        if (otherSlot.Status != SlotStatus.Active)
-                        {
-                            throw new Exception(
-                                $"Required slot {slot.From} for {slotId} not active: {otherSlot.Status}"
-                            );
-                        }
+                        throw new Exception($"Error with slot {slotId}: {slot.ErrorMessage}");
                     }
+
+                    // if (slot.Borrowed)
+                    // {
+                    //     var otherSlot = lifetime.GetSlot(slot.From);
+                    //
+                    //     if (otherSlot.Status != SlotStatus.Active)
+                    //     {
+                    //         throw new Exception(
+                    //             $"Required slot {slot.From} for {slotId} not active: {otherSlot.Status}"
+                    //         );
+                    //     }
+                    // }
 
                     foreach (var slotValue in slot.Values)
                     {

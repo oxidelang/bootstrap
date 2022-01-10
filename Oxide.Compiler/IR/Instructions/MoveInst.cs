@@ -23,7 +23,7 @@ public class MoveInst : Instruction
             }.ToImmutableArray(),
             new[]
             {
-                InstructionEffects.WriteData.New(DestSlot)
+                InstructionEffects.WriteData.New(DestSlot, moveSource: SrcSlot)
             }.ToImmutableArray()
         );
     }

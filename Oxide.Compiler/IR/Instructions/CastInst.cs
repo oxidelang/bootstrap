@@ -26,7 +26,7 @@ public class CastInst : Instruction
             }.ToImmutableArray(),
             new[]
             {
-                InstructionEffects.WriteData.New(ResultSlot)
+                InstructionEffects.WriteData.New(ResultSlot, moveSource: SourceSlot)
             }.ToImmutableArray()
         );
     }

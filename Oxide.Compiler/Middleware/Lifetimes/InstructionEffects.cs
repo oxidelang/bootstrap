@@ -36,6 +36,8 @@ public class InstructionEffects
     {
         public int Slot { get; private set; }
 
+        public int? MoveSource { get; private set; }
+
         public int? ReferenceSource { get; private set; }
 
         public string ReferenceField { get; private set; }
@@ -44,11 +46,12 @@ public class InstructionEffects
 
         public int? TargetBlock { get; private set; }
 
-        public static WriteData New(int slot, int? targetBlock = null)
+        public static WriteData New(int slot, int? targetBlock = null, int? moveSource = null)
         {
             return new WriteData
             {
                 Slot = slot,
+                MoveSource = moveSource,
                 TargetBlock = targetBlock
             };
         }
