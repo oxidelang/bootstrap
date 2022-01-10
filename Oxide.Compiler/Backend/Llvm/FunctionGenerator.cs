@@ -250,6 +250,9 @@ public class FunctionGenerator
             case CastInst castInst:
                 CompileCastInst(castInst);
                 break;
+            case RefBorrowInst refBorrowInst:
+                CompileRefBorrow(refBorrowInst);
+                break;
             case AllocVariantInst allocVariantInst:
                 CompileAllocVariantInst(allocVariantInst);
                 break;
@@ -1271,6 +1274,23 @@ public class FunctionGenerator
                 throw new ArgumentOutOfRangeException(nameof(type));
         }
 
+        converted = Builder.BuildBitCast(converted, targetLlvmType, $"inst_{inst.Id}_cast");
+
+        StoreSlot(inst.ResultSlot, converted, targetType);
+    }
+
+    private void CompileRefBorrow(RefBorrowInst inst)
+    {
+        var (type, value) = LoadSlot(inst.SourceSlot, $"inst_{inst.Id}_load");
+        if (type is not ReferenceTypeRef referenceTypeRef)
+        {
+            throw new Exception("Source is not a reference");
+        }
+
+        var targetType = new BorrowTypeRef(referenceTypeRef.InnerType, false);
+        var targetLlvmType = Backend.ConvertType(targetType);
+
+        var converted = GetBoxValuePtr(value, $"inst_{inst.Id}_ptr");
         converted = Builder.BuildBitCast(converted, targetLlvmType, $"inst_{inst.Id}_cast");
 
         StoreSlot(inst.ResultSlot, converted, targetType);
