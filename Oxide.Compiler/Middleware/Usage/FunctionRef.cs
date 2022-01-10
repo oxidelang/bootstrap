@@ -30,4 +30,10 @@ public class FunctionRef
     {
         return HashCode.Combine(TargetType, TargetImplementation, TargetMethod);
     }
+
+    public override string ToString()
+    {
+        return
+            $"{nameof(TargetType)}: {TargetType}, {nameof(TargetImplementation)}: {TargetImplementation}, {nameof(TargetMethod)}: {TargetMethod}";
+    }
 }

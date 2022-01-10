@@ -78,21 +78,24 @@ public class LifetimeCheckPass
                         }
                     }
 
-                    foreach (var requiredValue in _functionLifetime.ValueRequirements[slot.Value])
+                    foreach (var slotValue in slot.Values)
                     {
-                        var otherSlotId = _functionLifetime.ValueMap[requiredValue];
-                        if (lifetime.Overwritten.Contains(otherSlotId))
+                        foreach (var requiredValue in _functionLifetime.ValueRequirements[slotValue])
                         {
-                            // TODO: More advanced check
-                        }
-                        else
-                        {
-                            var otherSlot = lifetime.GetSlot(otherSlotId);
-                            if (otherSlot.Value != requiredValue)
+                            var otherSlotId = _functionLifetime.ValueMap[requiredValue];
+                            if (lifetime.Overwritten.Contains(otherSlotId))
                             {
-                                throw new Exception(
-                                    $"Slot {otherSlotId} did not contain expected value {requiredValue}"
-                                );
+                                // TODO: More advanced check
+                            }
+                            else
+                            {
+                                var otherSlot = lifetime.GetSlot(otherSlotId);
+                                if (!otherSlot.Values.Contains(requiredValue))
+                                {
+                                    throw new Exception(
+                                        $"Slot {otherSlotId} did not contain expected value {requiredValue}"
+                                    );
+                                }
                             }
                         }
                     }
@@ -104,5 +107,12 @@ public class LifetimeCheckPass
     private InstructionLifetime GetLifetime(Instruction inst)
     {
         return _functionLifetime.InstructionLifetimes[inst.Id];
+    }
+
+    private class ValueState
+    {
+        public bool Borrowed { get; set; }
+
+        public bool BorrowedMutable { get; set; }
     }
 }
