@@ -47,9 +47,40 @@ public class FieldUnrealisedAccess : UnrealisedAccess
                 break;
             }
             case PointerTypeRef pointerTypeRef:
-                throw new NotImplementedException();
+            {
+                if (!pointerTypeRef.InnerType.IsBaseType)
+                {
+                    throw new Exception("Cannot move field from deeply borrowed pointer");
+                }
+
+                baseSlot = BaseAccess.GenerateMove(parser, block);
+                break;
+            }
             case ReferenceTypeRef referenceTypeRef:
-                throw new Exception("Unsupported");
+            {
+                if (!referenceTypeRef.StrongRef)
+                {
+                    throw new Exception("Cannot take ref to weak reference");
+                }
+
+                var refSlot = BaseAccess.GenerateMove(parser, block);
+
+                baseSlot = block.Scope.DefineSlot(new SlotDeclaration
+                {
+                    Id = ++parser.LastSlotId,
+                    Name = null,
+                    Type = new BorrowTypeRef(referenceTypeRef.InnerType, false),
+                    Mutable = true
+                });
+
+                block.AddInstruction(new RefBorrowInst
+                {
+                    Id = ++parser.LastInstId,
+                    SourceSlot = refSlot.Id,
+                    ResultSlot = baseSlot.Id
+                });
+                break;
+            }
             default:
                 throw new ArgumentOutOfRangeException();
         }
@@ -118,7 +149,31 @@ public class FieldUnrealisedAccess : UnrealisedAccess
                 break;
             }
             case ReferenceTypeRef referenceTypeRef:
-                throw new Exception("Unsupported");
+            {
+                if (!referenceTypeRef.StrongRef)
+                {
+                    throw new Exception("Cannot take ref to weak reference");
+                }
+
+                var refSlot = BaseAccess.GenerateMove(parser, block);
+
+                baseSlot = block.Scope.DefineSlot(new SlotDeclaration
+                {
+                    Id = ++parser.LastSlotId,
+                    Name = null,
+                    Type = new BorrowTypeRef(referenceTypeRef.InnerType, false),
+                    Mutable = true
+                });
+
+                block.AddInstruction(new RefBorrowInst
+                {
+                    Id = ++parser.LastInstId,
+                    SourceSlot = refSlot.Id,
+                    ResultSlot = baseSlot.Id
+                });
+                varType = new BorrowTypeRef(FieldType, false);
+                break;
+            }
             default:
                 throw new ArgumentOutOfRangeException();
         }

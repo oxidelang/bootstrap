@@ -1287,6 +1287,11 @@ public class FunctionGenerator
             throw new Exception("Source is not a reference");
         }
 
+        if (!referenceTypeRef.StrongRef)
+        {
+            throw new Exception("Cannot borrow weak reference");
+        }
+
         var targetType = new BorrowTypeRef(referenceTypeRef.InnerType, false);
         var targetLlvmType = Backend.ConvertType(targetType);
 
