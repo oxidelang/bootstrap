@@ -93,7 +93,7 @@ public class LifetimePass
             InstructionLifetime last = null;
             foreach (var inst in block.Instructions)
             {
-                var effects = inst.GetEffects();
+                var effects = inst.GetEffects(Store);
                 var lifetime = new InstructionLifetime
                 {
                     Id = inst.Id,

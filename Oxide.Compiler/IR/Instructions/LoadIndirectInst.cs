@@ -14,7 +14,7 @@ public class LoadIndirectInst : Instruction
         writer.Write($"loadindirect ${TargetSlot} ${AddressSlot}");
     }
 
-    public override InstructionEffects GetEffects()
+    public override InstructionEffects GetEffects(IrStore store)
     {
         return new InstructionEffects(
             new[]

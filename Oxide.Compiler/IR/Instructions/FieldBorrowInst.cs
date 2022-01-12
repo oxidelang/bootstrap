@@ -18,7 +18,7 @@ public class FieldBorrowInst : Instruction
         writer.Write($"fieldborrow ${TargetSlot} ${BaseSlot} {TargetField} {(Mutable ? "mut" : "readonly")}");
     }
 
-    public override InstructionEffects GetEffects()
+    public override InstructionEffects GetEffects(IrStore store)
     {
         return new InstructionEffects(
             new[]

@@ -16,7 +16,7 @@ public class FieldMoveInst : Instruction
         writer.Write($"fieldmove ${TargetSlot} ${BaseSlot} {TargetField}");
     }
 
-    public override InstructionEffects GetEffects()
+    public override InstructionEffects GetEffects(IrStore store)
     {
         return new InstructionEffects(
             new[]

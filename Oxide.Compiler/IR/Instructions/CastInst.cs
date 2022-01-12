@@ -17,10 +17,10 @@ public class CastInst : Instruction
         writer.Write($" ${SourceSlot}");
     }
 
-    public override InstructionEffects GetEffects()
+    public override InstructionEffects GetEffects(IrStore store)
     {
         return new InstructionEffects(
-            new InstructionEffects.ReadData[]
+            new[]
             {
                 InstructionEffects.ReadData.Access(SourceSlot, true)
             }.ToImmutableArray(),

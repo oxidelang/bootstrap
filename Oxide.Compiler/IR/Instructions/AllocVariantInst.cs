@@ -20,7 +20,7 @@ public class AllocVariantInst : Instruction
         writer.Write($"allocvariant ${SlotId} {VariantType} {ItemName} ${ItemSlot}");
     }
 
-    public override InstructionEffects GetEffects()
+    public override InstructionEffects GetEffects(IrStore store)
     {
         var reads = new List<InstructionEffects.ReadData>();
         if (ItemSlot.HasValue)

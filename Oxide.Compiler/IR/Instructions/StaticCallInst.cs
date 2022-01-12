@@ -1,7 +1,9 @@
+using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using Oxide.Compiler.IR.TypeRefs;
+using Oxide.Compiler.IR.Types;
 using Oxide.Compiler.Middleware.Lifetimes;
 
 namespace Oxide.Compiler.IR.Instructions;
@@ -41,20 +43,70 @@ public class StaticCallInst : Instruction
         writer.Write($"{TargetMethod} ({string.Join(", ", Arguments.Select(x => $"${x}"))})");
     }
 
-    public override InstructionEffects GetEffects()
+    public override InstructionEffects GetEffects(IrStore store)
     {
         // TODO: Detect borrowed returns
 
-        var reads = new List<InstructionEffects.ReadData>();
-        foreach (var arg in Arguments)
+        var hasThis = false;
+        var resultReferenceThis = false;
+        var resultMutable = false;
+
+        if (TargetType == null)
         {
-            reads.Add(InstructionEffects.ReadData.Access(arg, true));
+            var func = store.Lookup<Function>(TargetMethod.Name);
+        }
+        else if (TargetType is ConcreteTypeRef concreteTypeRef)
+        {
+            hasThis = true;
+            var func = store.LookupImplementation(
+                concreteTypeRef,
+                TargetImplementation,
+                TargetMethod.Name.Parts.Single()
+            );
+            if (func.Function.ReturnType != null)
+            {
+                switch (func.Function.ReturnType)
+                {
+                    case BaseTypeRef baseTypeRef:
+                        break;
+                    case BorrowTypeRef borrowTypeRef:
+                        resultReferenceThis = true;
+                        resultMutable = borrowTypeRef.MutableRef;
+                        break;
+                    case PointerTypeRef pointerTypeRef:
+                        break;
+                    case ReferenceTypeRef referenceTypeRef:
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+            }
+        }
+        else
+        {
+            throw new NotImplementedException("Finding effects of non-concrete types");
         }
 
+        var reads = new List<InstructionEffects.ReadData>();
         var writes = new List<InstructionEffects.WriteData>();
+
+        var first = true;
+        foreach (var arg in Arguments)
+        {
+            reads.Add(InstructionEffects.ReadData.Access(arg, first && hasThis));
+            first = false;
+        }
+
         if (ResultSlot.HasValue)
         {
-            writes.Add(InstructionEffects.WriteData.New(ResultSlot.Value));
+            if (resultReferenceThis)
+            {
+                writes.Add(InstructionEffects.WriteData.Borrow(ResultSlot.Value, Arguments.First(), resultMutable));
+            }
+            else
+            {
+                writes.Add(InstructionEffects.WriteData.New(ResultSlot.Value));
+            }
         }
 
         return new InstructionEffects(

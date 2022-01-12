@@ -15,7 +15,7 @@ public class AllocStructInst : Instruction
         writer.Write($"allocstruct ${SlotId} {StructType}");
     }
 
-    public override InstructionEffects GetEffects()
+    public override InstructionEffects GetEffects(IrStore store)
     {
         return new InstructionEffects(
             ImmutableArray<InstructionEffects.ReadData>.Empty,

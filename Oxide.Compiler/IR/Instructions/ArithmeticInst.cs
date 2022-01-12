@@ -29,10 +29,10 @@ public class ArithmeticInst : Instruction
         writer.Write($"arithmetic ${ResultSlot} {op} ${LhsValue} ${RhsValue}");
     }
 
-    public override InstructionEffects GetEffects()
+    public override InstructionEffects GetEffects(IrStore store)
     {
         return new InstructionEffects(
-            new InstructionEffects.ReadData[]
+            new[]
             {
                 InstructionEffects.ReadData.Access(LhsValue, false),
                 InstructionEffects.ReadData.Access(RhsValue, false)

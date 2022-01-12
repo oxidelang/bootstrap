@@ -19,7 +19,7 @@ public class JumpInst : Instruction
             : $"jump always #{TargetBlock}");
     }
 
-    public override InstructionEffects GetEffects()
+    public override InstructionEffects GetEffects(IrStore store)
     {
         var reads = new List<InstructionEffects.ReadData>();
         var jumps = new List<int> { TargetBlock };

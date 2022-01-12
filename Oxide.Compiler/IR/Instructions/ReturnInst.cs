@@ -15,7 +15,7 @@ public class ReturnInst : Instruction
         writer.Write(ReturnSlot.HasValue ? $"return ${ReturnSlot}" : "return void");
     }
 
-    public override InstructionEffects GetEffects()
+    public override InstructionEffects GetEffects(IrStore store)
     {
         var reads = new List<InstructionEffects.ReadData>();
         if (ReturnSlot.HasValue)

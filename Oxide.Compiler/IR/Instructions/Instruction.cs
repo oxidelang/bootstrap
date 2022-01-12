@@ -10,5 +10,5 @@ public abstract class Instruction
 
     public abstract void WriteIr(IrWriter writer);
 
-    public abstract InstructionEffects GetEffects();
+    public abstract InstructionEffects GetEffects(IrStore store);
 }

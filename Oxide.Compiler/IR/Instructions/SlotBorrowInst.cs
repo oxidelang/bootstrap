@@ -16,7 +16,7 @@ public class SlotBorrowInst : Instruction
         writer.Write($"slotborrow ${TargetSlot} ${BaseSlot} {(Mutable ? "mut" : "readonly")}");
     }
 
-    public override InstructionEffects GetEffects()
+    public override InstructionEffects GetEffects(IrStore store)
     {
         return new InstructionEffects(
             new[]

@@ -14,7 +14,7 @@ public class MoveInst : Instruction
         writer.Write($"move ${DestSlot} ${SrcSlot}");
     }
 
-    public override InstructionEffects GetEffects()
+    public override InstructionEffects GetEffects(IrStore store)
     {
         return new InstructionEffects(
             new[]

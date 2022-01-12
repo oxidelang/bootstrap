@@ -25,7 +25,7 @@ public class ConstInst : Instruction
         writer.Write($"const ${TargetSlot} {type} {Value}");
     }
 
-    public override InstructionEffects GetEffects()
+    public override InstructionEffects GetEffects(IrStore store)
     {
         return new InstructionEffects(
             ImmutableArray<InstructionEffects.ReadData>.Empty,

@@ -13,7 +13,7 @@ public class RefBorrowInst : Instruction
         writer.Write($"refborrow ${ResultSlot} ${SourceSlot}");
     }
 
-    public override InstructionEffects GetEffects()
+    public override InstructionEffects GetEffects(IrStore store)
     {
         return new InstructionEffects(
             new[]

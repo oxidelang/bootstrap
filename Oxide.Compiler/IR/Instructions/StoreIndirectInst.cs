@@ -14,7 +14,7 @@ public class StoreIndirectInst : Instruction
         writer.Write($"storeindirect ${TargetSlot} ${ValueSlot}");
     }
 
-    public override InstructionEffects GetEffects()
+    public override InstructionEffects GetEffects(IrStore store)
     {
         return new InstructionEffects(
             new[]

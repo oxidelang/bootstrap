@@ -22,7 +22,7 @@ public class JumpVariantInst : Instruction
             $"jumpvariant ${VariantSlot} {VariantItemType} ${ItemSlot} #{TargetBlock} #{ElseBlock}");
     }
 
-    public override InstructionEffects GetEffects()
+    public override InstructionEffects GetEffects(IrStore store)
     {
         return new InstructionEffects(
             new[]
