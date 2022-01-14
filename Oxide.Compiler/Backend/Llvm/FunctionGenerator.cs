@@ -958,6 +958,7 @@ public class FunctionGenerator
         switch (slotDec.Type)
         {
             case BorrowTypeRef borrowTypeRef:
+            {
                 (_, baseAddr) = LoadSlot(inst.BaseSlot, $"inst_{inst.Id}_base");
                 isDirect = false;
 
@@ -968,11 +969,24 @@ public class FunctionGenerator
 
                 structType = concreteTypeRef;
                 break;
+            }
             case BaseTypeRef:
                 (_, baseAddr) = GetSlotRef(inst.BaseSlot);
                 isDirect = true;
                 throw new NotImplementedException("direct field moves");
-            case PointerTypeRef:
+            case PointerTypeRef pointerTypeRef:
+            {
+                (_, baseAddr) = LoadSlot(inst.BaseSlot, $"inst_{inst.Id}_base");
+                isDirect = false;
+
+                if (pointerTypeRef.InnerType is not ConcreteTypeRef concreteTypeRef)
+                {
+                    throw new Exception("Cannot borrow field from non borrowed direct type");
+                }
+
+                structType = concreteTypeRef;
+                break;
+            }
             case ReferenceTypeRef:
                 throw new NotImplementedException();
             default:
