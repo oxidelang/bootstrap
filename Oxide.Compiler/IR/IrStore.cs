@@ -189,6 +189,39 @@ public class IrStore
 
     public static ConcreteTypeRef CopyableType = ConcreteTypeRef.From(QualifiedName.From("std", "Copyable"));
 
+    public FunctionRef GetDropFunction(ConcreteTypeRef concreteTypeRef)
+    {
+        var baseType = Lookup(concreteTypeRef.Name);
+        switch (baseType)
+        {
+            case PrimitiveType:
+                return null;
+            case Variant:
+            case Struct:
+            {
+                var resolvedFunction = LookupImplementation(concreteTypeRef, DropType, "drop");
+                if (resolvedFunction != null)
+                {
+                    return new FunctionRef
+                    {
+                        TargetType = concreteTypeRef,
+                        TargetImplementation = DropType,
+                        TargetMethod = ConcreteTypeRef.From(QualifiedName.FromRelative("drop"))
+                    };
+                }
+
+                return null;
+            }
+            case Interface @interface:
+                throw new NotImplementedException();
+
+            default:
+                throw new ArgumentOutOfRangeException(nameof(baseType));
+        }
+    }
+
+    public static ConcreteTypeRef DropType = ConcreteTypeRef.From(QualifiedName.From("std", "Drop"));
+
     public void AddUnit(IrUnit unit)
     {
         _units.Add(unit);

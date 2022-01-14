@@ -32,6 +32,8 @@ public class LlvmBackend
 
     private Dictionary<FunctionRef, LLVMValueRef> _functionRefs;
 
+    private Dictionary<TypeRef, LLVMValueRef> _dropFuncs;
+
     private LLVMTargetDataRef DataLayout { get; set; }
 
     private Dictionary<QualifiedName, IntrinsicMapper> _intrinsics;
@@ -44,6 +46,7 @@ public class LlvmBackend
         _typeStore = new Dictionary<ConcreteTypeRef, LLVMTypeRef>();
         _functionRefs = new Dictionary<FunctionRef, LLVMValueRef>();
         _intrinsics = new Dictionary<QualifiedName, IntrinsicMapper>();
+        _dropFuncs = new Dictionary<TypeRef, LLVMValueRef>();
 
         // TODO: Check target size
         _typeStore.Add(PrimitiveKind.USize.GetRef(), LLVMTypeRef.Int64);
@@ -460,6 +463,178 @@ public class LlvmBackend
             default:
                 throw new ArgumentOutOfRangeException(nameof(typeRef));
         }
+    }
+
+    public LLVMValueRef GetDropFunctionRef(TypeRef typeRef)
+    {
+        if (_dropFuncs.TryGetValue(typeRef, out var resolved))
+        {
+            return resolved;
+        }
+
+        switch (typeRef)
+        {
+            case ConcreteTypeRef concreteTypeRef:
+                return GetDropFunctionForBase(concreteTypeRef);
+            case BaseTypeRef:
+                throw new Exception("Unresolved type");
+            case PointerTypeRef:
+            case BorrowTypeRef:
+                return null;
+            case ReferenceTypeRef referenceTypeRef:
+                return GetFunctionRef(
+                    new FunctionRef
+                    {
+                        TargetMethod = ConcreteTypeRef.From(
+                            QualifiedName.From(
+                                "std",
+                                referenceTypeRef.StrongRef ? "box_drop_strong" : "box_drop_weak"
+                            ),
+                            referenceTypeRef.InnerType
+                        )
+                    }
+                );
+            default:
+                throw new ArgumentOutOfRangeException(nameof(typeRef));
+        }
+    }
+
+    private LLVMValueRef GetDropFunctionForBase(ConcreteTypeRef typeRef)
+    {
+        if (_dropFuncs.TryGetValue(typeRef, out var resolved))
+        {
+            return resolved;
+        }
+
+        var baseType = Store.Lookup(typeRef.Name);
+        var dropFunc = Store.GetDropFunction(typeRef);
+
+        switch (baseType)
+        {
+            case PrimitiveType:
+                _dropFuncs[typeRef] = null;
+                return null;
+            case Variant:
+            case Struct:
+                break;
+            case Interface @interface:
+                throw new NotImplementedException();
+            default:
+                throw new ArgumentOutOfRangeException(nameof(baseType));
+        }
+
+        var funcName = $"@drop#{GenerateName(typeRef)}";
+
+
+        var varType = ConvertType(typeRef);
+        var paramTypes = new[]
+        {
+            varType
+        };
+
+        var funcType = LLVMTypeRef.CreateFunction(ConvertType(null), paramTypes);
+        var funcRef = Module.AddFunction(funcName, funcType);
+        funcRef.AddAttribute(
+            LlvmAttributes.Target.Function,
+            Context.CreateEnumAttribute(LlvmAttributes.AttrKind.AlwaysInline)
+        );
+
+        _dropFuncs.Add(typeRef, funcRef);
+
+        using var builder = Context.CreateBuilder();
+
+        var entryBlock = funcRef.AppendBasicBlock("entry");
+        builder.PositionAtEnd(entryBlock);
+
+        var valuePtr = builder.BuildAlloca(varType, "value");
+        builder.BuildStore(funcRef.Params[0], valuePtr);
+
+        if (dropFunc != null)
+        {
+            var targetMethod = dropFunc.TargetMethod;
+
+            Function funcDef;
+            GenericContext funcContext;
+
+            if (dropFunc.TargetType != null)
+            {
+                var targetType = dropFunc.TargetType;
+                var resolvedFunc = Store.LookupImplementation(
+                    targetType,
+                    dropFunc.TargetImplementation,
+                    dropFunc.TargetMethod.Name.Parts.Single()
+                );
+                funcDef = resolvedFunc.Function;
+
+                var typeObj = Store.Lookup(targetType.Name);
+                funcContext = new GenericContext(
+                    null,
+                    typeObj.GenericParams,
+                    targetType.GenericParams,
+                    targetType
+                );
+            }
+            else
+            {
+                funcDef = Store.Lookup<Function>(targetMethod.Name);
+                funcContext = GenericContext.Default;
+            }
+
+            if (funcDef == null)
+            {
+                throw new Exception($"Failed to find unit for {targetMethod}");
+            }
+
+            if (targetMethod.GenericParams.Length > 0)
+            {
+                funcContext = new GenericContext(
+                    funcContext,
+                    funcDef.GenericParams,
+                    targetMethod.GenericParams,
+                    funcContext.ThisRef
+                );
+            }
+
+            var dropFuncRef = GetFunctionRef(dropFunc);
+
+            if (funcDef.Parameters.Count != 1)
+            {
+                throw new Exception("Invalid number of arguments");
+            }
+
+            var param = funcDef.Parameters[0];
+            var paramType = funcContext.ResolveRef(param.Type);
+
+            var matches = paramType switch
+            {
+                BorrowTypeRef borrowTypeRef => Equals(borrowTypeRef.InnerType, typeRef) && !borrowTypeRef.MutableRef,
+                PointerTypeRef pointerTypeRef =>
+                    Equals(pointerTypeRef.InnerType, typeRef) && !pointerTypeRef.MutableRef,
+                _ => throw new ArgumentOutOfRangeException(nameof(paramType))
+            };
+
+            if (!matches)
+            {
+                throw new Exception($"Argument does not match parameter type for {param.Name}");
+            }
+
+            builder.BuildCall(dropFuncRef, new[] { valuePtr });
+        }
+
+
+        switch (baseType)
+        {
+            case Variant variant:
+                break;
+            case Struct @struct:
+            {
+                break;
+            }
+            default:
+                throw new ArgumentOutOfRangeException(nameof(baseType));
+        }
+
+        return funcRef;
     }
 
     public bool GetIntrinsic(QualifiedName qn, out IntrinsicMapper mapper)
