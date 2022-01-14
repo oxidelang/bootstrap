@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Oxide.Compiler.IR;
 using Oxide.Compiler.IR.Instructions;
 using Oxide.Compiler.IR.Types;
@@ -72,6 +71,7 @@ public class LifetimeCheckPass
             foreach (var inst in block.Instructions)
             {
                 var lifetime = GetLifetime(inst);
+                var incomingRequirements = new Dictionary<int, HashSet<Requirement>>();
 
                 foreach (var slotId in lifetime.ActiveSlots)
                 {
@@ -96,8 +96,23 @@ public class LifetimeCheckPass
 
                     foreach (var slotValue in slot.Values)
                     {
-                        foreach (var requiredValue in _functionLifetime.ValueRequirements[slotValue])
+                        if (slot.Status != SlotStatus.Moved)
                         {
+                            foreach (var required in _functionLifetime.DirectRequirements[slotValue])
+                            {
+                                if (!incomingRequirements.TryGetValue(required.Value, out var incReqs))
+                                {
+                                    incReqs = new HashSet<Requirement>();
+                                    incomingRequirements.Add(required.Value, incReqs);
+                                }
+
+                                incReqs.Add(new Requirement(slotValue, required.Mutable, required.Field));
+                            }
+                        }
+
+                        foreach (var required in _functionLifetime.ValueRequirements[slotValue])
+                        {
+                            var requiredValue = required.Value;
                             var otherSlotId = _functionLifetime.ValueMap[requiredValue];
                             if (lifetime.Overwritten.Contains(otherSlotId))
                             {
@@ -116,6 +131,103 @@ public class LifetimeCheckPass
                         }
                     }
                 }
+
+                foreach (var (value, reqs) in incomingRequirements)
+                {
+                    var slot = _functionLifetime.ValueMap[value];
+                    var borrowed = false;
+                    var mutBorrowed = 0;
+                    var fieldBorrows = new HashSet<string>();
+                    var mutFieldBorrows = new Dictionary<string, int>();
+
+                    foreach (var req in reqs)
+                    {
+                        var prefix = $"[{inst.Id}|Slot={slot}|Value={value}|Inc={req.Value}]";
+
+                        if (req.Field != null)
+                        {
+                            if (req.Mutable)
+                            {
+                                if (borrowed)
+                                {
+                                    throw new Exception($"{prefix} Whole value is already non-mutably borrowed");
+                                }
+
+                                if (mutBorrowed != 0)
+                                {
+                                    throw new Exception($"{prefix} Whole value is already mutably borrowed");
+                                }
+
+                                if (fieldBorrows.Contains(req.Field))
+                                {
+                                    throw new Exception($"{prefix} Value field is already non-mutably borrowed");
+                                }
+
+                                if (mutFieldBorrows.ContainsKey(req.Field) && mutFieldBorrows[req.Field] != req.Value)
+                                {
+                                    throw new Exception($"{prefix} Value field is already mutably borrowed");
+                                }
+
+                                mutFieldBorrows[req.Field] = req.Value;
+                            }
+                            else
+                            {
+                                if (mutBorrowed != 0)
+                                {
+                                    throw new Exception($"{prefix} Whole value is already mutably borrowed");
+                                }
+
+                                if (mutFieldBorrows.ContainsKey(req.Field))
+                                {
+                                    throw new Exception($"{prefix} Value field is already mutably borrowed");
+                                }
+
+                                fieldBorrows.Add(req.Field);
+                            }
+                        }
+                        else
+                        {
+                            if (req.Mutable)
+                            {
+                                if (borrowed)
+                                {
+                                    throw new Exception($"{prefix} Whole value is already non-mutably borrowed");
+                                }
+
+                                if (mutBorrowed != 0 && mutBorrowed != req.Value)
+                                {
+                                    throw new Exception($"{prefix} Whole value is already mutably borrowed");
+                                }
+
+                                if (fieldBorrows.Count > 0)
+                                {
+                                    throw new Exception($"{prefix} Value is already partially non-mutably borrowed");
+                                }
+
+                                if (mutFieldBorrows.Count > 0)
+                                {
+                                    throw new Exception($"{prefix} Value is already partially mutably borrowed");
+                                }
+
+                                mutBorrowed = req.Value;
+                            }
+                            else
+                            {
+                                if (mutBorrowed != 0)
+                                {
+                                    throw new Exception($"{prefix} Whole value is already mutably borrowed");
+                                }
+
+                                if (mutFieldBorrows.Count > 0)
+                                {
+                                    throw new Exception($"{prefix} Value is already partially mutably borrowed");
+                                }
+
+                                borrowed = true;
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -123,12 +235,5 @@ public class LifetimeCheckPass
     private InstructionLifetime GetLifetime(Instruction inst)
     {
         return _functionLifetime.InstructionLifetimes[inst.Id];
-    }
-
-    private class ValueState
-    {
-        public bool Borrowed { get; set; }
-
-        public bool BorrowedMutable { get; set; }
     }
 }

@@ -10,7 +10,9 @@ public class FunctionLifetime
 
     public Dictionary<int, InstructionLifetime> InstructionLifetimes { get; }
 
-    public Dictionary<int, HashSet<int>> ValueRequirements { get; }
+    public Dictionary<int, HashSet<Requirement>> ValueRequirements { get; }
+
+    public Dictionary<int, HashSet<Requirement>> DirectRequirements { get; }
 
     public Dictionary<int, int> ValueMap { get; }
 
@@ -18,7 +20,8 @@ public class FunctionLifetime
     {
         IncomingBlocks = new Dictionary<int, HashSet<int>>();
         InstructionLifetimes = new Dictionary<int, InstructionLifetime>();
-        ValueRequirements = new Dictionary<int, HashSet<int>>();
+        ValueRequirements = new Dictionary<int, HashSet<Requirement>>();
+        DirectRequirements = new Dictionary<int, HashSet<Requirement>>();
         ValueMap = new Dictionary<int, int>();
     }
 }

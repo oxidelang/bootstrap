@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using ClosedXML.Excel;
+using GiGraph.Dot.Entities.Graphs;
+using GiGraph.Dot.Entities.Nodes;
+using GiGraph.Dot.Extensions;
 using Oxide.Compiler.IR;
 using Oxide.Compiler.IR.Instructions;
 using Oxide.Compiler.IR.TypeRefs;
@@ -53,7 +56,7 @@ public class LifetimePass
             }
         }
 
-        GenerateDebug($"{outputDest}\\lifetimes.xlsx");
+        GenerateDebug(outputDest);
     }
 
     private void ProcessFunction(Function func)
@@ -162,7 +165,7 @@ public class LifetimePass
                 var currentRequires = pair.Value.ToArray();
                 foreach (var requires in currentRequires)
                 {
-                    foreach (var nestedRequires in _functionLifetime.ValueRequirements[requires])
+                    foreach (var nestedRequires in _functionLifetime.ValueRequirements[requires.Value])
                     {
                         if (pair.Value.Add(nestedRequires))
                         {
@@ -228,6 +231,11 @@ public class LifetimePass
             ProcessBlockMissing(block);
         }
 
+        foreach (var block in func.Blocks)
+        {
+            AddBlockStates(block);
+        }
+
         // Store list of active slots
         foreach (var block in func.Blocks)
         {
@@ -242,6 +250,40 @@ public class LifetimePass
                     {
                         lifetime.ActiveSlots.Add(slotId);
                     }
+                }
+            }
+        }
+
+        // Perform transitive reduction on value requirements
+        foreach (var (fromId, xReq) in _functionLifetime.ValueRequirements)
+        {
+            foreach (var edge in xReq)
+            {
+                var targetId = edge.Value;
+
+                var otherRoute = false;
+
+                foreach (var otherEdge in xReq)
+                {
+                    // Ignore same edge
+                    if (Equals(edge, otherEdge))
+                    {
+                        continue;
+                    }
+
+                    var otherId = otherEdge.Value;
+                    var otherReqs = _functionLifetime.ValueRequirements[otherId];
+
+                    if (otherReqs.Any(x => x.Value == targetId))
+                    {
+                        otherRoute = true;
+                        break;
+                    }
+                }
+
+                if (!otherRoute)
+                {
+                    _functionLifetime.DirectRequirements[fromId].Add(edge);
                 }
             }
         }
@@ -352,7 +394,11 @@ public class LifetimePass
 
         if (refSlot.Status == SlotStatus.Active && refSlot.Values.Count > 0)
         {
-            return reqs.AddRange(refSlot.Values);
+            return reqs.AddRange(
+                refSlot
+                    .Values
+                    .Select(x => new Requirement(x, write.ReferenceMutable, write.ReferenceField))
+            );
         }
         else
         {
@@ -377,6 +423,11 @@ public class LifetimePass
 
         if (read.Moved && !isCopy)
         {
+            if (read.Field != null)
+            {
+                throw new NotImplementedException("Field moves");
+            }
+
             currentState.Move();
         }
 
@@ -490,7 +541,7 @@ public class LifetimePass
                     {
                         foreach (var required in _functionLifetime.ValueRequirements[slotValue])
                         {
-                            var requiredSlot = _functionLifetime.ValueMap[required];
+                            var requiredSlot = _functionLifetime.ValueMap[required.Value];
                             var visited = new HashSet<(int, int)>();
                             TraceReadInner(lifetime, requiredSlot, true, visited, "");
                         }
@@ -517,11 +568,47 @@ public class LifetimePass
         }
     }
 
+    private void AddBlockStates(Block block)
+    {
+        // Add move markers to optional moves
+        foreach (var inst in block.Instructions)
+        {
+            var lifetime = GetLifetime(inst);
+
+            foreach (var write in lifetime.Effects.Writes)
+            {
+                if (write.MoveSource is not { } slotId)
+                {
+                    continue;
+                }
+
+                var slot = lifetime.GetSlot(slotId);
+                if (slot.Status != SlotStatus.Active)
+                {
+                    continue;
+                }
+
+                var next = lifetime.Next;
+                if (next == null)
+                {
+                    continue;
+                }
+
+                var nextSlot = next.GetSlot(slotId);
+                if (nextSlot.Status == SlotStatus.NoValue)
+                {
+                    slot.Move();
+                }
+            }
+        }
+    }
+
     private int AllocateValue(int slot)
     {
         var newId = _lastValueId++;
         _functionLifetime.ValueMap.Add(newId, slot);
-        _functionLifetime.ValueRequirements.Add(newId, new HashSet<int>());
+        _functionLifetime.ValueRequirements.Add(newId, new HashSet<Requirement>());
+        _functionLifetime.DirectRequirements.Add(newId, new HashSet<Requirement>());
         return newId;
     }
 
@@ -575,7 +662,7 @@ public class LifetimePass
         }
     }
 
-    public void GenerateDebug(string fileName)
+    public void GenerateDebug(string outputDest)
     {
         using var workbook = new XLWorkbook();
 
@@ -599,12 +686,10 @@ public class LifetimePass
                 foreach (var slot in scope.Slots.Values)
                 {
                     slotIds.Add(slot.Id);
-                }
-            }
 
-            foreach (var slot in slotIds)
-            {
-                worksheet.Cell(1, 6 + slot).SetText($"Slot {slot}");
+                    worksheet.Cell(1, 6 + slot.Id).SetText($"Slot {slot.Id}");
+                    worksheet.Cell(2, 6 + slot.Id).SetText(slot.Name ?? "internal");
+                }
             }
 
             var row = 2;
@@ -642,6 +727,42 @@ public class LifetimePass
             }
         }
 
-        workbook.SaveAs(fileName);
+        workbook.SaveAs($"{outputDest}\\lifetimes.xlsx");
+
+        var graph = new DotGraph(directed: true);
+
+        counter = 0;
+        foreach (var (func, lifetime) in FunctionLifetimes)
+        {
+            var name = ($"{counter++} Func {func.Name.ToString().Replace(':', '_')}");
+
+            graph.Clusters.Add(name, cluster =>
+            {
+                cluster.Label = name;
+
+                foreach (var id in lifetime.DirectRequirements.Keys)
+                {
+                    cluster.Nodes.Add($"{counter}-{id}", node => { node.Label = $"{id}"; });
+                }
+
+                var used = new HashSet<string>();
+
+                foreach (var (from, reqs) in lifetime.DirectRequirements)
+                {
+                    foreach (var req in reqs)
+                    {
+                        used.Add($"{counter}-{from}");
+                        used.Add($"{counter}-{req.Value}");
+                        cluster.Edges.Add($"{counter}-{from}", $"{counter}-{req.Value}");
+                    }
+                }
+
+                cluster.Nodes.RemoveAll(x => !used.Contains(((DotNode)x).Id));
+            });
+
+            counter++;
+        }
+
+        graph.SaveToFile($"{outputDest}\\lifetimes.gv");
     }
 }
