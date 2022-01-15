@@ -652,13 +652,13 @@ public class LlvmBackend
 
     public void Complete(string path)
     {
+        var llvmIr = Module.PrintToString();
+        File.WriteAllText($"{path}/compiled.preopt.llvm", llvmIr);
+
         if (!Module.TryVerify(LLVMVerifierFailureAction.LLVMPrintMessageAction, out var error))
         {
             Console.WriteLine($"Error: {error}");
         }
-
-        var llvmIr = Module.PrintToString();
-        File.WriteAllText($"{path}/compiled.preopt.llvm", llvmIr);
 
         unsafe
         {

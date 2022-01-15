@@ -32,7 +32,10 @@ public class FunctionGenerator
     private Dictionary<int, LLVMValueRef> _slotLivenessMap;
     private Dictionary<int, SlotDeclaration> _slotDefs;
     private Dictionary<int, LLVMBasicBlockRef> _blockMap;
-    private Dictionary<int, LLVMBasicBlockRef> _scopeReturnMap;
+    private Dictionary<int, LLVMBasicBlockRef> _scopeJumpBlocks;
+    private Dictionary<int, LLVMValueRef> _scopeJumpTargets;
+    private Dictionary<(int, int), LLVMBasicBlockRef> _jumpTrampolines;
+    private LLVMBasicBlockRef _returnBlock;
     private int? _returnSlot;
 
     public Block CurrentBlock { get; set; }
@@ -118,6 +121,31 @@ public class FunctionGenerator
             }
         }
 
+        // Create scope jump targets
+        _scopeJumpTargets = new Dictionary<int, LLVMValueRef>();
+        _scopeJumpBlocks = new Dictionary<int, LLVMBasicBlockRef>();
+        _jumpTrampolines = new Dictionary<(int, int), LLVMBasicBlockRef>();
+        foreach (var scope in func.Scopes)
+        {
+            var target = Builder.BuildAlloca(
+                LLVMTypeRef.CreatePointer(LLVMTypeRef.Int8, 0),
+                $"scope_{scope.Id}_jump_tgt"
+            );
+            _scopeJumpTargets.Add(scope.Id, target);
+
+            var block = _funcRef.AppendBasicBlock($"scope_{scope.Id}_jump");
+            _scopeJumpBlocks.Add(scope.Id, block);
+        }
+
+        // Default to all slots inactive
+        foreach (var scope in func.Scopes)
+        {
+            foreach (var slotDef in scope.Slots.Values)
+            {
+                MarkMoved(slotDef.Id);
+            }
+        }
+
         // Load parameters
         foreach (var scope in func.Scopes)
         {
@@ -134,20 +162,35 @@ public class FunctionGenerator
                 }
 
                 Builder.BuildStore(_funcRef.Params[varDef.ParameterSource.Value], _slotMap[varDef.Id]);
+                MarkActive(varDef.Id);
             }
         }
 
         // Jump to first block
         Builder.BuildBr(_blockMap[func.EntryBlock]);
 
-        // Create "return" paths for scopes
-        _scopeReturnMap = new Dictionary<int, LLVMBasicBlockRef>();
+        _returnBlock = _funcRef.AppendBasicBlock("return");
+        Builder.PositionAtEnd(_returnBlock);
+
+        if (_returnSlot.HasValue)
+        {
+            var (retType, retVal) = LoadSlot(_returnSlot.Value, "loaded_return_value", true);
+            if (!Equals(retType, FunctionContext.ResolveRef(_func.ReturnType)))
+            {
+                throw new Exception("Incompatible return type");
+            }
+
+            Builder.BuildRet(retVal);
+        }
+        else
+        {
+            Builder.BuildRetVoid();
+        }
+
+        // Create paths for scopes
         foreach (var scope in func.Scopes)
         {
-            if (scope.ParentScope == null)
-            {
-                CreateScopeReturn(scope);
-            }
+            CreateScopeJumpBlock(scope);
         }
 
         // Compile bodies
@@ -159,46 +202,58 @@ public class FunctionGenerator
         Builder.Dispose();
     }
 
-    private void CreateScopeReturn(Scope scope)
+    private void CreateScopeJumpBlock(Scope scope)
     {
-        var block = _funcRef.AppendBasicBlock($"scope_{scope.Id}_return");
+        var name = $"scope_{scope.Id}";
+        var block = _scopeJumpBlocks[scope.Id];
         Builder.PositionAtEnd(block);
 
         // TODO: Cleanup any values that need cleanup
 
-        if (scope.ParentScope == null)
+        var tgtSlot = _scopeJumpTargets[scope.Id];
+        var tgt = Builder.BuildLoad(tgtSlot, $"{name}_jump_tgt");
+
+        var dests = new List<LLVMBasicBlockRef>();
+
+        if (scope.ParentScope != null)
         {
-            if (_returnSlot.HasValue)
+            dests.Add(_scopeJumpBlocks[scope.ParentScope.Id]);
+
+            var todo = new Stack<Scope>();
+            todo.Push(scope.ParentScope);
+
+            while (todo.TryPop(out var current))
             {
-                var (retType, retVal) = LoadSlot(_returnSlot.Value, "loaded_return_value", true);
-                if (!Equals(retType, FunctionContext.ResolveRef(_func.ReturnType)))
+                foreach (var otherBlock in _func.Blocks)
                 {
-                    throw new Exception("Incompatible return type");
+                    if (otherBlock.Scope != current)
+                    {
+                        continue;
+                    }
+
+                    dests.Add(_blockMap[otherBlock.Id]);
                 }
 
-                Builder.BuildRet(retVal);
-            }
-            else
-            {
-                Builder.BuildRetVoid();
+                foreach (var otherScope in _func.Scopes)
+                {
+                    if (otherScope.ParentScope != current || otherScope == scope)
+                    {
+                        continue;
+                    }
+
+                    todo.Push(otherScope);
+                }
             }
         }
         else
         {
-            Builder.BuildBr(_scopeReturnMap[scope.ParentScope.Id]);
+            dests.Add(_returnBlock);
         }
 
-        _scopeReturnMap.Add(scope.Id, block);
-
-        // Generate children's return path now that parents exists
-        foreach (var childScope in _func.Scopes)
+        var indirectBr = Builder.BuildIndirectBr(tgt, (uint)dests.Count);
+        foreach (var dest in dests)
         {
-            if (childScope.ParentScope != scope)
-            {
-                continue;
-            }
-
-            CreateScopeReturn(childScope);
+            indirectBr.AddDestination(dest);
         }
     }
 
@@ -657,15 +712,100 @@ public class FunctionGenerator
                 throw new Exception("Invalid condition type");
             }
 
-            Builder.BuildCondBr(cond, _blockMap[inst.TargetBlock], _blockMap[inst.ElseBlock]);
+            Builder.BuildCondBr(
+                cond,
+                GetJumpTrampoline(CurrentBlock.Id, inst.TargetBlock),
+                GetJumpTrampoline(CurrentBlock.Id, inst.ElseBlock)
+            );
         }
         else
         {
-            Builder.BuildBr(_blockMap[inst.TargetBlock]);
+            Builder.BuildBr(GetJumpTrampoline(CurrentBlock.Id, inst.TargetBlock));
+        }
+    }
+
+    private Scope[] GetScopeHierarchy(Scope scope)
+    {
+        var scopes = new List<Scope>();
+
+        var current = scope;
+        while (current != null)
+        {
+            scopes.Insert(0, current);
+            current = current.ParentScope;
         }
 
-        // TODO: Real cleanup
-        // throw new NotImplementedException("Jump inst");
+        return scopes.ToArray();
+    }
+
+    private LLVMBasicBlockRef GetJumpTrampoline(int from, int to)
+    {
+        var key = (from, to);
+        if (_jumpTrampolines.TryGetValue(key, out var blockRef))
+        {
+            return blockRef;
+        }
+
+        var fromBlock = _func.Blocks.Single(x => x.Id == from);
+        var targetBlock = _func.Blocks.Single(x => x.Id == to);
+        var targetBlockRef = _blockMap[to];
+
+        var fromScopes = GetScopeHierarchy(fromBlock.Scope);
+        var targetScopes = GetScopeHierarchy(targetBlock.Scope);
+        var matchesUntil = -1;
+        for (var i = 0; i < Math.Min(fromScopes.Length, targetScopes.Length); i++)
+        {
+            if (fromScopes[i].Id != targetScopes[i].Id)
+            {
+                break;
+            }
+
+            matchesUntil = i;
+        }
+
+        if (matchesUntil == -1)
+        {
+            throw new Exception("No common scopes");
+        }
+
+        if (fromScopes.Length <= targetScopes.Length && matchesUntil == fromScopes.Length - 1)
+        {
+            _jumpTrampolines.Add(key, targetBlockRef);
+            return targetBlockRef;
+        }
+
+        var original = Builder.InsertBlock;
+
+        blockRef = _funcRef.AppendBasicBlock($"jump_f{from}_t{to}");
+        _jumpTrampolines.Add(key, blockRef);
+        Builder.PositionAtEnd(blockRef);
+
+        var currentScope = fromBlock.Scope;
+
+        while (currentScope.ParentScope != fromScopes[matchesUntil])
+        {
+            if (currentScope.ParentScope == null)
+            {
+                throw new Exception("Failed to find common parent");
+            }
+
+            var tgtSlot = _scopeJumpTargets[currentScope.Id];
+            var parentBlock = _scopeJumpBlocks[currentScope.ParentScope.Id];
+            var parentBlockAddress = _funcRef.GetBlockAddress(parentBlock);
+            Builder.BuildStore(parentBlockAddress, tgtSlot);
+            currentScope = currentScope.ParentScope;
+        }
+
+        {
+            var tgtSlot = _scopeJumpTargets[currentScope.Id];
+            var tgtBlockAddress = _funcRef.GetBlockAddress(targetBlockRef);
+            Builder.BuildStore(tgtBlockAddress, tgtSlot);
+        }
+
+        Builder.BuildBr(_scopeJumpBlocks[fromBlock.Scope.Id]);
+        Builder.PositionAtEnd(original);
+
+        return blockRef;
     }
 
     private void CompileJumpVariantInst(JumpVariantInst inst)
@@ -726,7 +866,7 @@ public class FunctionGenerator
         var trueBlock = _funcRef.AppendBasicBlock(
             $"scope_{CurrentBlock.Scope.Id}_block_{CurrentBlock.Id}_inst_{inst.Id}"
         );
-        Builder.BuildCondBr(condVal, trueBlock, _blockMap[inst.ElseBlock]);
+        Builder.BuildCondBr(condVal, trueBlock, GetJumpTrampoline(CurrentBlock.Id, inst.ElseBlock));
         Builder.PositionAtEnd(trueBlock);
 
         switch (varType)
@@ -800,7 +940,7 @@ public class FunctionGenerator
                 throw new ArgumentOutOfRangeException();
         }
 
-        Builder.BuildBr(_blockMap[inst.TargetBlock]);
+        Builder.BuildBr(GetJumpTrampoline(CurrentBlock.Id, inst.TargetBlock));
         Builder.PositionAtEnd(_blockMap[CurrentBlock.Id]);
     }
 
@@ -982,7 +1122,24 @@ public class FunctionGenerator
             StoreSlot(_returnSlot.Value, retValue, retType, true);
         }
 
-        Builder.BuildBr(_scopeReturnMap[CurrentBlock.Scope.Id]);
+        var currentScope = CurrentBlock.Scope;
+
+        while (currentScope.ParentScope != null)
+        {
+            var tgtSlot = _scopeJumpTargets[currentScope.Id];
+            var parentBlock = _scopeJumpBlocks[currentScope.ParentScope.Id];
+            var parentBlockAddress = _funcRef.GetBlockAddress(parentBlock);
+            Builder.BuildStore(parentBlockAddress, tgtSlot);
+            currentScope = currentScope.ParentScope;
+        }
+
+        {
+            var tgtSlot = _scopeJumpTargets[currentScope.Id];
+            var returnBlockAddress = _funcRef.GetBlockAddress(_returnBlock);
+            Builder.BuildStore(returnBlockAddress, tgtSlot);
+        }
+
+        Builder.BuildBr(_scopeJumpBlocks[CurrentBlock.Scope.Id]);
     }
 
     private void CompileSlotBorrowInst(SlotBorrowInst inst)
