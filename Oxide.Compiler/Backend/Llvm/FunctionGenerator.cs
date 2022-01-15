@@ -204,12 +204,50 @@ public class FunctionGenerator
 
     private void CreateScopeJumpBlock(Scope scope)
     {
-        var name = $"scope_{scope.Id}";
+        var name = $"scope_{scope.Id}_jump";
         var block = _scopeJumpBlocks[scope.Id];
+
+        var finalBlock = _funcRef.AppendBasicBlock($"{name}_final");
+
+        (SlotDeclaration sd, LLVMValueRef dropFunc)[] withDrops = scope.Slots.Values.Select(x =>
+        {
+            var resolvedType = FunctionContext.ResolveRef(x.Type);
+            var dropFunc = Backend.GetDropFunctionRef(resolvedType);
+            return (x, dropFunc);
+        }).Where(x => x.dropFunc != null).ToArray();
+
+        var condBlocks = new LLVMBasicBlockRef[withDrops.Length];
+        for (var i = 0; i < withDrops.Length; i++)
+        {
+            var sd = withDrops[i].sd;
+            condBlocks[i] = _funcRef.AppendBasicBlock($"{name}_drop_{sd.Id}_check");
+        }
+
+        for (var i = 0; i < withDrops.Length; i++)
+        {
+            var sd = withDrops[i].sd;
+            var dropFunc = withDrops[i].dropFunc;
+            var nextBlock = i == withDrops.Length - 1 ? finalBlock : condBlocks[i + 1];
+
+            var dropBlock = _funcRef.AppendBasicBlock($"{name}_drop_{sd.Id}");
+            Builder.PositionAtEnd(dropBlock);
+            var (_, valuePtr) = GetSlotRef(sd.Id, true);
+            var value = Builder.BuildLoad(valuePtr, $"{name}_drop_{sd.Id}_value");
+            Builder.BuildCall(dropFunc, new[] { value });
+            MarkMoved(sd.Id);
+            Builder.BuildBr(nextBlock);
+
+            // Create condition block
+            Builder.PositionAtEnd(condBlocks[i]);
+            var livePtr = _slotLivenessMap[sd.Id];
+            var liveValue = Builder.BuildLoad(livePtr, $"{name}_drop_{sd.Id}_liveness");
+            Builder.BuildCondBr(liveValue, dropBlock, nextBlock);
+        }
+
         Builder.PositionAtEnd(block);
+        Builder.BuildBr(condBlocks.Length > 0 ? condBlocks[0] : finalBlock);
 
-        // TODO: Cleanup any values that need cleanup
-
+        Builder.PositionAtEnd(finalBlock);
         var tgtSlot = _scopeJumpTargets[scope.Id];
         var tgt = Builder.BuildLoad(tgtSlot, $"{name}_jump_tgt");
 
