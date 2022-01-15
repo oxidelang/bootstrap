@@ -1378,7 +1378,9 @@ public class FunctionGenerator
     private void CompileStoreIndirectInst(StoreIndirectInst inst)
     {
         var (tgtType, tgt) = LoadSlot(inst.TargetSlot, $"inst_{inst.Id}_tgt");
-        var (valType, val) = LoadSlot(inst.ValueSlot, $"inst_{inst.Id}_value");
+        var (valType, valPtr) = GetSlotRef(inst.ValueSlot);
+        var properties = Store.GetCopyProperties(valType);
+        var slotLifetime = GetLifetime(inst).GetSlot(inst.ValueSlot);
 
         switch (tgtType)
         {
@@ -1413,6 +1415,21 @@ public class FunctionGenerator
                 throw new NotImplementedException();
             default:
                 throw new ArgumentOutOfRangeException(nameof(tgtType));
+        }
+
+        LLVMValueRef val;
+        if (slotLifetime.Status == SlotStatus.Moved)
+        {
+            (_, val) = LoadSlot(inst.ValueSlot, $"inst_{inst.Id}_value");
+            MarkMoved(inst.ValueSlot);
+        }
+        else if (properties.CanCopy)
+        {
+            val = GenerateCopy(valType, properties, valPtr, $"inst_{inst.Id}_value");
+        }
+        else
+        {
+            throw new Exception("Value is not moveable");
         }
 
         Builder.BuildStore(val, tgt);
