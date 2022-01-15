@@ -9,7 +9,9 @@ public class ArithmeticInst : Instruction
     public enum Operation
     {
         Add,
-        Minus
+        Minus,
+        LogicalAnd,
+        LogicalOr,
     }
 
     public int ResultSlot { get; init; }
@@ -23,6 +25,8 @@ public class ArithmeticInst : Instruction
         {
             Operation.Add => "add",
             Operation.Minus => "minus",
+            Operation.LogicalAnd => "logicaland",
+            Operation.LogicalOr => "logicalor",
             _ => throw new ArgumentOutOfRangeException()
         };
 

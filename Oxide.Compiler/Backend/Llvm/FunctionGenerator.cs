@@ -607,6 +607,12 @@ public class FunctionGenerator
             case ArithmeticInst.Operation.Minus:
                 value = Builder.BuildSub(left, right, name);
                 break;
+            case ArithmeticInst.Operation.LogicalAnd:
+                value = Builder.BuildAnd(left, right, name);
+                break;
+            case ArithmeticInst.Operation.LogicalOr:
+                value = Builder.BuildOr(left, right, name);
+                break;
             default:
                 throw new ArgumentOutOfRangeException();
         }

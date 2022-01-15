@@ -882,8 +882,21 @@ public class BodyParser
             case OxideParser.Pass_or_expressionContext passOrExpressionContext:
                 return ParseAndExpression(passOrExpressionContext.and_expression());
             case OxideParser.Op_or_expressionContext opOrExpressionContext:
-                throw new NotImplementedException("Or expression");
-                break;
+            {
+                var left = ParseOrExpression(opOrExpressionContext.or_expression());
+                var right = ParseAndExpression(opOrExpressionContext.and_expression());
+                if (!Equals(left.Type, PrimitiveKind.Bool.GetRef()))
+                {
+                    throw new Exception("Cannot perform AND on non-bool");
+                }
+
+                if (!Equals(right.Type, PrimitiveKind.Bool.GetRef()))
+                {
+                    throw new Exception("Cannot perform AND on non-bool");
+                }
+
+                return CreateArithmetic(left, right, ArithmeticInst.Operation.LogicalOr);
+            }
             default:
                 throw new ArgumentOutOfRangeException(nameof(ctx));
         }
@@ -896,8 +909,21 @@ public class BodyParser
             case OxideParser.Pass_and_expressionContext passAndExpressionContext:
                 return ParseIncOrExpression(passAndExpressionContext.inc_or_expression());
             case OxideParser.Op_and_expressionContext opAndExpressionContext:
-                throw new NotImplementedException("And expression");
-                break;
+            {
+                var left = ParseAndExpression(opAndExpressionContext.and_expression());
+                var right = ParseIncOrExpression(opAndExpressionContext.inc_or_expression());
+                if (!Equals(left.Type, PrimitiveKind.Bool.GetRef()))
+                {
+                    throw new Exception("Cannot perform AND on non-bool");
+                }
+
+                if (!Equals(right.Type, PrimitiveKind.Bool.GetRef()))
+                {
+                    throw new Exception("Cannot perform AND on non-bool");
+                }
+
+                return CreateArithmetic(left, right, ArithmeticInst.Operation.LogicalAnd);
+            }
             default:
                 throw new ArgumentOutOfRangeException(nameof(ctx));
         }
@@ -1121,6 +1147,12 @@ public class BodyParser
                 throw new ArgumentOutOfRangeException(nameof(ctx));
         }
 
+        return CreateArithmetic(left, right, op);
+    }
+
+    private UnrealisedAccess CreateArithmetic(UnrealisedAccess left, UnrealisedAccess right,
+        ArithmeticInst.Operation op)
+    {
         if (!left.Type.Equals(right.Type))
         {
             throw new NotImplementedException("Arithmetic of different types not implemented");
@@ -1143,7 +1175,6 @@ public class BodyParser
             ResultSlot = resultSlot.Id,
             Op = op
         });
-
         return new SlotUnrealisedAccess(resultSlot);
     }
 
