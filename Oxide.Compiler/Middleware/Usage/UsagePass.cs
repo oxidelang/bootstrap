@@ -107,6 +107,16 @@ public class UsagePass
                         ),
                         functionContext
                     );
+
+                    ProcessFunctionRef(
+                        null,
+                        null,
+                        ConcreteTypeRef.From(
+                            QualifiedName.From("std", "box_inc_weak"),
+                            referenceTypeRef.InnerType
+                        ),
+                        functionContext
+                    );
                 }
             }
         }

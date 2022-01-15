@@ -436,6 +436,17 @@ public class FunctionGenerator
         }
     }
 
+    private void PerformDrop(LLVMValueRef value, TypeRef typeRef)
+    {
+        var dropFunc = Backend.GetDropFunctionRef(typeRef);
+        if (dropFunc == null)
+        {
+            return;
+        }
+
+        Builder.BuildCall(dropFunc, new[] { value });
+    }
+
     private void CompileMoveInst(MoveInst inst)
     {
         var (type, value) = GetSlotRef(inst.SrcSlot);
@@ -1446,6 +1457,8 @@ public class FunctionGenerator
         }
 
         LLVMValueRef converted;
+        var dropIfMoved = false;
+        var ignoreMoved = false;
 
         switch (type)
         {
@@ -1509,14 +1522,32 @@ public class FunctionGenerator
                 converted = value;
                 break;
             }
-            case ReferenceTypeRef:
+            case ReferenceTypeRef fromRef:
             {
                 switch (targetType)
                 {
-                    case ReferenceTypeRef referenceTypeRef:
-                        // TODO: Change counts
+                    case ReferenceTypeRef toRef:
+                    {
+                        if (!fromRef.StrongRef || toRef.StrongRef)
+                        {
+                            throw new Exception("Unsupported");
+                        }
+
+                        var incFunc = Backend.GetFunctionRef(
+                            new FunctionRef
+                            {
+                                TargetMethod = ConcreteTypeRef.From(
+                                    QualifiedName.From("std", "box_inc_weak"),
+                                    fromRef.InnerType
+                                )
+                            }
+                        );
+                        Builder.BuildCall(incFunc, new[] { value });
+
                         converted = value;
+                        ignoreMoved = true;
                         break;
+                    }
                     case BorrowTypeRef:
                     case PointerTypeRef:
                         converted = GetBoxValuePtr(value, $"inst_{inst.Id}_ptr");
@@ -1533,8 +1564,13 @@ public class FunctionGenerator
 
         converted = Builder.BuildBitCast(converted, targetLlvmType, $"inst_{inst.Id}_cast");
 
-        if (slotLifetime.Status == SlotStatus.Moved)
+        if (slotLifetime.Status == SlotStatus.Moved && !ignoreMoved)
         {
+            if (dropIfMoved)
+            {
+                PerformDrop(value, type);
+            }
+
             MarkMoved(inst.SourceSlot);
         }
 
