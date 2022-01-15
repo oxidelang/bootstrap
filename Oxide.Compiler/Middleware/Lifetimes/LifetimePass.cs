@@ -575,6 +575,32 @@ public class LifetimePass
         {
             var lifetime = GetLifetime(inst);
 
+            foreach (var read in lifetime.Effects.Reads)
+            {
+                if (!read.Moved)
+                {
+                    continue;
+                }
+
+                var slot = lifetime.GetSlot(read.Slot);
+                if (slot.Status != SlotStatus.Active)
+                {
+                    continue;
+                }
+
+                var next = lifetime.Next;
+                if (next == null)
+                {
+                    continue;
+                }
+
+                var nextSlot = next.GetSlot(read.Slot);
+                if (nextSlot.Status == SlotStatus.NoValue)
+                {
+                    slot.Move();
+                }
+            }
+
             foreach (var write in lifetime.Effects.Writes)
             {
                 if (write.MoveSource is not { } slotId)

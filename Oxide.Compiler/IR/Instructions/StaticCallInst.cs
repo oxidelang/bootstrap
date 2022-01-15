@@ -45,9 +45,6 @@ public class StaticCallInst : Instruction
 
     public override InstructionEffects GetEffects(IrStore store)
     {
-        // TODO: Detect borrowed returns
-
-        var hasThis = false;
         var resultReferenceThis = false;
         var resultMutable = false;
 
@@ -57,7 +54,6 @@ public class StaticCallInst : Instruction
         }
         else if (TargetType is ConcreteTypeRef concreteTypeRef)
         {
-            hasThis = true;
             var func = store.LookupImplementation(
                 concreteTypeRef,
                 TargetImplementation,
@@ -90,11 +86,9 @@ public class StaticCallInst : Instruction
         var reads = new List<InstructionEffects.ReadData>();
         var writes = new List<InstructionEffects.WriteData>();
 
-        var first = true;
         foreach (var arg in Arguments)
         {
-            reads.Add(InstructionEffects.ReadData.Access(arg, first && hasThis));
-            first = false;
+            reads.Add(InstructionEffects.ReadData.Access(arg, true));
         }
 
         if (ResultSlot.HasValue)
