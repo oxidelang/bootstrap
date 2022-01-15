@@ -1078,12 +1078,24 @@ public class FunctionGenerator
         {
             var param = funcDef.Parameters[i];
             var paramType = funcContext.ResolveRef(param.Type);
-            var (argType, argVal) = LoadSlot(inst.Arguments[i], $"{name}_param_{param.Name}");
 
+            var (argType, argPtr) = GetSlotRef(inst.Arguments[i]);
+            var properties = Store.GetCopyProperties(argType);
             var slotLifetime = GetLifetime(inst).GetSlot(inst.Arguments[i]);
+
+            LLVMValueRef argVal;
             if (slotLifetime.Status == SlotStatus.Moved)
             {
+                (_, argVal) = LoadSlot(inst.Arguments[i], $"{name}_param_{param.Name}");
                 MarkMoved(inst.Arguments[i]);
+            }
+            else if (properties.CanCopy)
+            {
+                argVal = GenerateCopy(argType, properties, argPtr, $"{name}_param_{param.Name}");
+            }
+            else
+            {
+                throw new Exception("Value is not moveable");
             }
 
             bool matches;
