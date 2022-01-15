@@ -628,19 +628,117 @@ public class LlvmBackend
         }
 
 
+        var structContext = new GenericContext(null, baseType.GenericParams, typeRef.GenericParams, null);
+
         switch (baseType)
         {
             case Variant variant:
-                break;
-            case Struct @struct:
             {
+                var noActionBlock = funcRef.AppendBasicBlock($"item_none");
+                builder.PositionAtEnd(noActionBlock);
+                builder.BuildRetVoid();
+
+                var itemBlocks = new LLVMBasicBlockRef[variant.Items.Count];
+                for (var i = 0; i < variant.Items.Count; i++)
+                {
+                    var item = variant.Items[i];
+                    if (item.Content == null)
+                    {
+                        itemBlocks[i] = noActionBlock;
+                        continue;
+                    }
+
+                    var itemRef = new ConcreteTypeRef(
+                        new QualifiedName(true, variant.Name.Parts.Add(item.Name)),
+                        typeRef.GenericParams
+                    );
+
+                    var itemDropFunc = GetDropFunctionRef(itemRef);
+                    if (itemDropFunc == null)
+                    {
+                        itemBlocks[i] = noActionBlock;
+                        continue;
+                    }
+
+                    itemBlocks[i] = funcRef.AppendBasicBlock($"item_{i}");
+                    builder.PositionAtEnd(itemBlocks[i]);
+
+                    var itemAddr = builder.BuildInBoundsGEP(
+                        valuePtr,
+                        new[]
+                        {
+                            LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0),
+                            LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 1)
+                        },
+                        $"item_{i}_addr"
+                    );
+
+                    var itemResolvedType = ConvertType(itemRef);
+                    var itemAddrCasted = builder.BuildBitCast(
+                        itemAddr,
+                        LLVMTypeRef.CreatePointer(itemResolvedType, 0),
+                        $"item_{i}_addr_cast"
+                    );
+
+                    var itemValue = builder.BuildLoad(itemAddrCasted, $"item_{i}_value");
+
+                    builder.BuildCall(itemDropFunc, new[] { itemValue });
+                    builder.BuildRetVoid();
+                }
+
+                builder.PositionAtEnd(entryBlock);
+
+                var idAddr = builder.BuildInBoundsGEP(
+                    valuePtr,
+                    new[]
+                    {
+                        LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0),
+                        LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0)
+                    },
+                    "id_addr"
+                );
+                var idValue = builder.BuildLoad(idAddr, "id_value");
+
+                var idSwitch = builder.BuildSwitch(idValue, noActionBlock, (uint)itemBlocks.Length);
+                for (var i = 0; i < itemBlocks.Length; i++)
+                {
+                    idSwitch.AddCase(LLVMValueRef.CreateConstInt(LLVMTypeRef.Int8, (ulong)i), itemBlocks[i]);
+                }
+
+                break;
+            }
+            case Struct structDef:
+            {
+                for (var i = 0; i < structDef.Fields.Count; i++)
+                {
+                    var fieldDef = structDef.Fields[i];
+                    var fieldType = structContext.ResolveRef(fieldDef.Type);
+                    var fieldDropFunc = GetDropFunctionRef(fieldType);
+                    if (fieldDropFunc == null)
+                    {
+                        continue;
+                    }
+
+                    var fieldAddr = builder.BuildInBoundsGEP(
+                        valuePtr,
+                        new[]
+                        {
+                            LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0),
+                            LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong)i)
+                        },
+                        $"field_{i}_addr"
+                    );
+                    var fieldValue = builder.BuildLoad(fieldAddr, $"field_{i}_value");
+
+                    builder.BuildCall(fieldDropFunc, new[] { fieldValue });
+                }
+
+                builder.BuildRetVoid();
                 break;
             }
             default:
                 throw new ArgumentOutOfRangeException(nameof(baseType));
         }
-
-        builder.BuildRetVoid();
 
         return funcRef;
     }
