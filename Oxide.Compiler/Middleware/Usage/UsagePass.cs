@@ -92,6 +92,22 @@ public class UsagePass
                         functionContext
                     );
                 }
+
+                if (slotType is ReferenceTypeRef referenceTypeRef)
+                {
+                    ProcessFunctionRef(
+                        null,
+                        null,
+                        ConcreteTypeRef.From(
+                            QualifiedName.From(
+                                "std",
+                                referenceTypeRef.StrongRef ? "box_drop_strong" : "box_drop_weak"
+                            ),
+                            referenceTypeRef.InnerType
+                        ),
+                        functionContext
+                    );
+                }
             }
         }
 

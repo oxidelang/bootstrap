@@ -7,6 +7,7 @@ using Oxide.Compiler.IR.Instructions;
 using Oxide.Compiler.IR.TypeRefs;
 using Oxide.Compiler.IR.Types;
 using Oxide.Compiler.Middleware;
+using Oxide.Compiler.Middleware.Lifetimes;
 using Oxide.Compiler.Middleware.Usage;
 
 namespace Oxide.Compiler.Backend.Llvm;
@@ -21,11 +22,14 @@ public class FunctionGenerator
 
     public LLVMBuilderRef Builder { get; set; }
 
+    public FunctionLifetime FunctionLifetime { get; private set; }
+
     private Function _func;
 
     private LLVMValueRef _funcRef;
 
     private Dictionary<int, LLVMValueRef> _slotMap;
+    private Dictionary<int, LLVMValueRef> _slotLivenessMap;
     private Dictionary<int, SlotDeclaration> _slotDefs;
     private Dictionary<int, LLVMBasicBlockRef> _blockMap;
     private Dictionary<int, LLVMBasicBlockRef> _scopeReturnMap;
@@ -40,10 +44,11 @@ public class FunctionGenerator
         Backend = backend;
     }
 
-    public void Compile(FunctionRef key, Function func, GenericContext context)
+    public void Compile(FunctionRef key, Function func, GenericContext context, FunctionLifetime functionLifetime)
     {
         _func = func;
         FunctionContext = context;
+        FunctionLifetime = functionLifetime;
 
         Builder = Backend.Context.CreateBuilder();
 
@@ -67,6 +72,7 @@ public class FunctionGenerator
 
         // Create slots
         _slotMap = new Dictionary<int, LLVMValueRef>();
+        _slotLivenessMap = new Dictionary<int, LLVMValueRef>();
         _slotDefs = new Dictionary<int, SlotDeclaration>();
 
         // Create storage slot for return value
@@ -93,7 +99,14 @@ public class FunctionGenerator
                 var varName = $"scope_{scope.Id}_slot_{slotDef.Id}_{slotDef.Name ?? "autogen"}";
                 var resolvedType = FunctionContext.ResolveRef(slotDef.Type);
                 var varType = Backend.ConvertType(resolvedType);
+
                 _slotMap.Add(slotDef.Id, Builder.BuildAlloca(varType, varName));
+
+                if (Backend.GetDropFunctionRef(resolvedType) != null)
+                {
+                    _slotLivenessMap.Add(slotDef.Id, Builder.BuildAlloca(LLVMTypeRef.Int1, $"{varName}:live"));
+                }
+
                 _slotDefs.Add(slotDef.Id, new SlotDeclaration
                 {
                     Id = slotDef.Id,
@@ -309,32 +322,50 @@ public class FunctionGenerator
         return (_slotDefs[slot].Type, _slotMap[slot]);
     }
 
+    private InstructionLifetime GetLifetime(Instruction instruction)
+    {
+        return FunctionLifetime.InstructionLifetimes[instruction.Id];
+    }
+
+    private void MarkActive(int slot)
+    {
+        if (_slotLivenessMap.TryGetValue(slot, out var valRef))
+        {
+            Builder.BuildStore(LLVMValueRef.CreateConstInt(LLVMTypeRef.Int1, 1), valRef);
+        }
+    }
+
+    private void MarkMoved(int slot)
+    {
+        if (_slotLivenessMap.TryGetValue(slot, out var valRef))
+        {
+            Builder.BuildStore(LLVMValueRef.CreateConstInt(LLVMTypeRef.Int1, 0), valRef);
+        }
+    }
+
     private void CompileMoveInst(MoveInst inst)
     {
         var (type, value) = GetSlotRef(inst.SrcSlot);
         var properties = Store.GetCopyProperties(type);
-
-        // TODO: Remove once lifetimes are tracked
-        if (!properties.CanCopy)
-        {
-            properties = new CopyProperties
-            {
-                CanCopy = true,
-                BitwiseCopy = true
-            };
-        }
+        var slotLifetime = GetLifetime(inst).GetSlot(inst.SrcSlot);
 
         LLVMValueRef destValue;
-        if (properties.CanCopy)
+        if (slotLifetime.Status == SlotStatus.Moved)
+        {
+            (_, destValue) = LoadSlot(inst.SrcSlot, $"inst_{inst.Id}");
+            MarkMoved(inst.SrcSlot);
+        }
+        else if (properties.CanCopy)
         {
             destValue = GenerateCopy(type, properties, value, $"inst_{inst.Id}");
         }
         else
         {
-            throw new NotImplementedException("Moves");
+            throw new Exception("Value is not moveable");
         }
 
         StoreSlot(inst.DestSlot, destValue, type);
+        MarkActive(inst.DestSlot);
     }
 
     private LLVMValueRef GenerateCopy(TypeRef type, CopyProperties properties, LLVMValueRef pointer, string name)
@@ -443,6 +474,7 @@ public class FunctionGenerator
         }
 
         StoreSlot(inst.TargetSlot, value, valType);
+        MarkActive(inst.TargetSlot);
     }
 
     private void CompileArithmeticInstruction(ArithmeticInst inst)
@@ -476,6 +508,7 @@ public class FunctionGenerator
         }
 
         StoreSlot(inst.ResultSlot, value, leftType);
+        MarkActive(inst.ResultSlot);
     }
 
     private void CompileComparisonInst(ComparisonInst inst)
@@ -531,14 +564,15 @@ public class FunctionGenerator
         }
 
         StoreSlot(inst.ResultSlot, value, PrimitiveKind.Bool.GetRef());
+        MarkActive(inst.ResultSlot);
     }
 
     private void CompileAllocStructInst(AllocStructInst inst)
     {
         var structType = FunctionContext.ResolveRef(inst.StructType);
         StoreSlot(inst.SlotId, ZeroInit(structType), structType);
+        MarkActive(inst.SlotId);
     }
-
 
     private LLVMValueRef ZeroInit(TypeRef tref)
     {
@@ -743,6 +777,7 @@ public class FunctionGenerator
                 }
 
                 StoreSlot(inst.ItemSlot, destValue, variantItemTypeRef, true);
+                MarkActive(inst.ItemSlot);
                 break;
             }
             case BorrowTypeRef borrowTypeRef:
@@ -755,6 +790,7 @@ public class FunctionGenerator
                     ),
                     true
                 );
+                MarkActive(inst.ItemSlot);
                 break;
             case PointerTypeRef pointerTypeRef:
                 throw new NotImplementedException();
@@ -855,6 +891,12 @@ public class FunctionGenerator
             var paramType = funcContext.ResolveRef(param.Type);
             var (argType, argVal) = LoadSlot(inst.Arguments[i], $"{name}_param_{param.Name}");
 
+            var slotLifetime = GetLifetime(inst).GetSlot(inst.Arguments[i]);
+            if (slotLifetime.Status == SlotStatus.Moved)
+            {
+                MarkMoved(inst.Arguments[i]);
+            }
+
             bool matches;
             switch (argType)
             {
@@ -908,6 +950,7 @@ public class FunctionGenerator
             var returnType = funcContext.ResolveRef(funcDef.ReturnType);
             var value = Builder.BuildCall(funcRef, args.ToArray(), $"{name}_ret");
             StoreSlot(inst.ResultSlot.Value, value, returnType);
+            MarkActive(inst.ResultSlot.Value);
         }
         else
         {
@@ -930,6 +973,7 @@ public class FunctionGenerator
         if (inst.ReturnSlot.HasValue)
         {
             var (retType, retValue) = LoadSlot(inst.ReturnSlot.Value, $"inst_{inst.Id}_load");
+            MarkMoved(inst.ReturnSlot.Value);
             if (!Equals(retType, FunctionContext.ResolveRef(_func.ReturnType)))
             {
                 throw new Exception("Invalid return type");
@@ -943,9 +987,9 @@ public class FunctionGenerator
 
     private void CompileSlotBorrowInst(SlotBorrowInst inst)
     {
-        var slotRef = _slotMap[inst.BaseSlot];
-        var slotDef = GetSlot(inst.BaseSlot);
-        StoreSlot(inst.TargetSlot, slotRef, new BorrowTypeRef(slotDef.Type, inst.Mutable));
+        var (slotType, slotRef) = GetSlotRef(inst.BaseSlot);
+        StoreSlot(inst.TargetSlot, slotRef, new BorrowTypeRef(slotType, inst.Mutable));
+        MarkActive(inst.TargetSlot);
     }
 
     private void CompileFieldMoveInst(FieldMoveInst inst)
@@ -1026,6 +1070,7 @@ public class FunctionGenerator
         }
 
         StoreSlot(inst.TargetSlot, destValue, fieldType);
+        MarkActive(inst.TargetSlot);
     }
 
     private void CompileFieldBorrowInst(FieldBorrowInst inst)
@@ -1103,6 +1148,7 @@ public class FunctionGenerator
             $"inst_{inst.Id}_addr"
         );
         StoreSlot(inst.TargetSlot, addr, targetType);
+        MarkActive(inst.TargetSlot);
     }
 
     private void CompileStoreIndirectInst(StoreIndirectInst inst)
@@ -1183,11 +1229,13 @@ public class FunctionGenerator
         }
 
         StoreSlot(inst.TargetSlot, destValue, innerTypeRef);
+        MarkActive(inst.TargetSlot);
     }
 
     private void CompileCastInst(CastInst inst)
     {
         var (type, value) = LoadSlot(inst.SourceSlot, $"inst_{inst.Id}_load");
+        var slotLifetime = GetLifetime(inst).GetSlot(inst.SourceSlot);
         var targetType = FunctionContext.ResolveRef(inst.TargetType);
         var targetLlvmType = Backend.ConvertType(targetType);
 
@@ -1290,7 +1338,13 @@ public class FunctionGenerator
 
         converted = Builder.BuildBitCast(converted, targetLlvmType, $"inst_{inst.Id}_cast");
 
+        if (slotLifetime.Status == SlotStatus.Moved)
+        {
+            MarkMoved(inst.SourceSlot);
+        }
+
         StoreSlot(inst.ResultSlot, converted, targetType);
+        MarkActive(inst.ResultSlot);
     }
 
     private void CompileRefBorrow(RefBorrowInst inst)
@@ -1313,6 +1367,7 @@ public class FunctionGenerator
         converted = Builder.BuildBitCast(converted, targetLlvmType, $"inst_{inst.Id}_cast");
 
         StoreSlot(inst.ResultSlot, converted, targetType);
+        MarkActive(inst.ResultSlot);
     }
 
     public LLVMValueRef GetBoxValuePtr(LLVMValueRef valueRef, string name)
@@ -1338,6 +1393,7 @@ public class FunctionGenerator
 
         var variantValue = ZeroInit(variantTypeRef);
         StoreSlot(inst.SlotId, variantValue, variantTypeRef);
+        MarkActive(inst.SlotId);
 
         var (_, baseAddr) = GetSlotRef(inst.SlotId);
 
@@ -1382,6 +1438,16 @@ public class FunctionGenerator
         if (!Equals(type, variantItemRef))
         {
             throw new Exception("Invalid variant item type");
+        }
+
+        var slotLifetime = GetLifetime(inst).GetSlot(slotId);
+        if (slotLifetime.Status == SlotStatus.Moved)
+        {
+            MarkMoved(slotId);
+        }
+        else
+        {
+            throw new Exception("Unexpected");
         }
 
         Builder.BuildStore(value, castedAddr);

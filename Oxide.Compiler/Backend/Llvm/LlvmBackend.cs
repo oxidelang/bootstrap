@@ -279,7 +279,13 @@ public class LlvmBackend
     private void CompileFunction(FunctionRef key, Function func, GenericContext context)
     {
         var funcGen = new FunctionGenerator(this);
-        funcGen.Compile(key, func, context);
+        if (func.IsExtern)
+        {
+            return;
+        }
+
+        var lifetime = Middleware.Lifetime.FunctionLifetimes[func];
+        funcGen.Compile(key, func, context, lifetime);
     }
 
     public LLVMValueRef GetFunctionRef(FunctionRef key, bool throwIfMissing = true)
@@ -633,6 +639,8 @@ public class LlvmBackend
             default:
                 throw new ArgumentOutOfRangeException(nameof(baseType));
         }
+
+        builder.BuildRetVoid();
 
         return funcRef;
     }

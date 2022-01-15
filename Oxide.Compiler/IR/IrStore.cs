@@ -61,13 +61,8 @@ public class IrStore
                         }
 
                         return (true, otherReference.StrongRef && !referenceTypeRef.StrongRef);
-                    case BorrowTypeRef otherBorrow:
-                        if (!Equals(referenceTypeRef.InnerType, otherBorrow.InnerType))
-                        {
-                            return (false, false);
-                        }
-
-                        return (true, false);
+                    case BorrowTypeRef:
+                        return (false, false);
                     case PointerTypeRef otherPointer:
                         if (!Equals(referenceTypeRef.InnerType, otherPointer.InnerType))
                         {
