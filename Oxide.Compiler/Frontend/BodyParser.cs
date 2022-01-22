@@ -1632,36 +1632,7 @@ public class BodyParser
         var structDef = Lookup<Struct>(concreteTypeRef.Name);
         var structContext = new GenericContext(null, structDef.GenericParams, concreteTypeRef.GenericParams, null);
 
-        var structSlot = CurrentScope.DefineSlot(new SlotDeclaration
-        {
-            Id = ++LastSlotId,
-            Name = null,
-            Type = concreteTypeRef,
-            Mutable = true
-        });
-
-        CurrentBlock.AddInstruction(new AllocStructInst
-        {
-            Id = ++LastInstId,
-            SlotId = structSlot.Id,
-            StructType = concreteTypeRef
-        });
-
-        var accessSlot = CurrentScope.DefineSlot(new SlotDeclaration
-        {
-            Id = ++LastSlotId,
-            Name = null,
-            Type = new BorrowTypeRef(structSlot.Type, true),
-            Mutable = false
-        });
-
-        CurrentBlock.AddInstruction(new SlotBorrowInst
-        {
-            Id = ++LastInstId,
-            BaseSlot = structSlot.Id,
-            Mutable = true,
-            TargetSlot = accessSlot.Id
-        });
+        var fields = new Dictionary<string, int>();
 
         foreach (var fieldInit in ctx.field_initialiser())
         {
@@ -1708,32 +1679,26 @@ public class BodyParser
                 throw new Exception($"Incompatible types for {fieldName}");
             }
 
-            var accessFieldSlot = CurrentScope.DefineSlot(new SlotDeclaration
-            {
-                Id = ++LastSlotId,
-                Name = null,
-                Type = new BorrowTypeRef(resolvedFieldType, true),
-                Mutable = false
-            });
-
-            CurrentBlock.AddInstruction(new FieldBorrowInst
-            {
-                Id = ++LastInstId,
-                BaseSlot = accessSlot.Id,
-                Mutable = true,
-                TargetSlot = accessFieldSlot.Id,
-                TargetField = fieldName,
-            });
-
-            CurrentBlock.AddInstruction(new StoreIndirectInst
-            {
-                Id = ++LastInstId,
-                TargetSlot = accessFieldSlot.Id,
-                ValueSlot = fieldSlot.Id
-            });
+            fields.Add(fieldDef.Name, fieldSlot.Id);
         }
 
         // TODO: Check the user provided each field at least once and no more
+
+        var structSlot = CurrentScope.DefineSlot(new SlotDeclaration
+        {
+            Id = ++LastSlotId,
+            Name = null,
+            Type = concreteTypeRef,
+            Mutable = true
+        });
+
+        CurrentBlock.AddInstruction(new AllocStructInst
+        {
+            Id = ++LastInstId,
+            SlotId = structSlot.Id,
+            StructType = concreteTypeRef,
+            FieldValues = fields.ToImmutableDictionary()
+        });
 
         return new SlotUnrealisedAccess(structSlot);
     }
@@ -1935,35 +1900,13 @@ public class BodyParser
             });
             itemSlotId = variantItemSlot.Id;
 
-            CurrentBlock.AddInstruction(new AllocStructInst
-            {
-                Id = ++LastInstId,
-                SlotId = variantItemSlot.Id,
-                StructType = itemRef
-            });
-
-            var accessItemSlot = CurrentScope.DefineSlot(new SlotDeclaration
-            {
-                Id = ++LastSlotId,
-                Name = null,
-                Type = new BorrowTypeRef(itemRef, true),
-                Mutable = false
-            });
-
-            CurrentBlock.AddInstruction(new SlotBorrowInst
-            {
-                Id = ++LastInstId,
-                BaseSlot = variantItemSlot.Id,
-                Mutable = true,
-                TargetSlot = accessItemSlot.Id
-            });
-
             var fields = item.Content.Fields;
             if (fields.Count != argumentCtxs.Length)
             {
                 throw new Exception("Invalid number of tuple arguments");
             }
 
+            var fieldValues = new Dictionary<string, int>();
 
             for (var i = 0; i < fields.Count; i++)
             {
@@ -1988,30 +1931,16 @@ public class BodyParser
                     throw new Exception($"Field type mismatch {exp.Type} != {fieldType}");
                 }
 
-                var accessFieldSlot = CurrentScope.DefineSlot(new SlotDeclaration
-                {
-                    Id = ++LastSlotId,
-                    Name = null,
-                    Type = new BorrowTypeRef(fieldType, true),
-                    Mutable = false
-                });
-
-                CurrentBlock.AddInstruction(new FieldBorrowInst
-                {
-                    Id = ++LastInstId,
-                    BaseSlot = accessItemSlot.Id,
-                    Mutable = true,
-                    TargetSlot = accessFieldSlot.Id,
-                    TargetField = field.Name,
-                });
-
-                CurrentBlock.AddInstruction(new StoreIndirectInst
-                {
-                    Id = ++LastInstId,
-                    TargetSlot = accessFieldSlot.Id,
-                    ValueSlot = expSlot.Id
-                });
+                fieldValues.Add(field.Name, expSlot.Id);
             }
+
+            CurrentBlock.AddInstruction(new AllocStructInst
+            {
+                Id = ++LastInstId,
+                SlotId = variantItemSlot.Id,
+                StructType = itemRef,
+                FieldValues = fieldValues.ToImmutableDictionary()
+            });
         }
 
         var variantSlot = CurrentScope.DefineSlot(new SlotDeclaration

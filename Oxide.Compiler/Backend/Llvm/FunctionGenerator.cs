@@ -679,8 +679,57 @@ public class FunctionGenerator
 
     private void CompileAllocStructInst(AllocStructInst inst)
     {
-        var structType = FunctionContext.ResolveRef(inst.StructType);
-        StoreSlot(inst.SlotId, ZeroInit(structType), structType);
+        var structType = (ConcreteTypeRef)FunctionContext.ResolveRef(inst.StructType);
+        var structDef = Store.Lookup<Struct>(structType.Name);
+        var structContext = new GenericContext(null, structDef.GenericParams, structType.GenericParams, null);
+
+        var targetValues = new Dictionary<string, LLVMValueRef>();
+        foreach (var (fname, fvalue) in inst.FieldValues)
+        {
+            var index = structDef.Fields.FindIndex(x => x.Name == fname);
+            var fieldDef = structDef.Fields[index];
+            var fieldType = structContext.ResolveRef(fieldDef.Type);
+            var (valType, valPtr) = GetSlotRef(fvalue);
+            var properties = Store.GetCopyProperties(valType);
+            var slotLifetime = GetLifetime(inst).GetSlot(fvalue);
+
+            if (!Equals(fieldType, valType))
+            {
+                throw new Exception("Value type does not match field type");
+            }
+
+            LLVMValueRef val;
+            if (slotLifetime.Status == SlotStatus.Moved)
+            {
+                (_, val) = LoadSlot(fvalue, $"inst_{inst.Id}_field_{fname}_value");
+                MarkMoved(fvalue);
+            }
+            else if (properties.CanCopy)
+            {
+                val = GenerateCopy(valType, properties, valPtr, $"inst_{inst.Id}_field_{fname}_value");
+            }
+            else
+            {
+                throw new Exception("Value is not moveable");
+            }
+
+            targetValues.Add(fname, val);
+        }
+
+        var finalValue = ZeroInit(structType);
+
+        foreach (var (fname, fvalue) in inst.FieldValues)
+        {
+            var index = structDef.Fields.FindIndex(x => x.Name == fname);
+            finalValue = Builder.BuildInsertValue(
+                finalValue,
+                targetValues[fname],
+                (uint)index,
+                $"inst_{inst.Id}_field_{fname}_insert"
+            );
+        }
+
+        StoreSlot(inst.SlotId, finalValue, structType);
         MarkActive(inst.SlotId);
     }
 
