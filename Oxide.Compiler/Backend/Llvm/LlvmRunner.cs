@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using LLVMSharp.Interop;
 using Oxide.Compiler.IR;
@@ -34,6 +35,15 @@ public class LlvmRunner
                 },
                 DebugIntImp
             );
+            
+            MapFunction<DebugInt>(
+                engine,
+                new FunctionRef
+                {
+                    TargetMethod = ConcreteTypeRef.From(QualifiedName.From("std", "output_int"))
+                },
+                OutputIntImp
+            );
 
             MapFunction<DebugBool>(
                 engine,
@@ -51,6 +61,15 @@ public class LlvmRunner
                     TargetMethod = ConcreteTypeRef.From(QualifiedName.From("std", "alloc"))
                 },
                 AllocImp
+            );
+
+            MapFunction<Free>(
+                engine,
+                new FunctionRef
+                {
+                    TargetMethod = ConcreteTypeRef.From(QualifiedName.From("std", "free"))
+                },
+                FreeImp
             );
 
             var mainMethod = GetFunction<MainMethod>(
@@ -101,7 +120,12 @@ public class LlvmRunner
 
     public static void DebugIntImp(int val)
     {
-        Console.WriteLine($"DebugInt: {val}");
+        // Console.WriteLine($"DebugInt: {val}");
+    }
+    
+    public static void OutputIntImp(int val)
+    {
+        Console.WriteLine($"OutputInt: {val}");
     }
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -115,10 +139,41 @@ public class LlvmRunner
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public unsafe delegate void* Alloc(nuint size);
 
+    public static int ActiveCount = 0, LastId = 1;
+    public static HashSet<UIntPtr> Active = new();
+    public static Dictionary<UIntPtr, int> Ids = new();
+
     public static unsafe void* AllocImp(nuint size)
     {
-        Console.WriteLine($"Allocating: {size}");
+        var ptr = NativeMemory.Alloc(size);
 
-        return NativeMemory.Alloc(size);
+        var id = LastId++;
+        Ids.Add((UIntPtr)ptr, id);
+
+        Console.WriteLine($"[active={++ActiveCount}] Allocating: {size}  [${id}$]");
+
+        Active.Add((UIntPtr)ptr);
+
+        return ptr;
+    }
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public unsafe delegate void Free(void* ptr);
+
+    public static unsafe void FreeImp(void* ptr)
+    {
+        var id = Ids[(UIntPtr)ptr];
+
+        Console.WriteLine($"[active={--ActiveCount}] Freeing [${id}$]");
+
+        if (Active.Remove((UIntPtr)ptr))
+        {
+            NativeMemory.Free(ptr);
+        }
+        else
+        {
+            Console.WriteLine($"DOUBLE FREE DETECTED [${id}$]");
+            throw new Exception();
+        }
     }
 }
