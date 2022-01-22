@@ -420,7 +420,7 @@ public class FunctionGenerator
         return FunctionLifetime.InstructionLifetimes[instruction.Id];
     }
 
-    private void MarkActive(int slot)
+    public void MarkActive(int slot)
     {
         if (_slotLivenessMap.TryGetValue(slot, out var valRef))
         {
@@ -447,6 +447,29 @@ public class FunctionGenerator
         Builder.BuildCall(dropFunc, new[] { value });
     }
 
+    private void DropIfActive(int slotId, string name)
+    {
+        if (!_slotLivenessMap.TryGetValue(slotId, out var livePtr))
+        {
+            return;
+        }
+
+        var finalBlock = _funcRef.AppendBasicBlock($"{name}_resume");
+        var dropBlock = _funcRef.AppendBasicBlock($"{name}_drop");
+
+        var liveValue = Builder.BuildLoad(livePtr, $"{name}_liveness");
+        Builder.BuildCondBr(liveValue, dropBlock, finalBlock);
+
+        Builder.PositionAtEnd(dropBlock);
+        var (valueType, valuePtr) = GetSlotRef(slotId, true);
+        var value = Builder.BuildLoad(valuePtr, $"{name}_drop_value");
+        PerformDrop(value, valueType);
+        MarkMoved(slotId);
+        Builder.BuildBr(finalBlock);
+
+        Builder.PositionAtEnd(finalBlock);
+    }
+
     private void CompileMoveInst(MoveInst inst)
     {
         var (type, value) = GetSlotRef(inst.SrcSlot);
@@ -468,6 +491,7 @@ public class FunctionGenerator
             throw new Exception("Value is not moveable");
         }
 
+        DropIfActive(inst.DestSlot, $"inst_{inst.Id}_existing");
         StoreSlot(inst.DestSlot, destValue, type);
         MarkActive(inst.DestSlot);
     }
@@ -1431,6 +1455,8 @@ public class FunctionGenerator
         var properties = Store.GetCopyProperties(valType);
         var slotLifetime = GetLifetime(inst).GetSlot(inst.ValueSlot);
 
+        var dropExisting = false;
+
         switch (tgtType)
         {
             case BaseTypeRef:
@@ -1447,6 +1473,7 @@ public class FunctionGenerator
                     throw new Exception("Value type does not match borrowed type");
                 }
 
+                dropExisting = true;
                 break;
             case PointerTypeRef pointerTypeRef:
                 if (!pointerTypeRef.MutableRef)
@@ -1479,6 +1506,12 @@ public class FunctionGenerator
         else
         {
             throw new Exception("Value is not moveable");
+        }
+
+        if (dropExisting)
+        {
+            var value = Builder.BuildLoad(tgt, $"inst_{inst.Id}_existing_value");
+            PerformDrop(value, valType);
         }
 
         Builder.BuildStore(val, tgt);
@@ -1583,7 +1616,7 @@ public class FunctionGenerator
                 break;
             case BorrowTypeRef:
             {
-                if (targetType is not BorrowTypeRef)
+                if (targetType is not BorrowTypeRef && targetType is not PointerTypeRef)
                 {
                     throw new Exception("Incompatible conversion");
                 }

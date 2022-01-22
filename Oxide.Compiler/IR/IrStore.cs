@@ -33,15 +33,21 @@ public class IrStore
                 }
 
                 return (Equals(baseTypeRef, b), false);
-            case BorrowTypeRef:
+            case BorrowTypeRef borrowTypeRef:
             {
                 switch (b)
                 {
-                    case PointerTypeRef:
                     case ReferenceTypeRef:
                     case BaseTypeRef:
                         return (false, false);
                     case BorrowTypeRef:
+                        return (true, true);
+                    case PointerTypeRef otherPointer:
+                        if (!Equals(borrowTypeRef.InnerType, otherPointer.InnerType))
+                        {
+                            return (false, false);
+                        }
+
                         return (true, true);
                     default:
                         throw new ArgumentOutOfRangeException(nameof(b));

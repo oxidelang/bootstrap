@@ -55,6 +55,7 @@ public class LlvmBackend
         _typeStore.Add(PrimitiveKind.Bool.GetRef(), LLVMTypeRef.Int1);
 
         _intrinsics.Add(QualifiedName.From("std", "size_of"), LlvmIntrinsics.SizeOf);
+        _intrinsics.Add(QualifiedName.From("std", "bitcopy"), LlvmIntrinsics.Bitcopy);
     }
 
     public void Begin()
