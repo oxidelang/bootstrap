@@ -60,7 +60,7 @@ public class IrStore
                             return (false, false);
                         }
 
-                        return (true, otherReference.StrongRef && !referenceTypeRef.StrongRef);
+                        return (referenceTypeRef.StrongRef && !otherReference.StrongRef, false);
                     case BorrowTypeRef:
                         return (false, false);
                     case PointerTypeRef otherPointer:
