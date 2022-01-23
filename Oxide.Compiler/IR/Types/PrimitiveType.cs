@@ -57,12 +57,12 @@ public class PrimitiveType : OxType
         throw new Exception($"Unable to find {typeRef}");
     }
 
-    public static int GetWidth(PrimitiveKind kind)
+    public static int GetWidth(PrimitiveKind kind, bool is32bit = false)
     {
         return kind switch
         {
             PrimitiveKind.Bool => 1,
-            PrimitiveKind.USize => 64,
+            PrimitiveKind.USize => is32bit ? 32 : 64,
             PrimitiveKind.U8 => 8,
             PrimitiveKind.I32 => 32,
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
