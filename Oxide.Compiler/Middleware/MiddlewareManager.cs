@@ -33,5 +33,8 @@ public class MiddlewareManager
 
         // TODO: Add pass management
         Usage.Analyse(unit);
+
+        var refChecker = new RefCheckPass(this);
+        refChecker.Analyse();
     }
 }

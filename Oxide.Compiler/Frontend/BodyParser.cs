@@ -330,6 +330,16 @@ public class BodyParser
                     throw new Exception($"Cannot assign {exp.Type} to {fieldDef.Type}");
                 }
 
+                if (!fieldDef.Mutable)
+                {
+                    throw new Exception($"Cannot assign to non-mutable field {fieldDef.Name}");
+                }
+
+                if (fieldDef.Unsafe && !CurrentScope.Unsafe)
+                {
+                    throw new Exception($"Cannot assign to unsafe field {fieldDef.Name} in safe context");
+                }
+
                 var fieldTgt = new FieldUnrealisedAccess(
                     tgt,
                     fieldDef.Name,

@@ -152,7 +152,7 @@ generic_def
     ;
 
 field_def
-    : visibility? MUT? name COLON type COMMA
+    : visibility? UNSAFE? MUT? name COLON type COMMA
     ;
 
 variant_def
@@ -170,7 +170,7 @@ tuple_def
     ;
 
 tuple_item_def
-    : MUT? type
+    : UNSAFE? MUT? type
     ;
 
 impl_stmt

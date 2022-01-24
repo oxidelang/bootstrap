@@ -243,6 +243,7 @@ public class FileParser
                 Visibility = fieldDef.visibility().Parse(),
                 Type = type,
                 Mutable = fieldDef.MUT() != null,
+                Unsafe = fieldDef.UNSAFE() != null,
             });
         }
 
@@ -288,6 +289,7 @@ public class FileParser
                             Visibility = fieldDef.visibility().Parse(Visibility.Public),
                             Type = type,
                             Mutable = fieldDef.MUT() != null,
+                            Unsafe = fieldDef.UNSAFE() != null,
                         });
                     }
 
@@ -318,7 +320,8 @@ public class FileParser
                             Name = "item" + itemId++,
                             Mutable = tupleCtx.MUT() != null,
                             Type = type,
-                            Visibility = Visibility.Public
+                            Visibility = Visibility.Public,
+                            Unsafe = tupleCtx.UNSAFE() != null,
                         });
                     }
 

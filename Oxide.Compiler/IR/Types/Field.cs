@@ -11,4 +11,6 @@ public class Field
     public TypeRef Type { get; init; }
 
     public bool Mutable { get; set; }
+
+    public bool Unsafe { get; init; }
 }
