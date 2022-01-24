@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using Oxide.Compiler.Backend.Js;
 using Oxide.Compiler.Backend.Llvm;
 using Oxide.Compiler.Frontend;
 using Oxide.Compiler.IR;
@@ -57,14 +58,19 @@ public class OxideDriver
         ir = writer.Generate();
         File.WriteAllText($"{path}/compiled.opt.ir", ir);
 
-        Console.WriteLine("Compiling");
+        Console.WriteLine("Compiling JS");        
+        var jsBackend = new JsBackend(_store, middleware);
+        jsBackend.Compile(path);
+
+        Console.WriteLine("Compiling LLVM");
         var backend = new LlvmBackend(_store, middleware);
         backend.Begin();
         backend.Compile();
         backend.Complete(path);
-
+        
         Console.WriteLine("Running");
         var runner = new LlvmRunner(backend);
         runner.Run();
+
     }
 }
