@@ -38,6 +38,12 @@ public class LlvmBackend
 
     private Dictionary<QualifiedName, IntrinsicMapper> _intrinsics;
 
+    public LLVMTypeRef TypeInfoType { get; private set; }
+
+    public LLVMTypeRef DropPtrFuncType { get; private set; }
+
+    private Dictionary<TypeRef, LLVMValueRef> _typeInfos;
+
     public LlvmBackend(IrStore store, MiddlewareManager middleware)
     {
         Store = store;
@@ -56,6 +62,8 @@ public class LlvmBackend
 
         _intrinsics.Add(QualifiedName.From("std", "size_of"), LlvmIntrinsics.SizeOf);
         _intrinsics.Add(QualifiedName.From("std", "bitcopy"), LlvmIntrinsics.Bitcopy);
+        _intrinsics.Add(QualifiedName.From("std", "type_id"), LlvmIntrinsics.TypeId);
+        _intrinsics.Add(QualifiedName.From("std", "type_call_drop"), LlvmIntrinsics.TypeDrop);
     }
 
     public void Begin()
@@ -68,6 +76,20 @@ public class LlvmBackend
     public void Compile()
     {
         // Create types & functions
+        {
+            _typeInfos = new Dictionary<TypeRef, LLVMValueRef>();
+            DropPtrFuncType = LLVMTypeRef.CreateFunction(
+                LLVMTypeRef.Void,
+                new[] { LLVMTypeRef.CreatePointer(LLVMTypeRef.Int8, 0) }
+            );
+
+            TypeInfoType = Context.CreateNamedStruct("TypeInfo");
+            TypeInfoType.StructSetBody(new[]
+            {
+                LLVMTypeRef.CreatePointer(DropPtrFuncType, 0)
+            }, false);
+        }
+
         foreach (var usedType in Middleware.Usage.UsedTypes.Values)
         {
             CreateType(usedType);
@@ -762,6 +784,41 @@ public class LlvmBackend
         }
 
         return funcRef;
+    }
+
+    public LLVMValueRef GetTypeInfo(TypeRef typeRef)
+    {
+        if (_typeInfos.TryGetValue(typeRef, out var constant))
+        {
+            return constant;
+        }
+
+        constant = Module.AddGlobalInAddressSpace(TypeInfoType, $"TypeInfo@{GenerateName(typeRef)}", 0);
+        constant.IsGlobalConstant = true;
+
+        var dropFuncRef = GetDropFunctionRef(typeRef);
+
+        var dropPtrFunc = Module.AddFunction($"DropPtr@{GenerateName(typeRef)}", DropPtrFuncType);
+        {
+            using var builder = Context.CreateBuilder();
+
+            var entryBlock = dropPtrFunc.AppendBasicBlock("entry");
+            builder.PositionAtEnd(entryBlock);
+
+            var resolvedType = ConvertType(new PointerTypeRef(typeRef, false));
+            var casted = builder.BuildBitCast(dropPtrFunc.Params[0], resolvedType, "casted");
+            var loaded = builder.BuildLoad(casted, "load");
+            builder.BuildCall(dropFuncRef, new[] { loaded });
+            builder.BuildRetVoid();
+        }
+
+        constant.Initializer = LLVMValueRef.CreateConstNamedStruct(TypeInfoType, new[]
+        {
+            dropPtrFunc
+        });
+
+        _typeInfos.Add(typeRef, constant);
+        return constant;
     }
 
     public bool GetIntrinsic(QualifiedName qn, out IntrinsicMapper mapper)

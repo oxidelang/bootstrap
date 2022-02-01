@@ -82,68 +82,7 @@ public class UsagePass
                 slotTypes.Add(slot.Id, slotType);
                 MarkConcreteType((ConcreteTypeRef)slotType.GetBaseType());
 
-                var copyProperties = Store.GetCopyProperties(slotType);
-                if (copyProperties.CopyMethod != null)
-                {
-                    ProcessFunctionRef(
-                        copyProperties.CopyMethod.TargetType,
-                        copyProperties.CopyMethod.TargetImplementation,
-                        copyProperties.CopyMethod.TargetMethod,
-                        functionContext
-                    );
-                }
-
-                if (slotType is ReferenceTypeRef referenceTypeRef)
-                {
-                    ProcessFunctionRef(
-                        null,
-                        null,
-                        ConcreteTypeRef.From(
-                            QualifiedName.From(
-                                "std",
-                                referenceTypeRef.StrongRef ? "box_drop_strong" : "box_drop_weak"
-                            ),
-                            referenceTypeRef.InnerType
-                        ),
-                        functionContext
-                    );
-
-                    ProcessFunctionRef(
-                        null,
-                        null,
-                        ConcreteTypeRef.From(
-                            QualifiedName.From("std", "box_inc_weak"),
-                            referenceTypeRef.InnerType
-                        ),
-                        functionContext
-                    );
-                }
-
-                if (slotType is DerivedRefTypeRef derivedRefTypeRef)
-                {
-                    ProcessFunctionRef(
-                        null,
-                        null,
-                        ConcreteTypeRef.From(
-                            QualifiedName.From(
-                                "std",
-                                derivedRefTypeRef.StrongRef ? "box_drop_strong_derived" : "box_drop_weak_derived"
-                            ),
-                            derivedRefTypeRef.InnerType
-                        ),
-                        functionContext
-                    );
-
-                    ProcessFunctionRef(
-                        null,
-                        null,
-                        ConcreteTypeRef.From(
-                            QualifiedName.From("std", "derived_create"),
-                            derivedRefTypeRef.InnerType
-                        ),
-                        functionContext
-                    );
-                }
+                MarkRef(slotType, functionContext);
             }
         }
 
@@ -178,6 +117,72 @@ public class UsagePass
         }
     }
 
+    private void MarkRef(TypeRef typeRef, GenericContext context)
+    {
+        var copyProperties = Store.GetCopyProperties(typeRef);
+        if (copyProperties.CopyMethod != null)
+        {
+            ProcessFunctionRef(
+                copyProperties.CopyMethod.TargetType,
+                copyProperties.CopyMethod.TargetImplementation,
+                copyProperties.CopyMethod.TargetMethod,
+                context
+            );
+        }
+
+        if (typeRef is ReferenceTypeRef referenceTypeRef)
+        {
+            ProcessFunctionRef(
+                null,
+                null,
+                ConcreteTypeRef.From(
+                    QualifiedName.From(
+                        "std",
+                        referenceTypeRef.StrongRef ? "box_drop_strong" : "box_drop_weak"
+                    ),
+                    referenceTypeRef.InnerType
+                ),
+                context
+            );
+
+            ProcessFunctionRef(
+                null,
+                null,
+                ConcreteTypeRef.From(
+                    QualifiedName.From("std", "box_inc_weak"),
+                    referenceTypeRef.InnerType
+                ),
+                context
+            );
+        }
+
+        if (typeRef is DerivedRefTypeRef derivedRefTypeRef)
+        {
+            ProcessFunctionRef(
+                null,
+                null,
+                ConcreteTypeRef.From(
+                    QualifiedName.From(
+                        "std",
+                        derivedRefTypeRef.StrongRef ? "box_drop_strong_derived" : "box_drop_weak_derived"
+                    ),
+                    derivedRefTypeRef.InnerType
+                ),
+                context
+            );
+
+            ProcessFunctionRef(
+                null,
+                null,
+                ConcreteTypeRef.From(
+                    QualifiedName.From("std", "derived_create"),
+                    derivedRefTypeRef.InnerType
+                ),
+                context
+            );
+        }
+    }
+
     private void ProcessFunctionRef(BaseTypeRef targetType, ConcreteTypeRef targetImp, ConcreteTypeRef targetMethod,
         GenericContext functionContext)
     {
@@ -185,6 +190,11 @@ public class UsagePass
             .GenericParams
             .Select(x => functionContext.ResolveRef(x))
             .ToImmutableArray();
+
+        foreach (var genericRef in mappedGenerics)
+        {
+            MarkRef(genericRef, functionContext);
+        }
 
         if (targetType != null)
         {

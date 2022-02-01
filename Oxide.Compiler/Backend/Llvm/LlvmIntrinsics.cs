@@ -59,4 +59,48 @@ public static class LlvmIntrinsics
         generator.StoreSlot(resultSlot, loaded, targetType);
         generator.MarkActive(resultSlot);
     }
+
+    public static void TypeId(FunctionGenerator generator, StaticCallInst inst, FunctionRef key)
+    {
+        var targetType = key.TargetMethod.GenericParams[0];
+        var typePtr = generator.Backend.GetTypeInfo(targetType);
+        var casted = generator.Builder.BuildPtrToInt(
+            typePtr,
+            generator.Backend.ConvertType(PrimitiveKind.USize.GetRef()),
+            $"inst_{inst.Id}_size"
+        );
+
+        generator.StoreSlot(inst.ResultSlot.Value, casted, PrimitiveKind.USize.GetRef());
+    }
+
+    public static void TypeDrop(FunctionGenerator generator, StaticCallInst inst, FunctionRef key)
+    {
+        if (inst.Arguments.Count != 2)
+        {
+            throw new Exception("Unexpected number of arguments");
+        }
+
+        var (_, typeId) = generator.LoadSlot(inst.Arguments[0], $"inst_{inst.Id}_type_id");
+
+        var typePtr = generator.Builder.BuildIntToPtr(
+            typeId,
+            LLVMTypeRef.CreatePointer(generator.Backend.TypeInfoType, 0),
+            $"inst_{inst.Id}_type"
+        );
+
+        var (_, valuePtr) = generator.LoadSlot(inst.Arguments[1], $"inst_{inst.Id}_value");
+
+        var dropPtr = generator.Builder.BuildInBoundsGEP(
+            typePtr,
+            new[]
+            {
+                LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0),
+                LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0)
+            },
+            $"inst_{inst.Id}_drop_ptr"
+        );
+        var dropFunc = generator.Builder.BuildLoad(dropPtr, $"inst_{inst.Id}_drop");
+
+        generator.Builder.BuildCall(dropFunc, new[] { valuePtr });
+    }
 }
