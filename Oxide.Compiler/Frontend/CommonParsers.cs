@@ -73,13 +73,24 @@ public static class CommonParsers
                 {
                     category = TypeCategory.StrongReference;
                 }
-                else if (refType.DERIVED() != null)
-                {
-                    throw new NotImplementedException("DERIVED not implemented");
-                }
                 else if (refType.WEAK() != null)
                 {
                     category = TypeCategory.WeakReference;
+                }
+                else
+                {
+                    throw new Exception("Unknown ref type");
+                }
+
+                break;
+            case OxideParser.Derived_type_flagsContext derivedType:
+                if (derivedType.REF() != null)
+                {
+                    category = TypeCategory.StrongDerived;
+                }
+                else if (derivedType.WEAK() != null)
+                {
+                    category = TypeCategory.WeakDerived;
                 }
                 else
                 {
@@ -99,7 +110,9 @@ public static class CommonParsers
         Borrow,
         Pointer,
         StrongReference,
-        WeakReference
+        WeakReference,
+        StrongDerived,
+        WeakDerived
     }
 
     public static string Parse(this OxideParser.LabelContext ctx)

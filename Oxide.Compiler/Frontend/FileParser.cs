@@ -207,6 +207,8 @@ public class FileParser
                             CommonParsers.TypeCategory.Pointer => new PointerTypeRef(type, mutable),
                             CommonParsers.TypeCategory.StrongReference => new ReferenceTypeRef(type, true),
                             CommonParsers.TypeCategory.WeakReference => new ReferenceTypeRef(type, false),
+                            CommonParsers.TypeCategory.StrongDerived => new DerivedRefTypeRef(type, true),
+                            CommonParsers.TypeCategory.WeakDerived => new DerivedRefTypeRef(type, true),
                             _ => throw new ArgumentOutOfRangeException()
                         };
                     }
@@ -452,6 +454,8 @@ public class FileParser
                     CommonParsers.TypeCategory.Borrow => new BorrowTypeRef(inner, mutable),
                     CommonParsers.TypeCategory.StrongReference => new ReferenceTypeRef(inner, true),
                     CommonParsers.TypeCategory.WeakReference => new ReferenceTypeRef(inner, false),
+                    CommonParsers.TypeCategory.StrongDerived => new DerivedRefTypeRef(inner, true),
+                    CommonParsers.TypeCategory.WeakDerived => new DerivedRefTypeRef(inner, true),
                     _ => throw new ArgumentOutOfRangeException()
                 };
             }

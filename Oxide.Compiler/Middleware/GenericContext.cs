@@ -77,6 +77,8 @@ public class GenericContext
                 return new PointerTypeRef(ResolveRef(pointerTypeRef.InnerType), pointerTypeRef.MutableRef);
             case ReferenceTypeRef referenceTypeRef:
                 return new ReferenceTypeRef(ResolveRef(referenceTypeRef.InnerType), referenceTypeRef.StrongRef);
+            case DerivedRefTypeRef derivedRefTypeRef:
+                return new DerivedRefTypeRef(ResolveRef(derivedRefTypeRef.InnerType), derivedRefTypeRef.StrongRef);
             default:
                 throw new ArgumentOutOfRangeException(nameof(typeRef));
         }

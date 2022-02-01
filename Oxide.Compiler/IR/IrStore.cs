@@ -70,7 +70,11 @@ public class IrStore
                     case BorrowTypeRef:
                         return (false, false);
                     case PointerTypeRef otherPointer:
-                        if (!Equals(referenceTypeRef.InnerType, otherPointer.InnerType))
+                        if (
+                            !Equals(referenceTypeRef.InnerType, otherPointer.InnerType) && !Equals(
+                                otherPointer.InnerType,
+                                ConcreteTypeRef.From(QualifiedName.From("std", "Box"), referenceTypeRef.InnerType))
+                        )
                         {
                             return (false, false);
                         }
@@ -108,6 +112,22 @@ public class IrStore
                                 referenceTypeRef.StrongRef ? "box_copy_strong" : "box_copy_weak"
                             ),
                             referenceTypeRef.InnerType
+                        )
+                    }
+                };
+            case DerivedRefTypeRef derivedRefTypeRef:
+                return new CopyProperties
+                {
+                    CanCopy = true,
+                    BitwiseCopy = false,
+                    CopyMethod = new FunctionRef
+                    {
+                        TargetMethod = ConcreteTypeRef.From(
+                            QualifiedName.From(
+                                "std",
+                                derivedRefTypeRef.StrongRef ? "derived_copy_strong" : "derived_copy_weak"
+                            ),
+                            derivedRefTypeRef.InnerType
                         )
                     }
                 };

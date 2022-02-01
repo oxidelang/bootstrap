@@ -1534,6 +1534,11 @@ public class BodyParser
                         throw new NotImplementedException();
                     case ReferenceTypeRef referenceTypeRef:
                     {
+                        if (!referenceTypeRef.StrongRef)
+                        {
+                            throw new Exception("Cannot coerce weak type");
+                        }
+
                         if (!Equals(referenceTypeRef.InnerType, borrowTypeRef.InnerType))
                         {
                             throw new Exception("Type does not match expected");
@@ -1549,6 +1554,55 @@ public class BodyParser
                         });
 
                         CurrentBlock.AddInstruction(new RefBorrowInst
+                        {
+                            Id = ++LastInstId,
+                            SourceSlot = refSlot.Id,
+                            ResultSlot = tempDec.Id
+                        });
+
+                        return tempDec;
+                    }
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+            }
+            case DerivedRefTypeRef derivedRefTypeRef:
+            {
+                if (!derivedRefTypeRef.StrongRef)
+                {
+                    throw new Exception("Cannot coerce to weak type");
+                }
+
+                switch (current.Type)
+                {
+                    case BaseTypeRef:
+                    case BorrowTypeRef:
+                    case PointerTypeRef:
+                        throw new Exception($"Cannot coerce {current.Type} to {targetType}");
+                    case DerivedRefTypeRef otherDerivedRef:
+                        throw new NotImplementedException();
+                    case ReferenceTypeRef referenceTypeRef:
+                    {
+                        if (!referenceTypeRef.StrongRef)
+                        {
+                            throw new Exception("Cannot coerce weak type");
+                        }
+
+                        if (!Equals(referenceTypeRef.InnerType, derivedRefTypeRef.InnerType))
+                        {
+                            throw new Exception("Type does not match expected");
+                        }
+
+                        var refSlot = current.GenerateMove(this, CurrentBlock);
+                        var tempDec = CurrentScope.DefineSlot(new SlotDeclaration
+                        {
+                            Id = ++LastSlotId,
+                            Name = null,
+                            Type = derivedRefTypeRef,
+                            Mutable = true
+                        });
+
+                        CurrentBlock.AddInstruction(new RefDeriveInst
                         {
                             Id = ++LastInstId,
                             SourceSlot = refSlot.Id,
@@ -1686,7 +1740,7 @@ public class BodyParser
 
             if (!resolvedFieldType.Equals(fieldSlot.Type))
             {
-                throw new Exception($"Incompatible types for {fieldName}");
+                throw new Exception($"Incompatible types for {fieldName} {resolvedFieldType} vs {fieldSlot.Type}");
             }
 
             fields.Add(fieldDef.Name, fieldSlot.Id);

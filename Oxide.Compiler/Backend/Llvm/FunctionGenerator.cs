@@ -365,6 +365,9 @@ public class FunctionGenerator
             case JumpVariantInst jumpVariantInst:
                 CompileJumpVariantInst(jumpVariantInst);
                 break;
+            case RefDeriveInst refDeriveInst:
+                CompileRefDeriveInst(refDeriveInst);
+                break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(instruction));
         }
@@ -1182,6 +1185,7 @@ public class FunctionGenerator
             {
                 case BaseTypeRef:
                 case ReferenceTypeRef:
+                case DerivedRefTypeRef:
                     matches = Equals(argType, paramType);
                     break;
                 case BorrowTypeRef borrowTypeRef:
@@ -1692,6 +1696,93 @@ public class FunctionGenerator
         }
 
         StoreSlot(inst.ResultSlot, converted, targetType);
+        MarkActive(inst.ResultSlot);
+    }
+
+    private void CompileRefDeriveInst(RefDeriveInst inst)
+    {
+        var (type, value) = GetSlotRef(inst.SourceSlot);
+        var properties = Store.GetCopyProperties(type);
+        var slotLifetime = GetLifetime(inst).GetSlot(inst.SourceSlot);
+
+        if (type is not ReferenceTypeRef referenceTypeRef)
+        {
+            throw new Exception("Source is not a reference");
+        }
+
+        if (!referenceTypeRef.StrongRef)
+        {
+            throw new Exception("Cannot derive weak reference");
+        }
+
+        LLVMValueRef fromValue;
+        if (slotLifetime.Status == SlotStatus.Moved)
+        {
+            (_, fromValue) = LoadSlot(inst.SourceSlot, $"inst_{inst.Id}_move");
+            MarkMoved(inst.SourceSlot);
+        }
+        else if (properties.CanCopy)
+        {
+            fromValue = GenerateCopy(type, properties, value, $"inst_{inst.Id}_copy");
+        }
+        else
+        {
+            throw new Exception("Value is not moveable");
+        }
+
+        DropIfActive(inst.ResultSlot, $"inst_{inst.Id}_existing");
+
+        var boxPtr = fromValue;
+        var boxValue = GetBoxValuePtr(boxPtr, $"inst_{inst.Id}_box");
+        var ptrType = referenceTypeRef.InnerType;
+        var ptrValue = boxValue;
+
+        if (inst.FieldName != null)
+        {
+            var structType = (ConcreteTypeRef)referenceTypeRef.InnerType;
+            var structDef = Store.Lookup<Struct>(structType.Name);
+            var index = structDef.Fields.FindIndex(x => x.Name == inst.FieldName);
+            var fieldDef = structDef.Fields[index];
+            var structContext = new GenericContext(null, structDef.GenericParams, structType.GenericParams, null);
+            ptrType = structContext.ResolveRef(fieldDef.Type);
+
+            ptrValue = Builder.BuildInBoundsGEP(
+                boxValue,
+                new[]
+                {
+                    LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0),
+                    LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong)index)
+                },
+                $"inst_{inst.Id}_faddr"
+            );
+        }
+
+        var targetMethod = ConcreteTypeRef.From(
+            QualifiedName.From("std", "derived_create"),
+            ptrType
+        );
+        var funcRef = Backend.GetFunctionRef(new FunctionRef
+        {
+            TargetMethod = targetMethod
+        });
+
+        var boxLlvmType = Backend.ConvertType(
+            new PointerTypeRef(
+                ConcreteTypeRef.From(
+                    QualifiedName.From("std", "Box"),
+                    ConcreteTypeRef.From(
+                        QualifiedName.From("std", "Void")
+                    )
+                ),
+                true
+            )
+        );
+        boxPtr = Builder.BuildBitCast(boxPtr, boxLlvmType, $"inst_{inst.Id}_cast_box");
+
+        var destValue = Builder.BuildCall(funcRef, new[] { boxPtr, ptrValue }, $"inst_{inst.Id}_derived");
+        var returnType = new DerivedRefTypeRef(ptrType, true);
+
+        StoreSlot(inst.ResultSlot, destValue, returnType);
         MarkActive(inst.ResultSlot);
     }
 

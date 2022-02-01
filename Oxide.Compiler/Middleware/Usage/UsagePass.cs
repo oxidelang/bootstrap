@@ -118,6 +118,32 @@ public class UsagePass
                         functionContext
                     );
                 }
+
+                if (slotType is DerivedRefTypeRef derivedRefTypeRef)
+                {
+                    ProcessFunctionRef(
+                        null,
+                        null,
+                        ConcreteTypeRef.From(
+                            QualifiedName.From(
+                                "std",
+                                derivedRefTypeRef.StrongRef ? "box_drop_strong_derived" : "box_drop_weak_derived"
+                            ),
+                            derivedRefTypeRef.InnerType
+                        ),
+                        functionContext
+                    );
+
+                    ProcessFunctionRef(
+                        null,
+                        null,
+                        ConcreteTypeRef.From(
+                            QualifiedName.From("std", "derived_create"),
+                            derivedRefTypeRef.InnerType
+                        ),
+                        functionContext
+                    );
+                }
             }
         }
 

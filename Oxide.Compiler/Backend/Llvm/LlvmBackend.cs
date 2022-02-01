@@ -323,6 +323,8 @@ public class LlvmBackend
                 return LLVMTypeRef.CreatePointer(ConvertType(pointerTypeRef.InnerType), 0);
             case ReferenceTypeRef referenceTypeRef:
                 return LLVMTypeRef.CreatePointer(GetBoxType(referenceTypeRef.InnerType), 0);
+            case DerivedRefTypeRef derivedRefTypeRef:
+                return GetDerivedBoxType(derivedRefTypeRef.InnerType);
             default:
                 throw new ArgumentOutOfRangeException(nameof(typeRef));
         }
@@ -331,6 +333,11 @@ public class LlvmBackend
     public LLVMTypeRef GetBoxType(TypeRef typeRef)
     {
         return ResolveConcreteType(ConcreteTypeRef.From(QualifiedName.From("std", "Box"), typeRef));
+    }
+
+    public LLVMTypeRef GetDerivedBoxType(TypeRef typeRef)
+    {
+        return ResolveConcreteType(ConcreteTypeRef.From(QualifiedName.From("std", "DerivedBox"), typeRef));
     }
 
     private LLVMTypeRef ResolveConcreteType(ConcreteTypeRef typeRef)
@@ -498,6 +505,19 @@ public class LlvmBackend
                                 referenceTypeRef.StrongRef ? "box_drop_strong" : "box_drop_weak"
                             ),
                             referenceTypeRef.InnerType
+                        )
+                    }
+                );
+            case DerivedRefTypeRef derivedRefTypeRef:
+                return GetFunctionRef(
+                    new FunctionRef
+                    {
+                        TargetMethod = ConcreteTypeRef.From(
+                            QualifiedName.From(
+                                "std",
+                                derivedRefTypeRef.StrongRef ? "box_drop_strong_derived" : "box_drop_weak_derived"
+                            ),
+                            derivedRefTypeRef.InnerType
                         )
                     }
                 );

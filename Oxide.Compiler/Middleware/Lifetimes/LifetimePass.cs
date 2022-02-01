@@ -682,6 +682,7 @@ public class LifetimePass
             case BorrowTypeRef:
             case PointerTypeRef:
             case ReferenceTypeRef:
+            case DerivedRefTypeRef:
                 return true;
             default:
                 throw new ArgumentOutOfRangeException(nameof(typeRef));
@@ -698,7 +699,7 @@ public class LifetimePass
             var func = pair.Key;
             var funcLifetime = pair.Value;
 
-            var worksheet = workbook.Worksheets.Add($"{counter++} Func {func.Name.ToString().Replace(':', '_')}");
+            var worksheet = workbook.Worksheets.Add($"{counter++} Func {func.Name.ToString().Replace(':', '_')}".MaxLength(31));
 
             worksheet.Cell(1, 1).SetText("Id");
             worksheet.Cell(1, 2).SetText("Inst");
