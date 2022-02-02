@@ -72,6 +72,15 @@ public class LlvmRunner
                 FreeImp
             );
 
+            MapFunction<Exit>(
+                engine,
+                new FunctionRef
+                {
+                    TargetMethod = ConcreteTypeRef.From(QualifiedName.From("std", "exit"))
+                },
+                ExitImp
+            );
+
             var mainMethod = GetFunction<MainMethod>(
                 engine,
                 new FunctionRef
@@ -175,5 +184,14 @@ public class LlvmRunner
             Console.WriteLine($"DOUBLE FREE DETECTED [${id}$]");
             throw new Exception();
         }
+    }
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public delegate void Exit(int code);
+
+    public static void ExitImp(int code)
+    {
+        Console.WriteLine($"[EXIT] code={code}");
+        Environment.Exit(code);
     }
 }
