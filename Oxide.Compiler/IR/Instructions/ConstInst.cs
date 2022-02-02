@@ -15,14 +15,7 @@ public class ConstInst : Instruction
 
     public override void WriteIr(IrWriter writer)
     {
-        var type = ConstType switch
-        {
-            PrimitiveKind.I32 => "i32",
-            PrimitiveKind.Bool => "bool",
-            _ => throw new ArgumentOutOfRangeException()
-        };
-
-        writer.Write($"const ${TargetSlot} {type} {Value}");
+        writer.Write($"const ${TargetSlot} {ConstType} {Value}");
     }
 
     public override InstructionEffects GetEffects(IrStore store)

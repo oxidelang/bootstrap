@@ -790,10 +790,18 @@ public class FunctionGenerator
             case PrimitiveType primitiveType:
                 switch (primitiveType.Kind)
                 {
-                    case PrimitiveKind.I32:
-                        return LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0);
                     case PrimitiveKind.Bool:
-                        return LLVMValueRef.CreateConstInt(LLVMTypeRef.Int1, 0);
+                    case PrimitiveKind.U8:
+                    case PrimitiveKind.I8:
+                    case PrimitiveKind.U16:
+                    case PrimitiveKind.I16:
+                    case PrimitiveKind.U32:
+                    case PrimitiveKind.I32:
+                    case PrimitiveKind.U64:
+                    case PrimitiveKind.I64:
+                    case PrimitiveKind.USize:
+                    case PrimitiveKind.ISize:
+                        return LLVMValueRef.CreateConstInt(Backend.ConvertType(concreteTypeRef), 0);
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
@@ -1963,9 +1971,13 @@ public class FunctionGenerator
             throw new NotImplementedException("Non direct types");
         }
 
-        return Equals(concreteTypeRef, PrimitiveKind.I32.GetRef()) ||
-               Equals(concreteTypeRef, PrimitiveKind.USize.GetRef()) ||
-               Equals(concreteTypeRef, PrimitiveKind.Bool.GetRef());
+        var kind = PrimitiveType.GetPossibleKind(concreteTypeRef);
+        if (kind == null)
+        {
+            return false;
+        }
+
+        return PrimitiveType.IsInt(kind.Value) || kind.Value == PrimitiveKind.Bool;
     }
 
     private bool IsSignedInteger(TypeRef typeRef)
@@ -1975,7 +1987,12 @@ public class FunctionGenerator
             throw new NotImplementedException("Non direct types");
         }
 
-        return Equals(concreteTypeRef, PrimitiveKind.I32.GetRef()) ||
-               Equals(concreteTypeRef, PrimitiveKind.Bool.GetRef());
+        var kind = PrimitiveType.GetPossibleKind(concreteTypeRef);
+        if (kind == null)
+        {
+            return false;
+        }
+
+        return PrimitiveType.IsSigned(kind.Value) || kind.Value == PrimitiveKind.Bool;
     }
 }

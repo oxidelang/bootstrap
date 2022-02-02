@@ -10,7 +10,17 @@ public class PrimitiveType : OxType
 {
     public static ImmutableDictionary<PrimitiveKind, ConcreteTypeRef> TypeRefs;
     public static ImmutableDictionary<PrimitiveKind, PrimitiveType> Types;
-    public static PrimitiveKind[] Integers = { PrimitiveKind.USize, PrimitiveKind.U8, PrimitiveKind.I32 };
+
+    public static PrimitiveKind[] Integers =
+    {
+        PrimitiveKind.USize, PrimitiveKind.U8, PrimitiveKind.U16, PrimitiveKind.U32, PrimitiveKind.U64,
+        PrimitiveKind.ISize, PrimitiveKind.I8, PrimitiveKind.I16, PrimitiveKind.I32, PrimitiveKind.I64
+    };
+
+    public static PrimitiveKind[] SignedIntegers =
+    {
+        PrimitiveKind.ISize, PrimitiveKind.I8, PrimitiveKind.I16, PrimitiveKind.I32, PrimitiveKind.I64
+    };
 
     static PrimitiveType()
     {
@@ -39,6 +49,7 @@ public class PrimitiveType : OxType
         return TypeRefs[kind];
     }
 
+
     public static bool IsPrimitiveInt(TypeRef tref)
     {
         return Integers.Any(kind => Equals(tref, TypeRefs[kind]));
@@ -57,6 +68,19 @@ public class PrimitiveType : OxType
         throw new Exception($"Unable to find {typeRef}");
     }
 
+    public static PrimitiveKind? GetPossibleKind(TypeRef typeRef)
+    {
+        foreach (var pair in TypeRefs)
+        {
+            if (Equals(pair.Value, typeRef))
+            {
+                return pair.Key;
+            }
+        }
+
+        return null;
+    }
+
     public static int GetWidth(PrimitiveKind kind, bool is32bit = false)
     {
         return kind switch
@@ -64,21 +88,27 @@ public class PrimitiveType : OxType
             PrimitiveKind.Bool => 1,
             PrimitiveKind.USize => is32bit ? 32 : 64,
             PrimitiveKind.U8 => 8,
+            PrimitiveKind.U16 => 16,
+            PrimitiveKind.U32 => 32,
+            PrimitiveKind.U64 => 64,
+            PrimitiveKind.ISize => is32bit ? 32 : 64,
+            PrimitiveKind.I8 => 8,
+            PrimitiveKind.I16 => 16,
             PrimitiveKind.I32 => 32,
+            PrimitiveKind.I64 => 64,
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
         };
     }
 
     public static bool IsSigned(PrimitiveKind kind)
     {
-        return kind switch
-        {
-            PrimitiveKind.USize or PrimitiveKind.U8 => false,
-            PrimitiveKind.I32 => true,
-            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
-        };
+        return SignedIntegers.Contains(kind);
     }
 
+    public static bool IsInt(PrimitiveKind kind)
+    {
+        return Integers.Contains(kind);
+    }
 
     public PrimitiveKind Kind { get; init; }
 }

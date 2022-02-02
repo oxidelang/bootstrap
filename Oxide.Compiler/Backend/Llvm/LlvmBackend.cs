@@ -57,7 +57,14 @@ public class LlvmBackend
         // TODO: Check target size
         _typeStore.Add(PrimitiveKind.USize.GetRef(), LLVMTypeRef.Int64);
         _typeStore.Add(PrimitiveKind.U8.GetRef(), LLVMTypeRef.Int8);
+        _typeStore.Add(PrimitiveKind.U16.GetRef(), LLVMTypeRef.Int16);
+        _typeStore.Add(PrimitiveKind.U32.GetRef(), LLVMTypeRef.Int32);
+        _typeStore.Add(PrimitiveKind.U64.GetRef(), LLVMTypeRef.Int64);
+        _typeStore.Add(PrimitiveKind.ISize.GetRef(), LLVMTypeRef.Int64);
+        _typeStore.Add(PrimitiveKind.I8.GetRef(), LLVMTypeRef.Int8);
+        _typeStore.Add(PrimitiveKind.I16.GetRef(), LLVMTypeRef.Int16);
         _typeStore.Add(PrimitiveKind.I32.GetRef(), LLVMTypeRef.Int32);
+        _typeStore.Add(PrimitiveKind.I64.GetRef(), LLVMTypeRef.Int64);
         _typeStore.Add(PrimitiveKind.Bool.GetRef(), LLVMTypeRef.Int1);
 
         _intrinsics.Add(QualifiedName.From("std", "size_of"), LlvmIntrinsics.SizeOf);
