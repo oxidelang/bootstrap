@@ -81,6 +81,31 @@ public class FieldUnrealisedAccess : UnrealisedAccess
                 });
                 break;
             }
+            case DerivedRefTypeRef derivedRefTypeRef:
+            {
+                if (!derivedRefTypeRef.StrongRef)
+                {
+                    throw new Exception("Cannot take ref to weak reference");
+                }
+
+                var refSlot = BaseAccess.GenerateMove(parser, block);
+
+                baseSlot = block.Scope.DefineSlot(new SlotDeclaration
+                {
+                    Id = ++parser.LastSlotId,
+                    Name = null,
+                    Type = new BorrowTypeRef(derivedRefTypeRef.InnerType, false),
+                    Mutable = true
+                });
+
+                block.AddInstruction(new RefBorrowInst
+                {
+                    Id = ++parser.LastInstId,
+                    SourceSlot = refSlot.Id,
+                    ResultSlot = baseSlot.Id
+                });
+                break;
+            }
             default:
                 throw new ArgumentOutOfRangeException();
         }
