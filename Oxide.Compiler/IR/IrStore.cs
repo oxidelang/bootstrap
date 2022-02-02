@@ -268,7 +268,7 @@ public class IrStore
         return _units.Select(unit => unit.Lookup<T>(qn)).FirstOrDefault(result => result != null);
     }
 
-    public bool AreCompatible(Implementation imp, ImmutableArray<TypeRef> targetParams,
+    public static bool AreCompatible(Implementation imp, ImmutableArray<TypeRef> targetParams,
         out Dictionary<string, TypeRef> mappings)
     {
         if (imp.Target.GenericParams.Length != targetParams.Length)

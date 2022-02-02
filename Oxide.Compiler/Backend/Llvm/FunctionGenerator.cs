@@ -214,7 +214,7 @@ public class FunctionGenerator
             var resolvedType = FunctionContext.ResolveRef(x.Type);
             var dropFunc = Backend.GetDropFunctionRef(resolvedType);
             return (x, dropFunc);
-        }).Where(x => x.dropFunc != null).ToArray();
+        }).Where(x => x.dropFunc != null).Reverse().ToArray();
 
         var condBlocks = new LLVMBasicBlockRef[withDrops.Length];
         for (var i = 0; i < withDrops.Length; i++)

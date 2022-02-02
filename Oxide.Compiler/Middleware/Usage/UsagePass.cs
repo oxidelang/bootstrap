@@ -130,6 +130,17 @@ public class UsagePass
             );
         }
 
+        var dropFunction = Store.GetDropFunction((ConcreteTypeRef)typeRef.GetBaseType());
+        if (dropFunction != null)
+        {
+            ProcessFunctionRef(
+                dropFunction.TargetType,
+                dropFunction.TargetImplementation,
+                dropFunction.TargetMethod,
+                context
+            );
+        }
+
         if (typeRef is ReferenceTypeRef referenceTypeRef)
         {
             ProcessFunctionRef(

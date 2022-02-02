@@ -131,6 +131,11 @@ public class IrUnit
         }
     }
 
+    private T LookupWithStore<T>(QualifiedName qn, IrStore store) where T : OxObj
+    {
+        return Lookup<T>(qn) ?? store.Lookup<T>(qn);
+    }
+
     public ResolvedFunction ResolveFunction(IrStore store, ConcreteTypeRef target,
         string functionName)
     {
@@ -147,7 +152,7 @@ public class IrUnit
                 throw new Exception("Generic length mismatch");
             }
 
-            if (!store.AreCompatible(imp, target.GenericParams, out var knownGenerics))
+            if (!IrStore.AreCompatible(imp, target.GenericParams, out var knownGenerics))
             {
                 continue;
             }
@@ -160,7 +165,12 @@ public class IrUnit
             if (imp.Interface != null)
             {
                 ifaceRef = (ConcreteTypeRef)impContext.ResolveRef(imp.Interface);
-                var iface = store.Lookup<Interface>(imp.Interface.Name);
+                var iface = LookupWithStore<Interface>(imp.Interface.Name, store);
+                if (iface == null)
+                {
+                    throw new Exception($"Failed to resolve {imp.Interface.Name}");
+                }
+
                 functions = iface.Functions;
             }
 
@@ -214,7 +224,7 @@ public class IrUnit
                 throw new Exception("Generic length mismatch");
             }
 
-            if (!store.AreCompatible(imp, target.GenericParams, out var knownGenerics))
+            if (!IrStore.AreCompatible(imp, target.GenericParams, out var knownGenerics))
             {
                 continue;
             }

@@ -663,9 +663,8 @@ public class LlvmBackend
 
             var matches = paramType switch
             {
-                BorrowTypeRef borrowTypeRef => Equals(borrowTypeRef.InnerType, typeRef) && !borrowTypeRef.MutableRef,
-                PointerTypeRef pointerTypeRef =>
-                    Equals(pointerTypeRef.InnerType, typeRef) && !pointerTypeRef.MutableRef,
+                BorrowTypeRef borrowTypeRef => Equals(borrowTypeRef.InnerType, typeRef),
+                PointerTypeRef pointerTypeRef => Equals(pointerTypeRef.InnerType, typeRef),
                 _ => throw new ArgumentOutOfRangeException(nameof(paramType))
             };
 

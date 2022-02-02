@@ -366,7 +366,7 @@ public class FileParser
 
         foreach (var funcDef in ctx.func_def())
         {
-            iface.Functions.Add(ParseFunc(funcDef, null, true, genericParams));
+            iface.Functions.Add(ParseFunc(funcDef, iface, true, genericParams));
         }
 
         Interfaces.Add(interfaceName, iface);
