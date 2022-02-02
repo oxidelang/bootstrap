@@ -162,6 +162,7 @@ public class RefCheckPass
                 throw new Exception("Unresolved type");
             case BorrowTypeRef borrowTypeRef:
                 throw new Exception($"Unexpected borrow {borrowTypeRef} inside {currentType}");
+            case DerivedRefTypeRef:
             case PointerTypeRef:
                 // Ignore pointers
                 break;

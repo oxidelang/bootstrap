@@ -1222,11 +1222,25 @@ public class BodyParser
                 break;
             case OxideParser.Ref_unary_expressionContext refUnaryExpressionContext:
                 return ParseRefExpression(refUnaryExpressionContext);
+            case OxideParser.Derived_unary_expressionContext derivedUnaryExpressionContext:
+                return ParseDerivedExpression(derivedUnaryExpressionContext);
             case OxideParser.Deref_unary_expressionContext derefUnaryExpressionContext:
                 return ParseDerefExpression(derefUnaryExpressionContext);
             default:
                 throw new ArgumentOutOfRangeException(nameof(ctx));
         }
+    }
+
+    private UnrealisedAccess ParseDerivedExpression(OxideParser.Derived_unary_expressionContext ctx)
+    {
+        var exp = ParseUnaryExpression(ctx.unary_expression());
+        if (exp == null)
+        {
+            throw new Exception("No value to create borrow from");
+        }
+
+        var slot = exp.GenerateDerivedRef(this, CurrentBlock);
+        return new SlotUnrealisedAccess(slot);
     }
 
     private UnrealisedAccess ParseRefExpression(OxideParser.Ref_unary_expressionContext ctx)
@@ -1738,7 +1752,7 @@ public class BodyParser
             var fieldDef = structDef.Fields.Single(x => x.Name == fieldName);
             var resolvedFieldType = structContext.ResolveRef(fieldDef.Type);
 
-            if (!resolvedFieldType.Equals(fieldSlot.Type))
+            if (!ResolveRef(resolvedFieldType).Equals(ResolveRef(fieldSlot.Type)))
             {
                 throw new Exception($"Incompatible types for {fieldName} {resolvedFieldType} vs {fieldSlot.Type}");
             }
@@ -1765,6 +1779,36 @@ public class BodyParser
         });
 
         return new SlotUnrealisedAccess(structSlot);
+    }
+
+    public TypeRef ResolveRef(TypeRef typeRef)
+    {
+        switch (typeRef)
+        {
+            case null:
+                return null;
+            case ConcreteTypeRef concreteTypeRef:
+                return new ConcreteTypeRef(
+                    concreteTypeRef.Name,
+                    concreteTypeRef.GenericParams.Select(ResolveRef).ToImmutableArray()
+                );
+            case GenericTypeRef genericTypeRef:
+                return genericTypeRef;
+            case DerivedTypeRef derivedTypeRef:
+                throw new NotImplementedException();
+            case ThisTypeRef:
+                return ThisType;
+            case BorrowTypeRef borrowTypeRef:
+                return new BorrowTypeRef(ResolveRef(borrowTypeRef.InnerType), borrowTypeRef.MutableRef);
+            case PointerTypeRef pointerTypeRef:
+                return new PointerTypeRef(ResolveRef(pointerTypeRef.InnerType), pointerTypeRef.MutableRef);
+            case ReferenceTypeRef referenceTypeRef:
+                return new ReferenceTypeRef(ResolveRef(referenceTypeRef.InnerType), referenceTypeRef.StrongRef);
+            case DerivedRefTypeRef derivedRefTypeRef:
+                return new DerivedRefTypeRef(ResolveRef(derivedRefTypeRef.InnerType), derivedRefTypeRef.StrongRef);
+            default:
+                throw new ArgumentOutOfRangeException(nameof(typeRef));
+        }
     }
 
     private UnrealisedAccess ParseFunctionCall(OxideParser.Function_call_base_expressionContext ctx)

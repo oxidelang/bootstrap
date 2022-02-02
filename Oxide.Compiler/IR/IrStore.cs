@@ -32,6 +32,16 @@ public class IrStore
                     return (true, false);
                 }
 
+                if (baseTypeRef is ConcreteTypeRef concreteTypeRef && b is DerivedRefTypeRef derivedRefTypeRef)
+                {
+                    if (Equals(concreteTypeRef.Name, QualifiedName.From("std", "DerivedBox")) &&
+                        derivedRefTypeRef.StrongRef && Equals(derivedRefTypeRef.InnerType,
+                            concreteTypeRef.GenericParams.Single()))
+                    {
+                        return (true, false);
+                    }
+                }
+
                 return (Equals(baseTypeRef, b), false);
             case BorrowTypeRef borrowTypeRef:
             {

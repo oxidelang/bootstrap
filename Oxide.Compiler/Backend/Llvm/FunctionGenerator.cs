@@ -766,6 +766,11 @@ public class FunctionGenerator
         {
             case ConcreteTypeRef concreteTypeRef:
                 return ZeroInitConcreteType(concreteTypeRef);
+            case DerivedRefTypeRef derivedRefTypeRef:
+                return ZeroInitConcreteType(ConcreteTypeRef.From(
+                    QualifiedName.From("std", "DerivedBox"),
+                    derivedRefTypeRef.InnerType
+                ));
             case BorrowTypeRef:
             case PointerTypeRef:
             case ReferenceTypeRef:
@@ -1612,6 +1617,16 @@ public class FunctionGenerator
                         converted = Builder.BuildZExt(value, targetLlvmType, $"inst_{inst.Id}_zext");
                     }
                 }
+                else if (
+                    baseTypeRef is ConcreteTypeRef concreteTypeRef &&
+                    targetType is DerivedRefTypeRef derivedRefTypeRef &&
+                    Equals(concreteTypeRef.Name, QualifiedName.From("std", "DerivedBox")) &&
+                    derivedRefTypeRef.StrongRef &&
+                    Equals(derivedRefTypeRef.InnerType, concreteTypeRef.GenericParams.Single())
+                )
+                {
+                    converted = value;
+                }
                 else
                 {
                     throw new NotImplementedException();
@@ -1705,16 +1720,6 @@ public class FunctionGenerator
         var properties = Store.GetCopyProperties(type);
         var slotLifetime = GetLifetime(inst).GetSlot(inst.SourceSlot);
 
-        if (type is not ReferenceTypeRef referenceTypeRef)
-        {
-            throw new Exception("Source is not a reference");
-        }
-
-        if (!referenceTypeRef.StrongRef)
-        {
-            throw new Exception("Cannot derive weak reference");
-        }
-
         LLVMValueRef fromValue;
         if (slotLifetime.Status == SlotStatus.Moved)
         {
@@ -1732,14 +1737,45 @@ public class FunctionGenerator
 
         DropIfActive(inst.ResultSlot, $"inst_{inst.Id}_existing");
 
-        var boxPtr = fromValue;
-        var boxValue = GetBoxValuePtr(boxPtr, $"inst_{inst.Id}_box");
-        var ptrType = referenceTypeRef.InnerType;
-        var ptrValue = boxValue;
+        LLVMValueRef boxPtr;
+        TypeRef ptrType;
+        LLVMValueRef ptrValue;
+
+        if (type is DerivedRefTypeRef derivedRefTypeRef)
+        {
+            var structType = ConcreteTypeRef.From(
+                QualifiedName.From("std", "DerivedBox"),
+                derivedRefTypeRef.InnerType
+            );
+            var structDef = Store.Lookup<Struct>(structType.Name);
+            var structContext = new GenericContext(null, structDef.GenericParams, structType.GenericParams, null);
+
+            var boxIndex = structDef.Fields.FindIndex(x => x.Name == "box_ptr");
+            boxPtr = Builder.BuildExtractValue(fromValue, (uint)boxIndex, $"inst_{inst.Id}_box_ptr");
+
+            var valueIndex = structDef.Fields.FindIndex(x => x.Name == "value_ptr");
+            ptrType = derivedRefTypeRef.InnerType;
+            ptrValue = Builder.BuildExtractValue(fromValue, (uint)valueIndex, $"inst_{inst.Id}_value");
+        }
+        else if (type is ReferenceTypeRef referenceTypeRef)
+        {
+            if (!referenceTypeRef.StrongRef)
+            {
+                throw new Exception("Cannot derive weak reference");
+            }
+
+            boxPtr = fromValue;
+            ptrValue = GetBoxValuePtr(boxPtr, $"inst_{inst.Id}_box");
+            ptrType = referenceTypeRef.InnerType;
+        }
+        else
+        {
+            throw new Exception("Source is not a reference");
+        }
 
         if (inst.FieldName != null)
         {
-            var structType = (ConcreteTypeRef)referenceTypeRef.InnerType;
+            var structType = (ConcreteTypeRef)ptrType;
             var structDef = Store.Lookup<Struct>(structType.Name);
             var index = structDef.Fields.FindIndex(x => x.Name == inst.FieldName);
             var fieldDef = structDef.Fields[index];
@@ -1747,7 +1783,7 @@ public class FunctionGenerator
             ptrType = structContext.ResolveRef(fieldDef.Type);
 
             ptrValue = Builder.BuildInBoundsGEP(
-                boxValue,
+                ptrValue,
                 new[]
                 {
                     LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0),
@@ -1789,23 +1825,39 @@ public class FunctionGenerator
     private void CompileRefBorrow(RefBorrowInst inst)
     {
         var (type, value) = LoadSlot(inst.SourceSlot, $"inst_{inst.Id}_load");
-        if (type is not ReferenceTypeRef referenceTypeRef)
+
+        TypeRef innerType;
+        LLVMValueRef valueRef;
+        if (type is ReferenceTypeRef referenceTypeRef)
+        {
+            if (!referenceTypeRef.StrongRef)
+            {
+                throw new Exception("Cannot borrow weak reference");
+            }
+
+            innerType = referenceTypeRef.InnerType;
+            valueRef = GetBoxValuePtr(value, $"inst_{inst.Id}_ptr");
+        }
+        else if (type is DerivedRefTypeRef derivedRefTypeRef)
+        {
+            if (!derivedRefTypeRef.StrongRef)
+            {
+                throw new Exception("Cannot borrow weak reference");
+            }
+
+            innerType = derivedRefTypeRef.InnerType;
+            valueRef = GetDerivedBoxValuePtr(value, $"inst_{inst.Id}_ptr");
+        }
+        else
         {
             throw new Exception("Source is not a reference");
         }
 
-        if (!referenceTypeRef.StrongRef)
-        {
-            throw new Exception("Cannot borrow weak reference");
-        }
-
-        var targetType = new BorrowTypeRef(referenceTypeRef.InnerType, false);
+        var targetType = new BorrowTypeRef(innerType, false);
         var targetLlvmType = Backend.ConvertType(targetType);
+        valueRef = Builder.BuildBitCast(valueRef, targetLlvmType, $"inst_{inst.Id}_cast");
 
-        var converted = GetBoxValuePtr(value, $"inst_{inst.Id}_ptr");
-        converted = Builder.BuildBitCast(converted, targetLlvmType, $"inst_{inst.Id}_cast");
-
-        StoreSlot(inst.ResultSlot, converted, targetType);
+        StoreSlot(inst.ResultSlot, valueRef, targetType);
         MarkActive(inst.ResultSlot);
     }
 
@@ -1821,6 +1873,18 @@ public class FunctionGenerator
                 LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0),
                 LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong)index)
             },
+            name
+        );
+    }
+
+    public LLVMValueRef GetDerivedBoxValuePtr(LLVMValueRef valueRef, string name)
+    {
+        var structDef = Store.Lookup<Struct>(QualifiedName.From("std", "DerivedBox"));
+        var index = structDef.Fields.FindIndex(x => x.Name == "value_ptr");
+
+        return Builder.BuildExtractValue(
+            valueRef,
+            (uint)index,
             name
         );
     }

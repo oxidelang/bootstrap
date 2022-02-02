@@ -10,4 +10,6 @@ public abstract class UnrealisedAccess
     public abstract SlotDeclaration GenerateMove(BodyParser parser, Block block);
 
     public abstract SlotDeclaration GenerateRef(BodyParser parser, Block block, bool mutable);
+
+    public abstract SlotDeclaration GenerateDerivedRef(BodyParser parser, Block block);
 }
