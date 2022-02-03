@@ -55,6 +55,11 @@ public class OxideFrontend
                 _unit.Add(def);
             }
 
+            foreach (var def in fp.Enums.Values)
+            {
+                _unit.Add(def);
+            }
+
             foreach (var def in fp.Functions.Values)
             {
                 _unit.Add(def);

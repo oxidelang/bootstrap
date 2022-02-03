@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using ClosedXML.Excel;
 using GiGraph.Dot.Entities.Graphs;
@@ -651,42 +652,12 @@ public class LifetimePass
 
     private bool IsTypeCopy(TypeRef typeRef)
     {
-        switch (typeRef)
-        {
-            case ConcreteTypeRef concreteTypeRef:
-            {
-                var type = Store.Lookup(concreteTypeRef.Name);
+        var copyProperties = Store.GetCopyProperties(
+            typeRef,
+            new WhereConstraints(ImmutableDictionary<string, ImmutableArray<TypeRef>>.Empty)
+        );
 
-                switch (type)
-                {
-                    case Function function:
-                    case Interface @interface:
-                        throw new NotImplementedException();
-                    case PrimitiveType primitiveType:
-                        return true;
-                    case Struct @struct:
-                        return false;
-                    case Variant variant:
-                        // throw new NotImplementedException();
-                        return false;
-                    default:
-                        throw new ArgumentOutOfRangeException(nameof(type));
-                }
-            }
-            case DerivedTypeRef:
-                throw new NotImplementedException();
-            case GenericTypeRef:
-                return false;
-            case ThisTypeRef:
-                return false;
-            case BorrowTypeRef:
-            case PointerTypeRef:
-            case ReferenceTypeRef:
-            case DerivedRefTypeRef:
-                return true;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(typeRef));
-        }
+        return copyProperties.CanCopy;
     }
 
     public void GenerateDebug(string outputDest)
@@ -699,7 +670,8 @@ public class LifetimePass
             var func = pair.Key;
             var funcLifetime = pair.Value;
 
-            var worksheet = workbook.Worksheets.Add($"{counter++} Func {func.Name.ToString().Replace(':', '_')}".MaxLength(31));
+            var worksheet =
+                workbook.Worksheets.Add($"{counter++} Func {func.Name.ToString().Replace(':', '_')}".MaxLength(31));
 
             worksheet.Cell(1, 1).SetText("Id");
             worksheet.Cell(1, 2).SetText("Inst");

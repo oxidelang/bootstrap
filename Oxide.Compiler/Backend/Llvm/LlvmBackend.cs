@@ -391,6 +391,14 @@ public class LlvmBackend
 
         switch (objectDef)
         {
+            case OxEnum oxEnum:
+            {
+                var underlyingType = PrimitiveType.GetRef(oxEnum.UnderlyingType);
+                var underlyingTypeRef = ResolveConcreteType(underlyingType);
+                _typeStore.Add(typeRef, underlyingTypeRef);
+
+                return underlyingTypeRef;
+            }
             case Struct structDef:
             {
                 var structType = Context.CreateNamedStruct(GenerateName(typeRef));
@@ -567,6 +575,7 @@ public class LlvmBackend
 
         switch (baseType)
         {
+            case OxEnum:
             case PrimitiveType:
                 _dropFuncs[typeRef] = null;
                 return null;

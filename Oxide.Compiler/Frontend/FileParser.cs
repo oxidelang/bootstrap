@@ -15,6 +15,7 @@ public class FileParser
     public List<Import> Imports { get; private set; }
     public Dictionary<QualifiedName, Struct> Structs { get; private set; }
     public Dictionary<QualifiedName, Variant> Variants { get; private set; }
+    public Dictionary<QualifiedName, OxEnum> Enums { get; private set; }
     public Dictionary<QualifiedName, Interface> Interfaces { get; private set; }
     public Dictionary<QualifiedName, Function> Functions { get; private set; }
     public Dictionary<QualifiedName, List<Implementation>> Implementations { get; private set; }
@@ -45,12 +46,16 @@ public class FileParser
         var ifaceDefs = new List<OxideParser.Iface_defContext>();
         var implBlocks = new List<OxideParser.Impl_stmtContext>();
         var aliasDefs = new List<OxideParser.Alias_defContext>();
+        var enumDefs = new List<OxideParser.Enum_defContext>();
         foreach (var tl in cu.top_level())
         {
             switch (tl)
             {
                 case OxideParser.Alias_top_levelContext aliasTopLevel:
                     aliasDefs.Add(aliasTopLevel.alias_def());
+                    break;
+                case OxideParser.Enum_top_levelContext enumTopLevelContext:
+                    enumDefs.Add(enumTopLevelContext.enum_def());
                     break;
                 case OxideParser.Struct_top_levelContext structTopLevel:
                     structDefs.Add(structTopLevel.struct_def());
@@ -92,6 +97,13 @@ public class FileParser
         foreach (var ctx in variantsDefs)
         {
             ParseVariant(ctx);
+        }
+
+        // Parse enum types
+        Enums = new Dictionary<QualifiedName, OxEnum>();
+        foreach (var ctx in enumDefs)
+        {
+            ParseEnum(ctx);
         }
 
         // Parse interfaces
@@ -354,6 +366,64 @@ public class FileParser
                 GenericParams = genericParams.ToImmutableList(),
                 Items = items.ToImmutableList()
             }
+        );
+    }
+
+    private void ParseEnum(OxideParser.Enum_defContext ctx)
+    {
+        var vis = ctx.visibility().Parse();
+        var enumName = new QualifiedName(true, Package.Parts.Add(ctx.name().GetText()));
+        var type = PrimitiveType.GetKind(ConcreteTypeRef.From(ResolveQN(ctx.base_type.Parse())));
+        var items = new Dictionary<string, object>();
+
+        foreach (var itemCtx in ctx.enum_item_def())
+        {
+            var itemName = itemCtx.name().GetText();
+            object itemValue;
+
+            switch (itemCtx.literal())
+            {
+                case OxideParser.Binary_literalContext binaryLiteralContext:
+                    throw new NotImplementedException("Binary literal");
+                case OxideParser.Hex_literalContext hexLiteralContext:
+                    throw new NotImplementedException("Hex literal");
+                case OxideParser.Int_literalContext intLiteralContext:
+                {
+                    itemValue = int.Parse(intLiteralContext.GetText());
+                    break;
+                }
+                case OxideParser.Outer_bool_literalContext outerBoolLiteralContext:
+                {
+                    switch (outerBoolLiteralContext.boolean_literal())
+                    {
+                        case OxideParser.True_boolean_literalContext:
+                        {
+                            itemValue = true;
+                            break;
+                        }
+                        case OxideParser.False_boolean_literalContext:
+                        {
+                            itemValue = false;
+                            break;
+                        }
+                        default:
+                            throw new ArgumentOutOfRangeException();
+                    }
+
+                    break;
+                }
+                case OxideParser.String_literalContext stringLiteralContext:
+                    throw new NotImplementedException("String literal");
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+
+            items.Add(itemName, itemValue);
+        }
+
+        Enums.Add(
+            enumName,
+            new OxEnum(enumName, vis, type, items.ToImmutableDictionary())
         );
     }
 

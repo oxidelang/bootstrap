@@ -320,6 +320,9 @@ public class FunctionGenerator
             case ConstInst constInst:
                 CompileConstInst(constInst);
                 break;
+            case LoadEnumInst loadEnumInst:
+                CompileLoadEnumInst(loadEnumInst);
+                break;
             case ArithmeticInst arithmeticInst:
                 CompileArithmeticInstruction(arithmeticInst);
                 break;
@@ -588,24 +591,44 @@ public class FunctionGenerator
 
     private void CompileConstInst(ConstInst inst)
     {
+        var constValue = ConvertConstant(inst.ConstType, inst.Value);
+        StoreSlot(inst.TargetSlot, constValue.value, constValue.ty);
+        MarkActive(inst.TargetSlot);
+    }
+
+    private void CompileLoadEnumInst(LoadEnumInst inst)
+    {
+        var oxEnum = Store.Lookup<OxEnum>(inst.EnumName);
+        if (!oxEnum.Items.TryGetValue(inst.ItemName, out var enumValue))
+        {
+            throw new Exception($"Invalid enum name {inst.EnumName}");
+        }
+
+        var constValue = ConvertConstant(oxEnum.UnderlyingType, enumValue);
+
+        StoreSlot(inst.TargetSlot, constValue.value, ConcreteTypeRef.From(inst.EnumName));
+        MarkActive(inst.TargetSlot);
+    }
+
+    private (LLVMValueRef value, TypeRef ty) ConvertConstant(PrimitiveKind kind, object sourceValue)
+    {
         LLVMValueRef value;
         TypeRef valType;
-        switch (inst.ConstType)
+        switch (kind)
         {
             case PrimitiveKind.I32:
-                value = LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong)(int)inst.Value, true);
+                value = LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong)(int)sourceValue, true);
                 valType = PrimitiveKind.I32.GetRef();
                 break;
             case PrimitiveKind.Bool:
-                value = LLVMValueRef.CreateConstInt(LLVMTypeRef.Int1, (ulong)((bool)inst.Value ? 1 : 0), true);
+                value = LLVMValueRef.CreateConstInt(LLVMTypeRef.Int1, (ulong)((bool)sourceValue ? 1 : 0), true);
                 valType = PrimitiveKind.Bool.GetRef();
                 break;
             default:
                 throw new ArgumentOutOfRangeException();
         }
 
-        StoreSlot(inst.TargetSlot, value, valType);
-        MarkActive(inst.TargetSlot);
+        return (value, valType);
     }
 
     private void CompileArithmeticInstruction(ArithmeticInst inst)

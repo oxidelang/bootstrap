@@ -137,6 +137,7 @@ top_level
     | func_def #func_top_level
     | iface_def #iface_top_level
     | alias_def #alias_top_level
+    | enum_def #enum_top_level
     ;
 
 import_stmt
@@ -153,6 +154,14 @@ generic_def
 
 field_def
     : visibility? UNSAFE? MUT? name COLON type COMMA
+    ;
+
+enum_def
+    : visibility? ENUM name COLON base_type=qualified_name LBRACE enum_item_def* RBRACE
+    ;
+
+enum_item_def
+    : name EQUAL literal COMMA
     ;
 
 variant_def

@@ -38,6 +38,9 @@ public class IrUnit
                 case Interface iface:
                     ifaces.Add(iface);
                     break;
+                case OxEnum oxEnum:
+                    writer.WriteEnum(oxEnum);
+                    break;
                 case Variant variant:
                     writer.WriteVariant(variant);
                     break;

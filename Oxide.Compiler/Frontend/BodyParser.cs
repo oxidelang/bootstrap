@@ -2073,6 +2073,42 @@ public class BodyParser
 
     private UnrealisedAccess ParseQnExpression(OxideParser.Qualified_base_expressionContext ctx)
     {
+        var genericParams = ctx.type_generic_params();
+        if (genericParams == null)
+        {
+            var qn = ctx.qualified_name().Single().Parse();
+            if (qn.Parts.Length >= 2)
+            {
+                var enumQn = ResolveQN(new QualifiedName(qn.IsAbsolute, qn.Parts.RemoveAt(qn.Parts.Length - 1)));
+                var itemName = qn.Parts.Last();
+                var resolvedObj = Lookup(enumQn);
+
+                if (resolvedObj is OxEnum oxEnum)
+                {
+                    if (!oxEnum.Items.TryGetValue(itemName, out var _))
+                    {
+                        throw new Exception($"Unknown enum item {itemName}");
+                    }
+
+                    var slotDec = CurrentScope.DefineSlot(new SlotDeclaration
+                    {
+                        Id = ++LastSlotId,
+                        Type = ConcreteTypeRef.From(enumQn),
+                    });
+
+                    CurrentBlock.AddInstruction(new LoadEnumInst
+                    {
+                        Id = ++LastInstId,
+                        TargetSlot = slotDec.Id,
+                        EnumName = enumQn,
+                        ItemName = itemName
+                    });
+
+                    return new SlotUnrealisedAccess(slotDec);
+                }
+            }
+        }
+
         return new SlotUnrealisedAccess(ResolveQn(ctx.qualified_name(), ctx.type_generic_params()));
     }
 

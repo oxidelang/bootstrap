@@ -146,6 +146,7 @@ public class IrStore
                 var baseType = Lookup(concreteTypeRef.Name);
                 switch (baseType)
                 {
+                    case OxEnum:
                     case PrimitiveType:
                         return new CopyProperties
                         {
@@ -178,7 +179,6 @@ public class IrStore
                     }
                     case Interface @interface:
                         throw new NotImplementedException();
-
                     default:
                         throw new ArgumentOutOfRangeException(nameof(baseType));
                 }
@@ -225,6 +225,7 @@ public class IrStore
         var baseType = Lookup(concreteTypeRef.Name);
         switch (baseType)
         {
+            case OxEnum:
             case PrimitiveType:
                 return null;
             case Variant:

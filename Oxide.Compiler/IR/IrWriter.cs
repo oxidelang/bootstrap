@@ -49,6 +49,30 @@ public class IrWriter
         EndLine();
     }
 
+    public void WriteEnum(OxEnum oxEnum)
+    {
+        BeginLine();
+        Write("enum ");
+        WriteVisibility(oxEnum.Visibility);
+        Write(" ");
+        WriteQn(oxEnum.Name);
+        Write($" {oxEnum.UnderlyingType}");
+
+        Write(" {");
+        EndLine();
+        _indentLevel++;
+
+        foreach (var item in oxEnum.Items)
+        {
+            WriteLine($"{item.Key} = {item.Value}");
+        }
+
+        _indentLevel--;
+        BeginLine();
+        Write("}");
+        EndLine();
+    }
+
     public void WriteVariant(Variant variant)
     {
         BeginLine();

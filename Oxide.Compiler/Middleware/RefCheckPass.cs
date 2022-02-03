@@ -55,6 +55,7 @@ public class RefCheckPass
         switch (type)
         {
             case Interface:
+            case OxEnum:
             case PrimitiveType:
                 return false;
             case Struct @struct:
