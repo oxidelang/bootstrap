@@ -1190,22 +1190,34 @@ public class BodyParser
 
     private UnrealisedAccess ParseMultiplyExpression(OxideParser.Multiply_expressionContext ctx)
     {
+        UnrealisedAccess left;
+        UnrealisedAccess right;
+        ArithmeticInst.Operation op;
+
         switch (ctx)
         {
             case OxideParser.Pass_multiply_expressionContext passMultiplyExpressionContext:
                 return ParseUnaryExpression(passMultiplyExpressionContext.unary_expression());
             case OxideParser.Div_multiply_expressionContext divMultiplyExpressionContext:
-                throw new NotImplementedException("Div expression");
+                left = ParseMultiplyExpression(divMultiplyExpressionContext.multiply_expression());
+                right = ParseUnaryExpression(divMultiplyExpressionContext.unary_expression());
+                op = ArithmeticInst.Operation.Divide;
                 break;
             case OxideParser.Mod_multiply_expressionContext modMultiplyExpressionContext:
-                throw new NotImplementedException("Mod expression");
+                left = ParseMultiplyExpression(modMultiplyExpressionContext.multiply_expression());
+                right = ParseUnaryExpression(modMultiplyExpressionContext.unary_expression());
+                op = ArithmeticInst.Operation.Mod;
                 break;
             case OxideParser.Mul_multiply_expressionContext mulMultiplyExpressionContext:
-                throw new NotImplementedException("Multiply expression");
+                left = ParseMultiplyExpression(mulMultiplyExpressionContext.multiply_expression());
+                right = ParseUnaryExpression(mulMultiplyExpressionContext.unary_expression());
+                op = ArithmeticInst.Operation.Multiply;
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(ctx));
         }
+
+        return CreateArithmetic(left, right, op);
     }
 
     private UnrealisedAccess ParseUnaryExpression(OxideParser.Unary_expressionContext ctx)

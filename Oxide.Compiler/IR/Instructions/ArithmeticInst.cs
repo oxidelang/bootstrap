@@ -12,6 +12,9 @@ public class ArithmeticInst : Instruction
         Minus,
         LogicalAnd,
         LogicalOr,
+        Mod,
+        Multiply,
+        Divide
     }
 
     public int ResultSlot { get; init; }
@@ -21,16 +24,7 @@ public class ArithmeticInst : Instruction
 
     public override void WriteIr(IrWriter writer)
     {
-        var op = Op switch
-        {
-            Operation.Add => "add",
-            Operation.Minus => "minus",
-            Operation.LogicalAnd => "logicaland",
-            Operation.LogicalOr => "logicalor",
-            _ => throw new ArgumentOutOfRangeException()
-        };
-
-        writer.Write($"arithmetic ${ResultSlot} {op} ${LhsValue} ${RhsValue}");
+        writer.Write($"arithmetic ${ResultSlot} {Op.ToString().ToLower()} ${LhsValue} ${RhsValue}");
     }
 
     public override InstructionEffects GetEffects(IrStore store)

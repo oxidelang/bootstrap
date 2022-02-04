@@ -649,6 +649,8 @@ public class FunctionGenerator
             throw new NotImplementedException("Arithmetic of non-integers not implemented");
         }
 
+        var signed = IsSignedInteger(leftType);
+
         switch (inst.Op)
         {
             case ArithmeticInst.Operation.Add:
@@ -662,6 +664,15 @@ public class FunctionGenerator
                 break;
             case ArithmeticInst.Operation.LogicalOr:
                 value = Builder.BuildOr(left, right, name);
+                break;
+            case ArithmeticInst.Operation.Mod:
+                value = signed ? Builder.BuildSRem(left, right, name) : Builder.BuildURem(left, right, name);
+                break;
+            case ArithmeticInst.Operation.Multiply:
+                value = Builder.BuildMul(left, right, name);
+                break;
+            case ArithmeticInst.Operation.Divide:
+                value = signed ? Builder.BuildSDiv(left, right, name) : Builder.BuildUDiv(left, right, name);
                 break;
             default:
                 throw new ArgumentOutOfRangeException();
