@@ -1230,8 +1230,10 @@ public class BodyParser
                 throw new NotImplementedException("Minus expression");
                 break;
             case OxideParser.Not_unary_expressionContext notUnaryExpressionContext:
-                throw new NotImplementedException("Not expression");
-                break;
+            {
+                var value = ParseUnaryExpression(notUnaryExpressionContext.unary_expression());
+                return CreateUnary(value, UnaryInst.Operation.Not);
+            }
             case OxideParser.Ref_unary_expressionContext refUnaryExpressionContext:
                 return ParseRefExpression(refUnaryExpressionContext);
             case OxideParser.Derived_unary_expressionContext derivedUnaryExpressionContext:
@@ -1241,6 +1243,26 @@ public class BodyParser
             default:
                 throw new ArgumentOutOfRangeException(nameof(ctx));
         }
+    }
+
+    private UnrealisedAccess CreateUnary(UnrealisedAccess value, UnaryInst.Operation op)
+    {
+        var valueSlot = value.GenerateMove(this, CurrentBlock);
+
+        var resultSlot = CurrentScope.DefineSlot(new SlotDeclaration
+        {
+            Id = ++LastSlotId,
+            Type = value.Type
+        });
+
+        CurrentBlock.AddInstruction(new UnaryInst
+        {
+            Id = ++LastInstId,
+            Value = valueSlot.Id,
+            ResultSlot = resultSlot.Id,
+            Op = op
+        });
+        return new SlotUnrealisedAccess(resultSlot);
     }
 
     private UnrealisedAccess ParseDerivedExpression(OxideParser.Derived_unary_expressionContext ctx)

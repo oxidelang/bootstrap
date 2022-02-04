@@ -326,6 +326,9 @@ public class FunctionGenerator
             case ArithmeticInst arithmeticInst:
                 CompileArithmeticInstruction(arithmeticInst);
                 break;
+            case UnaryInst unaryInst:
+                CompileUnaryInstruction(unaryInst);
+                break;
             case ComparisonInst comparisonInst:
                 CompileComparisonInst(comparisonInst);
                 break;
@@ -679,6 +682,31 @@ public class FunctionGenerator
         }
 
         StoreSlot(inst.ResultSlot, value, leftType);
+        MarkActive(inst.ResultSlot);
+    }
+
+    private void CompileUnaryInstruction(UnaryInst inst)
+    {
+        var name = $"inst_{inst.Id}";
+        var (valueType, value) = LoadSlot(inst.Value, $"{name}_value");
+        LLVMValueRef result;
+
+        var integer = IsIntegerBacked(valueType);
+        if (!integer)
+        {
+            throw new NotImplementedException("Unary operations on non-integers not implemented");
+        }
+
+        switch (inst.Op)
+        {
+            case UnaryInst.Operation.Not:
+                result = Builder.BuildNot(value, name);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException();
+        }
+
+        StoreSlot(inst.ResultSlot, result, valueType);
         MarkActive(inst.ResultSlot);
     }
 
