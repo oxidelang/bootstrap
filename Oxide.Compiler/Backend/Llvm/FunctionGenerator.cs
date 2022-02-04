@@ -1671,11 +1671,6 @@ public class FunctionGenerator
                     throw new Exception("Incompatible conversion");
                 }
 
-                if (!CurrentBlock.Scope.Unsafe)
-                {
-                    throw new Exception("Conversion is unsafe");
-                }
-
                 converted = value;
                 break;
             }

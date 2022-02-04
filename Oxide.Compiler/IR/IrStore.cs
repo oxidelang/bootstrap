@@ -58,7 +58,7 @@ public class IrStore
                             return (false, false);
                         }
 
-                        return (true, true);
+                        return (true, false);
                     default:
                         throw new ArgumentOutOfRangeException(nameof(b));
                 }

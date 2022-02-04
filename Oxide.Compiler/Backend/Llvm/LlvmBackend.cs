@@ -71,6 +71,9 @@ public class LlvmBackend
         _intrinsics.Add(QualifiedName.From("std", "bitcopy"), LlvmIntrinsics.Bitcopy);
         _intrinsics.Add(QualifiedName.From("std", "type_id"), LlvmIntrinsics.TypeId);
         _intrinsics.Add(QualifiedName.From("std", "type_call_drop"), LlvmIntrinsics.TypeDrop);
+        _intrinsics.Add(QualifiedName.From("std", "atomic_swap"), LlvmIntrinsics.AtomicSwap);
+        _intrinsics.Add(QualifiedName.From("std", "atomic_add"), LlvmIntrinsics.AtomicAdd);
+        _intrinsics.Add(QualifiedName.From("std", "atomic_sub"), LlvmIntrinsics.AtomicSub);
     }
 
     public void Begin()

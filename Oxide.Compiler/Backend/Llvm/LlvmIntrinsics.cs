@@ -103,4 +103,95 @@ public static class LlvmIntrinsics
 
         generator.Builder.BuildCall(dropFunc, new[] { valuePtr });
     }
+
+    public static void AtomicSwap(FunctionGenerator generator, StaticCallInst inst, FunctionRef key)
+    {
+        if (inst.Arguments.Count != 3)
+        {
+            throw new Exception("Unexpected number of arguments");
+        }
+
+        var targetType = key.TargetMethod.GenericParams.Single();
+
+        var (ptrType, ptrValue) = generator.LoadSlot(inst.Arguments[0], $"inst_{inst.Id}_ptr");
+        var (oldType, oldValue) = generator.LoadSlot(inst.Arguments[1], $"inst_{inst.Id}_old");
+        var (newType, newValue) = generator.LoadSlot(inst.Arguments[2], $"inst_{inst.Id}_new");
+
+        if (
+            ptrType is not PointerTypeRef pointerTypeRef ||
+            !Equals(pointerTypeRef.InnerType, targetType) ||
+            !Equals(oldType, targetType) ||
+            !Equals(newType, targetType)
+        )
+        {
+            throw new Exception("Incompatible types");
+        }
+
+        var resultSlot = inst.ResultSlot.Value;
+
+        LLVMValueRef result;
+        unsafe
+        {
+            result = LLVM.BuildAtomicCmpXchg(
+                generator.Builder,
+                ptrValue,
+                oldValue,
+                newValue,
+                LLVMAtomicOrdering.LLVMAtomicOrderingSequentiallyConsistent,
+                LLVMAtomicOrdering.LLVMAtomicOrderingSequentiallyConsistent,
+                0
+            );
+        }
+
+        var success = generator.Builder.BuildExtractValue(result, (uint)1, $"inst_{inst.Id}_success");
+
+        generator.StoreSlot(resultSlot, success, PrimitiveKind.Bool.GetRef());
+        generator.MarkActive(resultSlot);
+    }
+
+    public static void AtomicOp(FunctionGenerator generator, StaticCallInst inst, FunctionRef key,
+        LLVMAtomicRMWBinOp op)
+    {
+        if (inst.Arguments.Count != 2)
+        {
+            throw new Exception("Unexpected number of arguments");
+        }
+
+        var targetType = key.TargetMethod.GenericParams.Single();
+
+        var (ptrType, ptrValue) = generator.LoadSlot(inst.Arguments[0], $"inst_{inst.Id}_ptr");
+        var (deltaType, deltaValue) = generator.LoadSlot(inst.Arguments[1], $"inst_{inst.Id}_delta");
+
+        if (
+            ptrType is not PointerTypeRef pointerTypeRef ||
+            !Equals(pointerTypeRef.InnerType, targetType) ||
+            !Equals(deltaType, targetType)
+        )
+        {
+            throw new Exception("Incompatible types");
+        }
+
+        var resultSlot = inst.ResultSlot.Value;
+
+        var result = generator.Builder.BuildAtomicRMW(
+            op,
+            ptrValue,
+            deltaValue,
+            LLVMAtomicOrdering.LLVMAtomicOrderingSequentiallyConsistent,
+            false
+        );
+
+        generator.StoreSlot(resultSlot, result, targetType);
+        generator.MarkActive(resultSlot);
+    }
+
+    public static void AtomicAdd(FunctionGenerator generator, StaticCallInst inst, FunctionRef key)
+    {
+        AtomicOp(generator, inst, key, LLVMAtomicRMWBinOp.LLVMAtomicRMWBinOpAdd);
+    }
+
+    public static void AtomicSub(FunctionGenerator generator, StaticCallInst inst, FunctionRef key)
+    {
+        AtomicOp(generator, inst, key, LLVMAtomicRMWBinOp.LLVMAtomicRMWBinOpSub);
+    }
 }
