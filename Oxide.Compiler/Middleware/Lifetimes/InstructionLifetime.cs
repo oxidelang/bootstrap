@@ -8,6 +8,8 @@ public class InstructionLifetime
 {
     public int Id { get; set; }
 
+    public FunctionLifetime FunctionLifetime { get; set; }
+
     public Block Block { get; set; }
 
     public InstructionLifetime Previous { get; set; }

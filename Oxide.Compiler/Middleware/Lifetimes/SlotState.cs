@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Oxide.Compiler.Utils;
 
 namespace Oxide.Compiler.Middleware.Lifetimes;
@@ -86,7 +87,11 @@ public class SlotState
 
     public string ToDebugString()
     {
-        var inner = string.Join(",", Values);
+        var reqs = Instruction.FunctionLifetime.ValueRequirements;
+
+        var inner = string.Join(",",
+            Values.Select(x => { return x + ":(" + string.Join(",", reqs[x].Select(r => r.Value.ToString())) + ")"; }));
+
 
         switch (Status)
         {

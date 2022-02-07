@@ -25,7 +25,7 @@ public class FieldMoveInst : Instruction
             }.ToImmutableArray(),
             new[]
             {
-                InstructionEffects.WriteData.New(TargetSlot)
+                InstructionEffects.WriteData.New(TargetSlot, moveSource: BaseSlot, moveField: TargetField)
             }.ToImmutableArray()
         );
     }

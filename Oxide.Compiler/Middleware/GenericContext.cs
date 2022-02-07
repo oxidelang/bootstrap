@@ -49,12 +49,12 @@ public class GenericContext
         return Generics.ContainsKey(name) ? Generics[name] : Parent?.ResolveGeneric(name);
     }
 
-    public ImmutableArray<TypeRef> ResolveRefs(ImmutableArray<TypeRef> refs)
+    public ImmutableArray<TypeRef> ResolveRefs(ImmutableArray<TypeRef> refs, bool allowGenerics = false)
     {
-        return refs.Select(ResolveRef).ToImmutableArray();
+        return refs.Select(x => ResolveRef(x, allowGenerics)).ToImmutableArray();
     }
 
-    public TypeRef ResolveRef(TypeRef typeRef)
+    public TypeRef ResolveRef(TypeRef typeRef, bool allowGenerics = false)
     {
         switch (typeRef)
         {
@@ -63,10 +63,11 @@ public class GenericContext
             case ConcreteTypeRef concreteTypeRef:
                 return new ConcreteTypeRef(
                     concreteTypeRef.Name,
-                    concreteTypeRef.GenericParams.Select(ResolveRef).ToImmutableArray()
+                    concreteTypeRef.GenericParams.Select(x => ResolveRef(x, allowGenerics)).ToImmutableArray()
                 );
             case GenericTypeRef genericTypeRef:
-                return ResolveGeneric(genericTypeRef.Name) ?? throw new Exception("Unable to resolve generic type");
+                return ResolveGeneric(genericTypeRef.Name) ??
+                       (allowGenerics ? genericTypeRef : throw new Exception("Unable to resolve generic type"));
             case DerivedTypeRef derivedTypeRef:
                 throw new NotImplementedException();
             case ThisTypeRef thisTypeRef:

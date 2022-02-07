@@ -30,6 +30,11 @@ public class InstructionEffects
                 Field = field
             };
         }
+
+        public string ToDebugString()
+        {
+            return $"{Slot}{(Moved ? "M" : "A")}{(Field != null ? $":{Field}" : "")}";
+        }
     }
 
     public class WriteData
@@ -37,6 +42,8 @@ public class InstructionEffects
         public int Slot { get; private set; }
 
         public int? MoveSource { get; private set; }
+
+        public string MoveField { get; private set; }
 
         public int? ReferenceSource { get; private set; }
 
@@ -46,12 +53,13 @@ public class InstructionEffects
 
         public int? TargetBlock { get; private set; }
 
-        public static WriteData New(int slot, int? targetBlock = null, int? moveSource = null)
+        public static WriteData New(int slot, int? targetBlock = null, int? moveSource = null, string moveField = null)
         {
             return new WriteData
             {
                 Slot = slot,
                 MoveSource = moveSource,
+                MoveField = moveField,
                 TargetBlock = targetBlock
             };
         }
@@ -77,6 +85,38 @@ public class InstructionEffects
                 ReferenceMutable = mutable,
                 TargetBlock = targetBlock
             };
+        }
+
+        public string ToDebugString()
+        {
+            var ds = Slot.ToString();
+            if (ReferenceSource != null)
+            {
+                ds += $"R<{ReferenceSource}";
+                if (ReferenceField != null)
+                {
+                    ds += $":{ReferenceField}";
+                }
+            }
+            else
+            {
+                ds += "N";
+                if (MoveSource != null)
+                {
+                    ds += $"<{MoveSource}";
+                    if (MoveField != null)
+                    {
+                        ds += $":{MoveField}";
+                    }
+                }
+            }
+
+            if (TargetBlock != null)
+            {
+                ds += $">{TargetBlock}";
+            }
+
+            return ds;
         }
     }
 

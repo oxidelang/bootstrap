@@ -27,6 +27,8 @@ public class LifetimePass
 
     private int _lastValueId;
 
+    private ConcreteTypeRef _thisRef;
+
     public LifetimePass(MiddlewareManager manager)
     {
         Manager = manager;
@@ -42,6 +44,7 @@ public class LifetimePass
         {
             if (obj is Function func)
             {
+                _thisRef = null;
                 ProcessFunction(func);
             }
         }
@@ -50,6 +53,7 @@ public class LifetimePass
         {
             foreach (var imp in imps)
             {
+                _thisRef = imp.Target;
                 foreach (var func in imp.Functions)
                 {
                     ProcessFunction(func);
@@ -101,6 +105,7 @@ public class LifetimePass
                 var lifetime = new InstructionLifetime
                 {
                     Id = inst.Id,
+                    FunctionLifetime = _functionLifetime,
                     Block = block,
                     Instruction = inst,
                     Previous = last,
@@ -202,6 +207,12 @@ public class LifetimePass
                         var moveSource = write.MoveSource.Value;
                         var moveSlot = lifetime.GetSlot(moveSource);
                         if (moveSlot.Status != SlotStatus.Active && moveSlot.Status != SlotStatus.Moved)
+                        {
+                            continue;
+                        }
+
+                        var (_, persistReqs) = IsSlotCopy(write.MoveSource.Value, write.MoveField);
+                        if (!persistReqs)
                         {
                             continue;
                         }
@@ -411,7 +422,7 @@ public class LifetimePass
 
     private bool TraceRead(InstructionLifetime lifetime, InstructionEffects.ReadData read)
     {
-        var isCopy = IsSlotCopy(read.Slot);
+        var (isCopy, _) = IsSlotCopy(read.Slot, read.Field);
         var currentState = lifetime.GetSlot(read.Slot);
 
         var visited = new HashSet<(int, int)>();
@@ -644,20 +655,87 @@ public class LifetimePass
         return _functionLifetime.InstructionLifetimes[inst.Id];
     }
 
-    private bool IsSlotCopy(int slot)
+    private (bool copy, bool reqs) IsSlotCopy(int slot, string field)
     {
         var slotDec = _slots[slot];
-        return IsTypeCopy(slotDec.Type);
+        return IsTypeCopy(slotDec.Type, field);
     }
 
-    private bool IsTypeCopy(TypeRef typeRef)
+    private (bool copy, bool reqs) IsTypeCopy(TypeRef typeRef, string field)
     {
-        var copyProperties = Store.GetCopyProperties(
-            typeRef,
-            new WhereConstraints(ImmutableDictionary<string, ImmutableArray<TypeRef>>.Empty)
-        );
+        var checkType = typeRef;
+        if (field != null)
+        {
+            switch (typeRef.GetBaseType())
+            {
+                case ConcreteTypeRef concreteTypeRef:
+                {
+                    var resolved = Store.Lookup(concreteTypeRef.Name);
+                    if (resolved is not Struct structDef)
+                    {
+                        throw new Exception($"Unexpected type {resolved}");
+                    }
 
-        return copyProperties.CanCopy;
+                    var structContext = new GenericContext(
+                        null,
+                        structDef.GenericParams,
+                        concreteTypeRef.GenericParams,
+                        _thisRef
+                    );
+                    var fieldDef = structDef.Fields.Single(x => x.Name == field);
+                    checkType = structContext.ResolveRef(fieldDef.Type, true);
+                    break;
+                }
+                case GenericTypeRef genericTypeRef:
+                {
+                    checkType = null;
+                    break;
+                }
+                case ThisTypeRef:
+                {
+                    var resolved = Store.Lookup(_thisRef.Name);
+                    if (resolved is not Struct structDef)
+                    {
+                        throw new Exception($"Unexpected type {resolved}");
+                    }
+
+                    var structContext = new GenericContext(
+                        null,
+                        structDef.GenericParams,
+                        _thisRef.GenericParams,
+                        _thisRef
+                    );
+                    var fieldDef = structDef.Fields.Single(x => x.Name == field);
+                    checkType = structContext.ResolveRef(fieldDef.Type, true);
+                    break;
+                }
+                case DerivedTypeRef derivedTypeRef:
+                    throw new NotImplementedException();
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+        }
+
+        switch (checkType)
+        {
+            case null:
+            case ReferenceTypeRef:
+            case DerivedRefTypeRef:
+                return (true, false);
+            case PointerTypeRef:
+            case BorrowTypeRef:
+                return (true, true);
+            case BaseTypeRef:
+            {
+                var copyProperties = Store.GetCopyProperties(
+                    checkType,
+                    new WhereConstraints(ImmutableDictionary<string, ImmutableArray<TypeRef>>.Empty)
+                );
+                return (copyProperties.CanCopy, false);
+            }
+            default:
+                throw new ArgumentOutOfRangeException(nameof(typeRef));
+        }
     }
 
     public void GenerateDebug(string outputDest)
@@ -711,8 +789,8 @@ public class LifetimePass
                     inst.WriteIr(writer);
                     worksheet.Cell(row, 2).SetText(writer.Generate());
 
-                    worksheet.Cell(row, 3).SetText(string.Join(",", effects.Reads.Select(x => x.Slot)));
-                    worksheet.Cell(row, 4).SetText(string.Join(",", effects.Writes.Select(x => x.Slot)));
+                    worksheet.Cell(row, 3).SetText(string.Join(",", effects.Reads.Select(x => x.ToDebugString())));
+                    worksheet.Cell(row, 4).SetText(string.Join(",", effects.Writes.Select(x => x.ToDebugString())));
                     worksheet.Cell(row, 5).SetText(string.Join(',', effects.Jumps));
 
                     foreach (var slot in slotIds)
