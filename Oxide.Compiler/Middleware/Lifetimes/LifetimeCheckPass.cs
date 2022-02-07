@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Oxide.Compiler.IR;
 using Oxide.Compiler.IR.Instructions;
+using Oxide.Compiler.IR.TypeRefs;
 using Oxide.Compiler.IR.Types;
 
 namespace Oxide.Compiler.Middleware.Lifetimes;
@@ -14,6 +16,8 @@ public class LifetimeCheckPass
     private Dictionary<int, SlotDeclaration> _slots;
 
     private FunctionLifetime _functionLifetime;
+
+    private Dictionary<int, Instruction> _valueCreations;
 
     public LifetimeCheckPass(MiddlewareManager manager)
     {
@@ -66,11 +70,24 @@ public class LifetimeCheckPass
         }
 
         // Check borrows are extended
+        var returnInstructions = new List<ReturnInst>();
+        _valueCreations = new Dictionary<int, Instruction>();
         foreach (var block in func.Blocks)
         {
             foreach (var inst in block.Instructions)
             {
                 var lifetime = GetLifetime(inst);
+
+                if (inst is ReturnInst returnInst)
+                {
+                    returnInstructions.Add(returnInst);
+                }
+
+                foreach (var id in lifetime.ProducedValues)
+                {
+                    _valueCreations.Add(id, inst);
+                }
+
                 var incomingRequirements = new Dictionary<int, HashSet<Requirement>>();
 
                 foreach (var slotId in lifetime.ActiveSlots)
@@ -230,6 +247,117 @@ public class LifetimeCheckPass
                 }
             }
         }
+
+        // Check return lifetimes
+        foreach (var returnInst in returnInstructions)
+        {
+            var lifetime = GetLifetime(returnInst);
+            if (!returnInst.ReturnSlot.HasValue)
+            {
+                continue;
+            }
+
+            var slotDef = _slots[returnInst.ReturnSlot.Value];
+            if (slotDef.Type is not BorrowTypeRef)
+            {
+                continue;
+            }
+
+            var slot = lifetime.GetSlot(returnInst.ReturnSlot.Value);
+            if (slot.Values.Count == 0)
+            {
+                throw new Exception("Return slot has no value");
+            }
+
+            var sourceParams = new HashSet<int>();
+            var allDerived = true;
+            foreach (var value in slot.Values)
+            {
+                var inprogress = new HashSet<int>();
+                if (!CheckValueOrigin(value, sourceParams, inprogress))
+                {
+                    allDerived = true;
+                }
+            }
+
+            if (!allDerived)
+            {
+                throw new Exception("Borrowed value return is not derived from source parameters");
+            }
+
+            if (sourceParams.Count != 1)
+            {
+                throw new Exception("Borrowed value return is derived from multiple parameters");
+            }
+
+            if (sourceParams.Single() != 0)
+            {
+                throw new Exception("Borrowed value return is not derived from this parameter");
+            }
+        }
+    }
+
+    private bool CheckValueOrigin(int value, HashSet<int> sourceParams, HashSet<int> inprogress)
+    {
+        var slot = _functionLifetime.ValueMap[value];
+        var slotDef = _slots[slot];
+
+        if (slotDef.Type is BaseTypeRef)
+        {
+            Console.WriteLine("Saw base type while tracing origin");
+            return false;
+        }
+
+        if (_functionLifetime.ValueSourceParameters.TryGetValue(value, out var param))
+        {
+            sourceParams.Add(param);
+            return true;
+        }
+
+        if (!_valueCreations.TryGetValue(value, out var inst))
+        {
+            throw new Exception("Unknown value origin");
+        }
+
+        var lifetime = GetLifetime(inst);
+        var writeData = lifetime.Effects.Writes.Single(x => x.Slot == slot);
+
+        int sourceSlot;
+        if (writeData.MoveSource.HasValue)
+        {
+            sourceSlot = writeData.MoveSource.Value;
+        }
+        else if (writeData.ReferenceSource.HasValue)
+        {
+            sourceSlot = writeData.ReferenceSource.Value;
+        }
+        else
+        {
+            Console.WriteLine("Hit new value while tracing origin");
+            return false;
+        }
+
+        var sourceState = lifetime.GetSlot(sourceSlot);
+        var values = sourceState.Values.Where(x => !inprogress.Contains(x)).ToArray();
+        if (values.Length == 0)
+        {
+            throw new Exception("Source slot has no checkable values");
+        }
+
+        inprogress.Add(value);
+
+        var allDerived = true;
+        foreach (var sourceValue in values)
+        {
+            if (!CheckValueOrigin(sourceValue, sourceParams, inprogress))
+            {
+                allDerived = false;
+            }
+        }
+
+        inprogress.Remove(value);
+
+        return allDerived;
     }
 
     private InstructionLifetime GetLifetime(Instruction inst)

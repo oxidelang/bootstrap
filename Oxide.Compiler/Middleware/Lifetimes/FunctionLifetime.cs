@@ -16,6 +16,8 @@ public class FunctionLifetime
 
     public Dictionary<int, int> ValueMap { get; }
 
+    public Dictionary<int, int> ValueSourceParameters { get; }
+
     public FunctionLifetime()
     {
         IncomingBlocks = new Dictionary<int, HashSet<int>>();
@@ -23,5 +25,6 @@ public class FunctionLifetime
         ValueRequirements = new Dictionary<int, HashSet<Requirement>>();
         DirectRequirements = new Dictionary<int, HashSet<Requirement>>();
         ValueMap = new Dictionary<int, int>();
+        ValueSourceParameters = new Dictionary<int, int>();
     }
 }

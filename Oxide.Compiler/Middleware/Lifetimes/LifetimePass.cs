@@ -313,7 +313,9 @@ public class LifetimePass
                 var slotState = lifetime.GetSlot(slot.Id);
                 if (slot.ParameterSource.HasValue)
                 {
-                    slotState.AddValues(new HashSet<int> { AllocateValue(slot.Id) });
+                    var writeId = AllocateValue(slot.Id);
+                    slotState.AddValues(new HashSet<int> { writeId });
+                    _functionLifetime.ValueSourceParameters.Add(writeId, slot.ParameterSource.Value);
                     lifetime.Set.Add(slot.Id);
                 }
                 else
@@ -334,7 +336,9 @@ public class LifetimePass
                     : lifetime;
 
                 var slotState = targetLifetime.GetSlot(write.Slot);
-                slotState.AddValues(new HashSet<int> { AllocateValue(write.Slot) });
+                var writeId = AllocateValue(write.Slot);
+                slotState.AddValues(new HashSet<int> { writeId });
+                lifetime.ProducedValues.Add(writeId);
 
                 // if (write.ReferenceSource.HasValue)
                 // {
