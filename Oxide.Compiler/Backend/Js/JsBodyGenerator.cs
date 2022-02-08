@@ -294,6 +294,9 @@ public class JsBodyGenerator
             case AllocStructInst allocStructInst:
                 CompileAllocStructInst(allocStructInst);
                 break;
+            case UnaryInst unaryInst:
+                CompileUnaryInstruction(unaryInst);
+                break;
             case SlotBorrowInst slotBorrowInst:
                 CompileSlotBorrowInst(slotBorrowInst);
                 break;
@@ -320,6 +323,9 @@ public class JsBodyGenerator
                 break;
             case JumpVariantInst jumpVariantInst:
                 CompileJumpVariantInst(jumpVariantInst);
+                break;
+            case RefDeriveInst refDeriveInst:
+                CompileRefDeriveInst(refDeriveInst);
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(instruction));
@@ -630,22 +636,28 @@ public class JsBodyGenerator
                     {
                         converted = value;
                     }
+                    else if (toWidth < fromWidth)
+                    {
+                        converted = $"OxideMath.trunc({value}, {toWidth})";
+                    }
+                    else if (PrimitiveType.IsSigned(fromKind))
+                    {
+                        converted = $"OxideMath.ext({value}, {toWidth})";
+                    }
                     else
                     {
-                        throw new NotImplementedException();
+                        converted = $"OxideMath.uext({value}, {toWidth})";
                     }
-                    // else if (toWidth < fromWidth)
-                    // {
-                    //     converted = Builder.BuildTrunc(value, targetLlvmType, $"inst_{inst.Id}_trunc");
-                    // }
-                    // else if (PrimitiveType.IsSigned(fromKind))
-                    // {
-                    //     converted = Builder.BuildSExt(value, targetLlvmType, $"inst_{inst.Id}_sext");
-                    // }
-                    // else
-                    // {
-                    //     converted = Builder.BuildZExt(value, targetLlvmType, $"inst_{inst.Id}_zext");
-                    // }
+                }
+                else if (
+                    baseTypeRef is ConcreteTypeRef concreteTypeRef &&
+                    targetType is DerivedRefTypeRef derivedRefTypeRef &&
+                    Equals(concreteTypeRef.Name, QualifiedName.From("std", "DerivedBox")) &&
+                    derivedRefTypeRef.StrongRef &&
+                    Equals(derivedRefTypeRef.InnerType, concreteTypeRef.GenericParams.Single())
+                )
+                {
+                    converted = value;
                 }
                 else
                 {
@@ -658,11 +670,6 @@ public class JsBodyGenerator
                 if (targetType is not BorrowTypeRef && targetType is not PointerTypeRef)
                 {
                     throw new Exception("Incompatible conversion");
-                }
-
-                if (!CurrentBlock.Scope.Unsafe)
-                {
-                    throw new Exception("Conversion is unsafe");
                 }
 
                 converted = value;
@@ -732,24 +739,131 @@ public class JsBodyGenerator
         MarkActive(inst.ResultSlot);
     }
 
-    private void CompileRefBorrow(RefBorrowInst inst)
+    private void CompileRefDeriveInst(RefDeriveInst inst)
     {
-        var (type, value) = LoadSlot(inst.SourceSlot, $"inst_{inst.Id}_load");
-        if (type is not ReferenceTypeRef referenceTypeRef)
+        var (type, value) = GetSlotRef(inst.SourceSlot);
+        var properties = Store.GetCopyProperties(type);
+        var slotLifetime = GetLifetime(inst).GetSlot(inst.SourceSlot);
+
+        string fromValue;
+        if (slotLifetime.Status == SlotStatus.Moved)
+        {
+            (_, fromValue) = LoadSlot(inst.SourceSlot, $"inst_{inst.Id}_move");
+            MarkMoved(inst.SourceSlot);
+        }
+        else if (properties.CanCopy)
+        {
+            fromValue = GenerateCopy(type, properties, value, $"inst_{inst.Id}_copy");
+        }
+        else
+        {
+            throw new Exception("Value is not moveable");
+        }
+
+        DropIfActive(inst.ResultSlot, $"inst_{inst.Id}_existing");
+
+        string boxPtr;
+        TypeRef ptrType;
+        string ptrValue;
+
+        if (type is DerivedRefTypeRef derivedRefTypeRef)
+        {
+            var ptrOffset = Backend.GetDerivedBoxPtrFieldOffset((ConcreteTypeRef)derivedRefTypeRef.InnerType);
+            boxPtr = ExtractUSize(fromValue, ptrOffset, $"inst_{inst.Id}_box_ptr");
+
+            var valueOffset = Backend.GetDerivedBoxValueFieldOffset((ConcreteTypeRef)derivedRefTypeRef.InnerType);
+            ptrValue = ExtractUSize(fromValue, valueOffset, $"inst_{inst.Id}_value");
+
+            ptrType = derivedRefTypeRef.InnerType;
+        }
+        else if (type is ReferenceTypeRef referenceTypeRef)
+        {
+            if (!referenceTypeRef.StrongRef)
+            {
+                throw new Exception("Cannot derive weak reference");
+            }
+
+            boxPtr = fromValue;
+            var offset = Backend.GetBoxValueOffset((ConcreteTypeRef)referenceTypeRef.InnerType);
+            ptrValue = $"inst_{inst.Id}_box";
+            Writer.WriteLine($"var {ptrValue} = {boxPtr} + {offset};");
+            ptrType = referenceTypeRef.InnerType;
+        }
+        else
         {
             throw new Exception("Source is not a reference");
         }
 
-        if (!referenceTypeRef.StrongRef)
+        if (inst.FieldName != null)
         {
-            throw new Exception("Cannot borrow weak reference");
+            var structType = (ConcreteTypeRef)ptrType;
+            var fieldOffset = Backend.GetFieldOffset(structType, inst.FieldName);
+            ptrValue = $"{ptrValue} + {fieldOffset}";
         }
 
-        var targetType = new BorrowTypeRef(referenceTypeRef.InnerType, false);
-        var offset = Backend.GetBoxValueOffset((ConcreteTypeRef)referenceTypeRef.InnerType);
+        var targetMethod = ConcreteTypeRef.From(
+            QualifiedName.From("std", "derived_create"),
+            ptrType
+        );
+        var funcRef = Backend.GenerateKeyName(new FunctionRef
+        {
+            TargetMethod = targetMethod
+        });
 
-        StoreSlot(inst.ResultSlot, $"{value} + {offset}", targetType);
+        var destValue = $"inst_{inst.Id}_derived";
+        Writer.WriteLine($"var {destValue} = {funcRef}(heap, {boxPtr}, {ptrValue});");
+        var returnType = new DerivedRefTypeRef(ptrType, true);
+
+        StoreSlot(inst.ResultSlot, destValue, returnType);
         MarkActive(inst.ResultSlot);
+    }
+
+    private void CompileRefBorrow(RefBorrowInst inst)
+    {
+        var (type, value) = LoadSlot(inst.SourceSlot, $"inst_{inst.Id}_load");
+
+
+        TypeRef innerType;
+        string resultValue;
+
+        if (type is ReferenceTypeRef referenceTypeRef)
+        {
+            if (!referenceTypeRef.StrongRef)
+            {
+                throw new Exception("Cannot borrow weak reference");
+            }
+
+            innerType = referenceTypeRef.InnerType;
+            var offset = Backend.GetBoxValueOffset((ConcreteTypeRef)referenceTypeRef.InnerType);
+            resultValue = $"{value} + {offset}";
+        }
+        else if (type is DerivedRefTypeRef derivedRefTypeRef)
+        {
+            if (!derivedRefTypeRef.StrongRef)
+            {
+                throw new Exception("Cannot borrow weak reference");
+            }
+
+            innerType = derivedRefTypeRef.InnerType;
+            var offset = Backend.GetDerivedBoxValueFieldOffset((ConcreteTypeRef)derivedRefTypeRef.InnerType);
+            resultValue = ExtractUSize(value, offset, $"inst_{inst.Id}_db");
+        }
+        else
+        {
+            throw new Exception("Source is not a reference");
+        }
+
+        var targetType = new BorrowTypeRef(innerType, false);
+
+        StoreSlot(inst.ResultSlot, resultValue, targetType);
+        MarkActive(inst.ResultSlot);
+    }
+
+    private string ExtractUSize(string source, uint offset, string name)
+    {
+        Writer.WriteLine($"var {name}_view = new DataView({source});");
+        Writer.WriteLine($"var {name}_value = {name}_view.getUint32({offset}, heap.le);");
+        return $"{name}_value";
     }
 
     private void CompileStoreIndirectInst(StoreIndirectInst inst)
@@ -1003,6 +1117,7 @@ public class JsBodyGenerator
             {
                 case BaseTypeRef:
                 case ReferenceTypeRef:
+                case DerivedRefTypeRef:
                     matches = Equals(argType, paramType);
                     break;
                 case BorrowTypeRef borrowTypeRef:
@@ -1334,6 +1449,8 @@ public class JsBodyGenerator
             throw new NotImplementedException("Arithmetic of non-integers not implemented");
         }
 
+        var signed = IsSignedInteger(leftType);
+
         switch (inst.Op)
         {
             case ArithmeticInst.Operation.Add:
@@ -1348,11 +1465,45 @@ public class JsBodyGenerator
             case ArithmeticInst.Operation.LogicalOr:
                 value = $"OxideMath.or({left}, {right})";
                 break;
+            case ArithmeticInst.Operation.Mod:
+                value = $"OxideMath.{(signed ? "mod" : "umod")}({left}, {right})";
+                break;
+            case ArithmeticInst.Operation.Multiply:
+                value = $"OxideMath.{(signed ? "mult" : "umult")}({left}, {right})";
+                break;
+            case ArithmeticInst.Operation.Divide:
+                value = $"OxideMath.{(signed ? "div" : "udiv")}({left}, {right})";
+                break;
             default:
                 throw new ArgumentOutOfRangeException();
         }
 
         StoreSlot(inst.ResultSlot, value, leftType);
+        MarkActive(inst.ResultSlot);
+    }
+
+    private void CompileUnaryInstruction(UnaryInst inst)
+    {
+        var name = $"inst_{inst.Id}";
+        var (valueType, value) = LoadSlot(inst.Value, $"{name}_value");
+        string result;
+
+        var integer = IsIntegerBacked(valueType);
+        if (!integer)
+        {
+            throw new NotImplementedException("Unary operations on non-integers not implemented");
+        }
+
+        switch (inst.Op)
+        {
+            case UnaryInst.Operation.Not:
+                result = $"OxideMath.not({value})";
+                break;
+            default:
+                throw new ArgumentOutOfRangeException();
+        }
+
+        StoreSlot(inst.ResultSlot, result, valueType);
         MarkActive(inst.ResultSlot);
     }
 

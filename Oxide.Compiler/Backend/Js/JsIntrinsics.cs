@@ -55,6 +55,21 @@ public class JsIntrinsics
         generator.StoreSlot(inst.ResultSlot.Value, val, valType);
     }
 
+    public static void TypeDrop(JsBodyGenerator generator, StaticCallInst inst, FunctionRef key)
+    {
+        if (inst.Arguments.Count != 2)
+        {
+            throw new Exception("Unexpected number of arguments");
+        }
+
+        var (_, typeId) = generator.LoadSlot(inst.Arguments[0], $"inst_{inst.Id}_type_id");
+        var typeIdVal = $"inst_{inst.Id}_type_id_value";
+        generator.Writer.WriteLine($"var {typeIdVal} = OxideMath.toI32({typeId});");
+
+        var (_, valuePtr) = generator.LoadSlot(inst.Arguments[1], $"inst_{inst.Id}_value_ptr");
+        generator.Writer.WriteLine($"OxideTypes.typetable[{typeIdVal}].drop_ptr(heap, {valuePtr});");
+    }
+
     public static void AtomicSwap(JsBodyGenerator generator, StaticCallInst inst, FunctionRef key)
     {
         if (inst.Arguments.Count != 3)
