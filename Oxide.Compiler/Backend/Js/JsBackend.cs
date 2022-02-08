@@ -31,19 +31,29 @@ public class JsBackend
 
     private List<JsWriter> _functionWriters;
 
+    private Dictionary<TypeRef, int> _typeInfos;
+
+    private int _lastTypeId = 1;
+
     public JsBackend(IrStore store, MiddlewareManager middleware)
     {
         Store = store;
         Middleware = middleware;
         _typeSizes = new Dictionary<ConcreteTypeRef, uint>();
-        _typeSizes.Add(PrimitiveKind.USize.GetRef(), 4);
-        _typeSizes.Add(PrimitiveKind.U8.GetRef(), 1);
-        _typeSizes.Add(PrimitiveKind.I32.GetRef(), 4);
-        _typeSizes.Add(PrimitiveKind.Bool.GetRef(), 1);
+        foreach (var kind in Enum.GetValues<PrimitiveKind>())
+        {
+            var kindRef = kind.GetRef();
+            var size = Math.Max(8, PrimitiveType.GetWidth(kind, true)) / 8;
+            _typeSizes.Add(kindRef, (uint)size);
+        }
 
         _intrinsics = new Dictionary<QualifiedName, IntrinsicMapper>();
         _intrinsics.Add(QualifiedName.From("std", "size_of"), JsIntrinsics.SizeOf);
         _intrinsics.Add(QualifiedName.From("std", "bitcopy"), JsIntrinsics.Bitcopy);
+        _intrinsics.Add(QualifiedName.From("std", "type_id"), JsIntrinsics.TypeId);
+        _intrinsics.Add(QualifiedName.From("std", "atomic_swap"), JsIntrinsics.AtomicSwap);
+        _intrinsics.Add(QualifiedName.From("std", "atomic_add"), JsIntrinsics.AtomicAdd);
+        _intrinsics.Add(QualifiedName.From("std", "atomic_sub"), JsIntrinsics.AtomicSub);
     }
 
     public void Compile(string path)
@@ -51,6 +61,8 @@ public class JsBackend
         _functionWriters = new List<JsWriter>();
         Writer = new JsWriter();
         _dropFuncs = new Dictionary<TypeRef, string>();
+
+        _typeInfos = new Dictionary<TypeRef, int>();
 
         // Create types
         foreach (var usedType in Middleware.Usage.UsedTypes.Values)
@@ -84,6 +96,19 @@ public class JsBackend
         }
 
         File.WriteAllText($"{path}/compiled.js", Writer.Generate());
+    }
+
+    public int GetTypeInfo(TypeRef typeRef)
+    {
+        if (_typeInfos.TryGetValue(typeRef, out var id))
+        {
+            return id;
+        }
+
+        id = _lastTypeId++;
+        _typeInfos.Add(typeRef, id);
+
+        return id;
     }
 
     private void CreateType(UsedType usedType)
@@ -681,25 +706,9 @@ public class JsBackend
     {
         switch (type)
         {
-            case ConcreteTypeRef concreteTypeRef:
-                if (Equals(concreteTypeRef, PrimitiveKind.U8.GetRef()) ||
-                    Equals(concreteTypeRef, PrimitiveKind.Bool.GetRef()))
-                {
-                    return $"heap.readU8({pointer})";
-                }
-                else if (Equals(concreteTypeRef, PrimitiveKind.USize.GetRef()))
-                {
-                    return $"heap.readU32({pointer})";
-                }
-                else if (Equals(concreteTypeRef, PrimitiveKind.I32.GetRef()))
-                {
-                    return $"heap.readI32({pointer})";
-                }
-                else
-                {
-                    var size = GetSize(type);
-                    return $"heap.readBlob({pointer}, {size})";
-                }
+            case ConcreteTypeRef:
+                var size = GetSize(type);
+                return $"heap.readBlob({pointer}, {size})";
             case BaseTypeRef:
                 throw new Exception("Not resolved");
             case BorrowTypeRef:
@@ -715,24 +724,8 @@ public class JsBackend
     {
         switch (type)
         {
-            case ConcreteTypeRef concreteTypeRef:
-                if (Equals(concreteTypeRef, PrimitiveKind.U8.GetRef()) ||
-                    Equals(concreteTypeRef, PrimitiveKind.Bool.GetRef()))
-                {
-                    return $"{heapName}.writeU8({pointer}, {value});";
-                }
-                else if (Equals(concreteTypeRef, PrimitiveKind.USize.GetRef()))
-                {
-                    return $"{heapName}.writeU32({pointer}, {value});";
-                }
-                else if (Equals(concreteTypeRef, PrimitiveKind.I32.GetRef()))
-                {
-                    return $"{heapName}.writeI32({pointer}, {value});";
-                }
-                else
-                {
-                    return $"{heapName}.writeBlob({pointer}, {value});";
-                }
+            case ConcreteTypeRef:
+                return $"{heapName}.writeBlob({pointer}, {value});";
             case BaseTypeRef:
                 throw new Exception("Not resolved");
             case BorrowTypeRef:
@@ -916,6 +909,8 @@ public class JsBackend
                 throw new Exception("Unexpected function type");
             case Interface interfaceDef:
                 throw new NotImplementedException("Interface types not implemented");
+            case OxEnum oxEnum:
+                return GetConcreteTypeSize(oxEnum.UnderlyingType.GetRef());
             case Variant variantDef:
             {
                 var bodySize = GetVariantBodySize(variantDef, typeRef.GenericParams);

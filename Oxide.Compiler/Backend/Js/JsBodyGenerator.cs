@@ -1171,9 +1171,8 @@ public class JsBodyGenerator
                 throw new Exception("Invalid condition type");
             }
 
-
             Writer.WriteLine(
-                $"__block = {cond} ? \"{GetJumpTrampoline(CurrentBlock.Id, inst.TargetBlock)}\" :" +
+                $"__block = OxideMath.toBool({cond}) ? \"{GetJumpTrampoline(CurrentBlock.Id, inst.TargetBlock)}\" :" +
                 $" \"{GetJumpTrampoline(CurrentBlock.Id, inst.ElseBlock)}\";"
             );
             Writer.WriteLine("continue __block_loop;");
@@ -1287,25 +1286,27 @@ public class JsBodyGenerator
             throw new NotImplementedException("Comparison of non-integers not implemented");
         }
 
+        var signed = IsSignedInteger(leftType);
+
         switch (inst.Op)
         {
             case ComparisonInst.Operation.Eq:
-                value = $"{left} == {right}";
+                value = $"OxideMath.equal({left}, {right})";
                 break;
             case ComparisonInst.Operation.NEq:
-                value = $"{left} != {right}";
+                value = $"OxideMath.not(OxideMath.equal({left}, {right}))";
                 break;
             case ComparisonInst.Operation.GEq:
-                value = $"{left} >= {right}";
+                value = $"OxideMath.fromBool(OxideMath.{(signed ? "cmp" : "ucmp")}({left}, {right}) >= 0)";
                 break;
             case ComparisonInst.Operation.LEq:
-                value = $"{left} <= {right}";
+                value = $"OxideMath.fromBool(OxideMath.{(signed ? "cmp" : "ucmp")}({left}, {right}) <= 0)";
                 break;
             case ComparisonInst.Operation.Gt:
-                value = $"{left} > {right}";
+                value = $"OxideMath.fromBool(OxideMath.{(signed ? "cmp" : "ucmp")}({left}, {right}) == 1)";
                 break;
             case ComparisonInst.Operation.Lt:
-                value = $"{left} < {right}";
+                value = $"OxideMath.fromBool(OxideMath.{(signed ? "cmp" : "ucmp")}({left}, {right}) == -1)";
                 break;
             default:
                 throw new ArgumentOutOfRangeException();
@@ -1336,16 +1337,16 @@ public class JsBodyGenerator
         switch (inst.Op)
         {
             case ArithmeticInst.Operation.Add:
-                value = $"{left} + {right}";
+                value = $"OxideMath.add({left}, {right})";
                 break;
             case ArithmeticInst.Operation.Minus:
-                value = $"{left} - {right}";
+                value = $"OxideMath.sub({left}, {right})";
                 break;
             case ArithmeticInst.Operation.LogicalAnd:
-                value = $"{left} && {right}";
+                value = $"OxideMath.and({left}, {right})";
                 break;
             case ArithmeticInst.Operation.LogicalOr:
-                value = $"{left} || {right}";
+                value = $"OxideMath.or({left}, {right})";
                 break;
             default:
                 throw new ArgumentOutOfRangeException();
@@ -1357,24 +1358,41 @@ public class JsBodyGenerator
 
     private void CompileConstInst(ConstInst inst)
     {
-        string value;
+        var (valType, value) = GetConstValue(inst.Value, inst.ConstType);
+        StoreSlot(inst.TargetSlot, value, valType);
+        MarkActive(inst.TargetSlot);
+    }
+
+    public (TypeRef t, string v) GetConstValue(object value, PrimitiveKind kind)
+    {
         TypeRef valType;
-        switch (inst.ConstType)
+        byte[] bytes;
+        switch (kind)
         {
             case PrimitiveKind.I32:
-                value = inst.Value.ToString();
+                bytes = BitConverter.GetBytes((int)value);
                 valType = PrimitiveKind.I32.GetRef();
                 break;
+            case PrimitiveKind.U32:
+                bytes = BitConverter.GetBytes((uint)value);
+                valType = PrimitiveKind.U32.GetRef();
+                break;
+            case PrimitiveKind.USize:
+                bytes = BitConverter.GetBytes((uint)value);
+                valType = PrimitiveKind.USize.GetRef();
+                break;
             case PrimitiveKind.Bool:
-                value = (bool)inst.Value ? "1" : "0";
+                bytes = new[] { (byte)((bool)value ? 255 : 0) };
                 valType = PrimitiveKind.Bool.GetRef();
                 break;
             default:
                 throw new ArgumentOutOfRangeException();
         }
 
-        StoreSlot(inst.TargetSlot, value, valType);
-        MarkActive(inst.TargetSlot);
+        if (!BitConverter.IsLittleEndian)
+            Array.Reverse(bytes);
+
+        return (valType, $"Uint8Array.from([{string.Join(", ", bytes.Select(x => x.ToString()))}]).buffer");
     }
 
     private void CompileMoveInst(MoveInst inst)
@@ -1562,9 +1580,13 @@ public class JsBodyGenerator
             throw new NotImplementedException("Non direct types");
         }
 
-        return Equals(concreteTypeRef, PrimitiveKind.I32.GetRef()) ||
-               Equals(concreteTypeRef, PrimitiveKind.USize.GetRef()) ||
-               Equals(concreteTypeRef, PrimitiveKind.Bool.GetRef());
+        var kind = PrimitiveType.GetPossibleKind(concreteTypeRef);
+        if (kind == null)
+        {
+            return false;
+        }
+
+        return PrimitiveType.IsInt(kind.Value) || kind.Value == PrimitiveKind.Bool;
     }
 
     private bool IsSignedInteger(TypeRef typeRef)
@@ -1574,7 +1596,12 @@ public class JsBodyGenerator
             throw new NotImplementedException("Non direct types");
         }
 
-        return Equals(concreteTypeRef, PrimitiveKind.I32.GetRef()) ||
-               Equals(concreteTypeRef, PrimitiveKind.Bool.GetRef());
+        var kind = PrimitiveType.GetPossibleKind(concreteTypeRef);
+        if (kind == null)
+        {
+            return false;
+        }
+
+        return PrimitiveType.IsSigned(kind.Value) || kind.Value == PrimitiveKind.Bool;
     }
 }
