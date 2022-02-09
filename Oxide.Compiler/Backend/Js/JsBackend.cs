@@ -873,6 +873,8 @@ public class JsBackend
                 return (pointerTypeRef.MutableRef ? "_PTRMUT_" : "_PTR_") + GenerateName(pointerTypeRef.InnerType);
             case ReferenceTypeRef referenceTypeRef:
                 return (referenceTypeRef.StrongRef ? "_REF_" : "_REFWEAK_") + GenerateName(referenceTypeRef.InnerType);
+            case DerivedRefTypeRef derivedRefTypeRef:
+                return (derivedRefTypeRef.StrongRef ? "_DERREF_" : "_DERREFWEAK_") + GenerateName(derivedRefTypeRef.InnerType);
             default:
                 throw new ArgumentOutOfRangeException(nameof(typeRef));
         }

@@ -797,6 +797,12 @@ public class JsBodyGenerator
         if (inst.FieldName != null)
         {
             var structType = (ConcreteTypeRef)ptrType;
+            var structDef = Store.Lookup<Struct>(structType.Name);
+            var index = structDef.Fields.FindIndex(x => x.Name == inst.FieldName);
+            var fieldDef = structDef.Fields[index];
+            var structContext = new GenericContext(null, structDef.GenericParams, structType.GenericParams, null);
+            ptrType = structContext.ResolveRef(fieldDef.Type);
+
             var fieldOffset = Backend.GetFieldOffset(structType, inst.FieldName);
             ptrValue = $"{ptrValue} + {fieldOffset}";
         }
