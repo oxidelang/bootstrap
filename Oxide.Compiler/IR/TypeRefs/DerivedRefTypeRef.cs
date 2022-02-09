@@ -48,4 +48,14 @@ public class DerivedRefTypeRef : TypeRef
 
         return sb.ToString();
     }
+
+    public override string ToPrettyString()
+    {
+        var sb = new StringBuilder();
+        sb.Append(StrongRef ? "~ref" : "~weak");
+        sb.Append(' ');
+        sb.Append(InnerType.ToPrettyString());
+
+        return sb.ToString();
+    }
 }

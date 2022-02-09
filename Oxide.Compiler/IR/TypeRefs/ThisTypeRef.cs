@@ -29,4 +29,9 @@ public class ThisTypeRef : BaseTypeRef
         sb.Append("[this]");
         return sb.ToString();
     }
+
+    public override string ToPrettyString()
+    {
+        return "this";
+    }
 }

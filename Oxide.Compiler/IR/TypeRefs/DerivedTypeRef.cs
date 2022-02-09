@@ -46,4 +46,15 @@ public class DerivedTypeRef : BaseTypeRef
         sb.Append("]");
         return sb.ToString();
     }
+
+    public override string ToPrettyString()
+    {
+        var sb = new StringBuilder();
+        sb.Append(BaseRef.ToPrettyString());
+        sb.Append("::");
+        sb.Append(CastType.ToPrettyString());
+        sb.Append("::");
+        sb.Append(Target);
+        return sb.ToString();
+    }
 }

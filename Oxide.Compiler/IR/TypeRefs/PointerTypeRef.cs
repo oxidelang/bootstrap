@@ -48,4 +48,14 @@ public class PointerTypeRef : TypeRef
 
         return sb.ToString();
     }
+
+    public override string ToPrettyString()
+    {
+        var sb = new StringBuilder();
+        sb.Append("*");
+        sb.Append(MutableRef ? "mut " : "");
+        sb.Append(InnerType.ToPrettyString());
+
+        return sb.ToString();
+    }
 }

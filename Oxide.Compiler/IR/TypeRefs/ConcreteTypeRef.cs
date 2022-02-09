@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using System.Text;
 
 namespace Oxide.Compiler.IR.TypeRefs;
@@ -55,6 +56,20 @@ public class ConcreteTypeRef : BaseTypeRef
         }
 
         sb.Append("]");
+
+        return sb.ToString();
+    }
+
+    public override string ToPrettyString()
+    {
+        var sb = new StringBuilder();
+        sb.Append(Name);
+        if (GenericParams.Length > 0)
+        {
+            sb.Append('<');
+            sb.Append(string.Join(", ", GenericParams.Select(x => x.ToPrettyString())));
+            sb.Append('>');
+        }
 
         return sb.ToString();
     }

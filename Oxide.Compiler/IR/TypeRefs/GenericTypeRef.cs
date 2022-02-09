@@ -39,4 +39,9 @@ public class GenericTypeRef : BaseTypeRef
 
         return sb.ToString();
     }
+
+    public override string ToPrettyString()
+    {
+        return Name;
+    }
 }
