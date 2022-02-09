@@ -1,3 +1,4 @@
+using System;
 using Oxide.Compiler.IR;
 using Oxide.Compiler.IR.Types;
 using Oxide.Compiler.Middleware.Lifetimes;
@@ -36,5 +37,8 @@ public class MiddlewareManager
 
         var refChecker = new RefCheckPass(this);
         refChecker.Analyse();
+
+        var derivedRefChecker = new DerivedRefCheckPass(this);
+        derivedRefChecker.Analyse();
     }
 }

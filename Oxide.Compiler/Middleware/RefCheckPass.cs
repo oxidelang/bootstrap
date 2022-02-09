@@ -4,7 +4,6 @@ using System.Linq;
 using Oxide.Compiler.IR;
 using Oxide.Compiler.IR.TypeRefs;
 using Oxide.Compiler.IR.Types;
-using Oxide.Compiler.Middleware.Lifetimes;
 using Oxide.Compiler.Middleware.Usage;
 
 namespace Oxide.Compiler.Middleware;
@@ -49,7 +48,7 @@ public class RefCheckPass
     private bool CheckType(OxType type, UsedTypeVersion version)
     {
         var concreteType = new ConcreteTypeRef(version.Type.Name, version.Generics);
-        Console.WriteLine($" - Checking {concreteType}");
+        Console.WriteLine($" - Checking {concreteType.ToPrettyString()}");
         var context = new GenericContext(null, type.GenericParams, concreteType.GenericParams, concreteType);
 
         switch (type)

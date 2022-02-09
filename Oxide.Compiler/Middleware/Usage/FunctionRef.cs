@@ -1,4 +1,5 @@
 using System;
+using System.Text;
 using Oxide.Compiler.IR.TypeRefs;
 
 namespace Oxide.Compiler.Middleware.Usage;
@@ -35,5 +36,27 @@ public class FunctionRef
     {
         return
             $"{nameof(TargetType)}: {TargetType}, {nameof(TargetImplementation)}: {TargetImplementation}, {nameof(TargetMethod)}: {TargetMethod}";
+    }
+
+    public string ToPrettyString()
+    {
+        var sb = new StringBuilder();
+        if (TargetImplementation != null)
+        {
+            sb.Append('<');
+            sb.Append(TargetType.ToPrettyString());
+            sb.Append(" as ");
+            sb.Append(TargetImplementation.ToPrettyString());
+            sb.Append(">::");
+        }
+        else if (TargetType != null)
+        {
+            sb.Append(TargetType.ToPrettyString());
+            sb.Append("::");
+        }
+
+        sb.Append(TargetMethod.ToPrettyString());
+
+        return sb.ToString();
     }
 }
