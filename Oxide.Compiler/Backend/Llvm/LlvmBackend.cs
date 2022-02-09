@@ -514,6 +514,8 @@ public class LlvmBackend
                 return (pointerTypeRef.MutableRef ? "*mut " : "*") + GenerateName(pointerTypeRef.InnerType);
             case ReferenceTypeRef referenceTypeRef:
                 return (referenceTypeRef.StrongRef ? "ref " : "weak ") + GenerateName(referenceTypeRef.InnerType);
+            case DerivedRefTypeRef derivedRefTypeRef:
+                return (derivedRefTypeRef.StrongRef ? "~ref " : "~weak ") + GenerateName(derivedRefTypeRef.InnerType);
             default:
                 throw new ArgumentOutOfRangeException(nameof(typeRef));
         }
