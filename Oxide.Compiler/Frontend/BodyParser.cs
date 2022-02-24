@@ -870,7 +870,7 @@ public class BodyParser
             case OxideParser.Return_expressionContext returnExpressionContext:
             {
                 var result = returnExpressionContext.or_expression() != null
-                    ? (int?)ParseOrExpression(returnExpressionContext.or_expression())
+                    ? (int?) ParseOrExpression(returnExpressionContext.or_expression())
                         .GenerateMove(this, CurrentBlock).Id
                     : null;
                 CurrentBlock.AddInstruction(new ReturnInst
@@ -1084,30 +1084,57 @@ public class BodyParser
                 var target = ParseType(opCastExpressionContext.type());
                 var slot = exp.GenerateMove(this, CurrentBlock);
 
-                var (castable, unsafeCast) = _store.CanCastTypes(slot.Type, target);
-                if (!castable)
-                {
-                    throw new Exception($"Cannot cast from {slot.Type} to {target}");
-                }
-
-                if (!CurrentScope.Unsafe && unsafeCast)
-                {
-                    throw new Exception($"Cast from {slot.Type} to {target} is unsafe");
-                }
-
                 var resultSlot = CurrentScope.DefineSlot(new SlotDeclaration
                 {
                     Id = ++LastSlotId,
                     Type = target
                 });
 
-                CurrentBlock.AddInstruction(new CastInst
+                if (slot.Type is DerivedRefTypeRef derivedRefTypeRef && target is BorrowTypeRef borrowTypeRef)
                 {
-                    Id = ++LastInstId,
-                    SourceSlot = slot.Id,
-                    ResultSlot = resultSlot.Id,
-                    TargetType = target
-                });
+                    if (!Equals(derivedRefTypeRef.InnerType, borrowTypeRef.InnerType))
+                    {
+                        throw new Exception("Derived reference inner type does not borrow inner type");
+                    }
+
+                    if (!derivedRefTypeRef.StrongRef)
+                    {
+                        throw new Exception("Derived reference is not strong");
+                    }
+
+                    if (borrowTypeRef.MutableRef)
+                    {
+                        throw new Exception("Cannot cast derived ref to a mutable borrow");
+                    }
+
+                    CurrentBlock.AddInstruction(new RefBorrowInst
+                    {
+                        Id = ++LastInstId,
+                        SourceSlot = slot.Id,
+                        ResultSlot = resultSlot.Id,
+                    });
+                }
+                else
+                {
+                    var (castable, unsafeCast) = _store.CanCastTypes(slot.Type, target);
+                    if (!castable)
+                    {
+                        throw new Exception($"Cannot cast from {slot.Type} to {target}");
+                    }
+
+                    if (!CurrentScope.Unsafe && unsafeCast)
+                    {
+                        throw new Exception($"Cast from {slot.Type} to {target} is unsafe");
+                    }
+
+                    CurrentBlock.AddInstruction(new CastInst
+                    {
+                        Id = ++LastInstId,
+                        SourceSlot = slot.Id,
+                        ResultSlot = resultSlot.Id,
+                        TargetType = target
+                    });
+                }
 
                 return new SlotUnrealisedAccess(resultSlot);
             }
@@ -1285,7 +1312,7 @@ public class BodyParser
             throw new Exception("No value to create borrow from");
         }
 
-        if (exp.Type is ReferenceTypeRef { StrongRef: false })
+        if (exp.Type is ReferenceTypeRef {StrongRef: false})
         {
             throw new NotImplementedException("Cannot borrow weak ref");
         }
@@ -1892,7 +1919,7 @@ public class BodyParser
             }
 
             targetType = target;
-            targetMethod = new QualifiedName(false, new[] { functionName });
+            targetMethod = new QualifiedName(false, new[] {functionName});
             functionContext = new GenericContext(null, result.ImplementationGenerics, null);
         }
         else

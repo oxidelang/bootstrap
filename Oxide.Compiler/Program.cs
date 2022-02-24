@@ -1,4 +1,4 @@
-﻿namespace Oxide.Compiler;
+namespace Oxide.Compiler;
 
 class Program
 {
