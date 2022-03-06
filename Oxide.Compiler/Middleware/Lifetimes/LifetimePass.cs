@@ -808,7 +808,7 @@ public class LifetimePass
             }
         }
 
-        workbook.SaveAs($"{outputDest}\\lifetimes.xlsx");
+        workbook.SaveAs($"{outputDest}/lifetimes.xlsx");
 
         var graph = new DotGraph(directed: true);
 

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using Oxide.Compiler.IR;
 using Oxide.Compiler.IR.TypeRefs;
@@ -85,7 +86,7 @@ public class RefCheckPass
                             lastStep = step;
                         }
 
-                        Console.Write($"->{((ConcreteTypeRef)lastStep.FieldType.GetBaseType()).Name}");
+                        Console.Write($"->{((ConcreteTypeRef) lastStep.FieldType.GetBaseType()).Name}");
 
                         Console.WriteLine();
                         detected = true;
@@ -137,7 +138,7 @@ public class RefCheckPass
                                 lastStep = step;
                             }
 
-                            Console.Write($"->{((ConcreteTypeRef)lastStep.FieldType.GetBaseType()).Name}");
+                            Console.Write($"->{((ConcreteTypeRef) lastStep.FieldType.GetBaseType()).Name}");
 
                             Console.WriteLine();
                             detected = true;
@@ -180,7 +181,14 @@ public class RefCheckPass
                         seenTypes.Add(concreteInner);
                     }
 
-                    return CheckCycle(seenTypes, referenceTypeRef.InnerType, steps);
+                    var result = CheckCycle(seenTypes, referenceTypeRef.InnerType, steps);
+
+                    if (referenceTypeRef.InnerType is ConcreteTypeRef concreteInner2)
+                    {
+                        seenTypes.Remove(concreteInner2);
+                    }
+
+                    return result;
                 }
 
                 break;

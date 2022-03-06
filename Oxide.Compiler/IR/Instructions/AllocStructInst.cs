@@ -17,7 +17,7 @@ public class AllocStructInst : Instruction
     public override void WriteIr(IrWriter writer)
     {
         writer.Write(
-            $"allocstruct ${SlotId} {StructType} {string.Join(" ", FieldValues.Select(x => $"{x.Key}={x.Value}"))}");
+            $"allocstruct ${SlotId} {StructType} {string.Join(" ", FieldValues.Select(x => $"{x.Key}=${x.Value}"))}");
     }
 
     public override InstructionEffects GetEffects(IrStore store)
