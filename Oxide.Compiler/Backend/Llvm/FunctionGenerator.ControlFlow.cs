@@ -36,6 +36,10 @@ public partial class FunctionGenerator
         }
     }
 
+    /// <summary>
+    /// Generate a jump trampoline from one block to another. The trampoline will automatically drop any values still
+    /// alive when exiting scopes.
+    /// </summary>
     private LLVMBasicBlockRef GetJumpTrampoline(int from, int to)
     {
         var key = (from, to);
@@ -48,6 +52,7 @@ public partial class FunctionGenerator
         var targetBlock = _func.Blocks.Single(x => x.Id == to);
         var targetBlockRef = _blockMap[to];
 
+        // Find where the scope hierarchy diverges
         var fromScopes = GetScopeHierarchy(fromBlock.Scope);
         var targetScopes = GetScopeHierarchy(targetBlock.Scope);
         var matchesUntil = -1;
@@ -63,9 +68,11 @@ public partial class FunctionGenerator
 
         if (matchesUntil == -1)
         {
+            // Should be impossible
             throw new Exception("No common scopes");
         }
 
+        // If no drops are needed, then don't use a trampoline
         if (fromScopes.Length <= targetScopes.Length && matchesUntil == fromScopes.Length - 1)
         {
             _jumpTrampolines.Add(key, targetBlockRef);
@@ -80,6 +87,7 @@ public partial class FunctionGenerator
 
         var currentScope = fromBlock.Scope;
 
+        // Configure jump block destinations
         while (currentScope.ParentScope != fromScopes[matchesUntil])
         {
             if (currentScope.ParentScope == null)
@@ -108,9 +116,10 @@ public partial class FunctionGenerator
 
     private void CompileJumpVariantInst(JumpVariantInst inst)
     {
-        var variantItemTypeRef = (ConcreteTypeRef)FunctionContext.ResolveRef(inst.VariantItemType);
+        var variantItemTypeRef = (ConcreteTypeRef) FunctionContext.ResolveRef(inst.VariantItemType);
         var (varType, rawVarRef) = GetSlotRef(inst.VariantSlot);
 
+        // Load variant address
         LLVMValueRef varRef;
         switch (varType)
         {
@@ -144,6 +153,7 @@ public partial class FunctionGenerator
         var itemName = variantItemTypeRef.Name.Parts.Last();
         var index = variant.Items.FindIndex(x => x.Name == itemName);
 
+        // Get pointer to type field
         var typeAddr = Builder.BuildInBoundsGEP(
             varRef,
             new[]
@@ -153,11 +163,13 @@ public partial class FunctionGenerator
             },
             $"inst_{inst.Id}_taddr"
         );
+
+        // Check type matches expected
         var typeVal = Builder.BuildLoad(typeAddr, $"inst_{inst.Id}_type");
         var condVal = Builder.BuildICmp(
             LLVMIntPredicate.LLVMIntEQ,
             typeVal,
-            LLVMValueRef.CreateConstInt(LLVMTypeRef.Int8, (ulong)index),
+            LLVMValueRef.CreateConstInt(LLVMTypeRef.Int8, (ulong) index),
             $"inst_{inst.Id}_cond"
         );
 
@@ -182,6 +194,7 @@ public partial class FunctionGenerator
                 throw new ArgumentOutOfRangeException();
         }
 
+        // Get "value" field
         var itemAddr = Builder.BuildInBoundsGEP(
             varRef,
             new[]
@@ -261,6 +274,7 @@ public partial class FunctionGenerator
             StoreSlot(_returnSlot.Value, retValue, retType, true);
         }
 
+        // Configure jump blocks to perform return, dropping along the way
         var currentScope = CurrentBlock.Scope;
 
         while (currentScope.ParentScope != null)
@@ -281,6 +295,10 @@ public partial class FunctionGenerator
         Builder.BuildBr(_scopeJumpBlocks[CurrentBlock.Scope.Id]);
     }
 
+    /// <summary>
+    /// Generate a scope jump block. These handle dropping any values alive in the current scope and then jumping to
+    /// the specified block.
+    /// </summary>
     private void CreateScopeJumpBlock(Scope scope)
     {
         var name = $"scope_{scope.Id}_jump";
@@ -288,6 +306,7 @@ public partial class FunctionGenerator
 
         var finalBlock = _funcRef.AppendBasicBlock($"{name}_final");
 
+        // Find droppable values
         (SlotDeclaration sd, LLVMValueRef dropFunc)[] withDrops = scope.Slots.Values.Select(x =>
         {
             var resolvedType = FunctionContext.ResolveRef(x.Type);
@@ -295,6 +314,7 @@ public partial class FunctionGenerator
             return (x, dropFunc);
         }).Where(x => x.dropFunc != null).Reverse().ToArray();
 
+        // Do drops
         var condBlocks = new LLVMBasicBlockRef[withDrops.Length];
         for (var i = 0; i < withDrops.Length; i++)
         {
@@ -312,7 +332,7 @@ public partial class FunctionGenerator
             Builder.PositionAtEnd(dropBlock);
             var (_, valuePtr) = GetSlotRef(sd.Id, true);
             var value = Builder.BuildLoad(valuePtr, $"{name}_drop_{sd.Id}_value");
-            Builder.BuildCall(dropFunc, new[] { value });
+            Builder.BuildCall(dropFunc, new[] {value});
             MarkMoved(sd.Id);
             Builder.BuildBr(nextBlock);
 
@@ -330,6 +350,7 @@ public partial class FunctionGenerator
         var tgtSlot = _scopeJumpTargets[scope.Id];
         var tgt = Builder.BuildLoad(tgtSlot, $"{name}_jump_tgt");
 
+        // Find all valid target blocks
         var dests = new List<LLVMBasicBlockRef>();
 
         if (scope.ParentScope != null)
@@ -367,7 +388,7 @@ public partial class FunctionGenerator
             dests.Add(_returnBlock);
         }
 
-        var indirectBr = Builder.BuildIndirectBr(tgt, (uint)dests.Count);
+        var indirectBr = Builder.BuildIndirectBr(tgt, (uint) dests.Count);
         foreach (var dest in dests)
         {
             indirectBr.AddDestination(dest);
@@ -381,9 +402,10 @@ public partial class FunctionGenerator
         FunctionRef key;
         ConcreteTypeRef targetMethod;
 
+        // Resolve function ref to implementation
         if (inst.TargetType != null)
         {
-            var targetType = (ConcreteTypeRef)FunctionContext.ResolveRef(inst.TargetType);
+            var targetType = (ConcreteTypeRef) FunctionContext.ResolveRef(inst.TargetType);
 
             targetMethod = new ConcreteTypeRef(
                 inst.TargetMethod.Name,
@@ -414,7 +436,7 @@ public partial class FunctionGenerator
         }
         else
         {
-            targetMethod = (ConcreteTypeRef)FunctionContext.ResolveRef(inst.TargetMethod);
+            targetMethod = (ConcreteTypeRef) FunctionContext.ResolveRef(inst.TargetMethod);
             key = new FunctionRef
             {
                 TargetMethod = targetMethod
@@ -455,6 +477,7 @@ public partial class FunctionGenerator
 
         var args = new List<LLVMValueRef>();
 
+        // Load arguments
         for (var i = 0; i < funcDef.Parameters.Count; i++)
         {
             var param = funcDef.Parameters[i];
@@ -523,6 +546,7 @@ public partial class FunctionGenerator
             args.Add(argVal);
         }
 
+        // Store result
         if (inst.ResultSlot != null)
         {
             if (funcDef.ReturnType == null)

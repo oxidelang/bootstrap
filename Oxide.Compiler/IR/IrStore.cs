@@ -8,6 +8,9 @@ using Oxide.Compiler.Middleware.Usage;
 
 namespace Oxide.Compiler.IR;
 
+/// <summary>
+/// A collection of Oxide IR units
+/// </summary>
 public class IrStore
 {
     private readonly List<IrUnit> _units;

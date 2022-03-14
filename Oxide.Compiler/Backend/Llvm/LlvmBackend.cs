@@ -14,6 +14,9 @@ using Oxide.Compiler.Middleware.Usage;
 
 namespace Oxide.Compiler.Backend.Llvm;
 
+/// <summary>
+/// Llvm Backend - Produces LLVM IR from Oxide IR
+/// </summary>
 public class LlvmBackend
 {
     public delegate void IntrinsicMapper(FunctionGenerator generator, StaticCallInst inst, FunctionRef key);
@@ -54,7 +57,7 @@ public class LlvmBackend
         _intrinsics = new Dictionary<QualifiedName, IntrinsicMapper>();
         _dropFuncs = new Dictionary<TypeRef, LLVMValueRef>();
 
-        // TODO: Check target size
+        // TODO: Check target size, assume 64bit for now
         _typeStore.Add(PrimitiveKind.USize.GetRef(), LLVMTypeRef.Int64);
         _typeStore.Add(PrimitiveKind.U8.GetRef(), LLVMTypeRef.Int8);
         _typeStore.Add(PrimitiveKind.U16.GetRef(), LLVMTypeRef.Int16);
@@ -90,7 +93,7 @@ public class LlvmBackend
             _typeInfos = new Dictionary<TypeRef, LLVMValueRef>();
             DropPtrFuncType = LLVMTypeRef.CreateFunction(
                 LLVMTypeRef.Void,
-                new[] { LLVMTypeRef.CreatePointer(LLVMTypeRef.Int8, 0) }
+                new[] {LLVMTypeRef.CreatePointer(LLVMTypeRef.Int8, 0)}
             );
 
             TypeInfoType = Context.CreateNamedStruct("TypeInfo");
@@ -148,6 +151,7 @@ public class LlvmBackend
 
     private void CreateFunction(FunctionRef key, Function func, GenericContext context)
     {
+        // Generate unique name
         var funcSb = new StringBuilder();
         if (key.TargetType != null)
         {
@@ -396,6 +400,7 @@ public class LlvmBackend
         {
             case OxEnum oxEnum:
             {
+                // Map enum to primitive type
                 var underlyingType = PrimitiveType.GetRef(oxEnum.UnderlyingType);
                 var underlyingTypeRef = ResolveConcreteType(underlyingType);
                 _typeStore.Add(typeRef, underlyingTypeRef);
@@ -456,7 +461,7 @@ public class LlvmBackend
             maxSize = Math.Max(maxSize, GetConcreteTypeSize(itemRef));
         }
 
-        return (uint)maxSize;
+        return (uint) maxSize;
     }
 
     public uint GetConcreteTypeSize(ConcreteTypeRef typeRef)
@@ -467,7 +472,7 @@ public class LlvmBackend
         }
 
         var resolvedType = ResolveConcreteType(typeRef);
-        size = (uint)DataLayout.ABISizeOfType(resolvedType);
+        size = (uint) DataLayout.ABISizeOfType(resolvedType);
         _typeSizeStore.Add(typeRef, size);
 
         return size;
@@ -521,6 +526,9 @@ public class LlvmBackend
         }
     }
 
+    /// <summary>
+    /// Returns the drop implementation for a given type. Returns null if there is no drop logic.
+    /// </summary>
     public LLVMValueRef GetDropFunctionRef(TypeRef typeRef)
     {
         if (_dropFuncs.TryGetValue(typeRef, out var resolved))
@@ -537,6 +545,7 @@ public class LlvmBackend
             case PointerTypeRef:
             case BorrowTypeRef:
                 return null;
+            // Drop function provided by std library
             case ReferenceTypeRef referenceTypeRef:
                 return GetFunctionRef(
                     new FunctionRef
@@ -570,6 +579,7 @@ public class LlvmBackend
 
     private LLVMValueRef GetDropFunctionForBase(ConcreteTypeRef typeRef)
     {
+        // Cache function
         if (_dropFuncs.TryGetValue(typeRef, out var resolved))
         {
             return resolved;
@@ -595,7 +605,7 @@ public class LlvmBackend
 
         var funcName = $"@drop#{GenerateName(typeRef)}";
 
-
+        // Define function signature
         var varType = ConvertType(typeRef);
         var paramTypes = new[]
         {
@@ -604,6 +614,8 @@ public class LlvmBackend
 
         var funcType = LLVMTypeRef.CreateFunction(ConvertType(null), paramTypes);
         var funcRef = Module.AddFunction(funcName, funcType);
+
+        // Always inline drop functions for better performance
         funcRef.AddAttribute(
             LlvmAttributes.Target.Function,
             Context.CreateEnumAttribute(LlvmAttributes.AttrKind.AlwaysInline)
@@ -619,6 +631,7 @@ public class LlvmBackend
         var valuePtr = builder.BuildAlloca(varType, "value");
         builder.BuildStore(funcRef.Params[0], valuePtr);
 
+        // Call "Drop" implementation if exists
         if (dropFunc != null)
         {
             var targetMethod = dropFunc.TargetMethod;
@@ -687,7 +700,7 @@ public class LlvmBackend
                 throw new Exception($"Argument does not match parameter type for {param.Name}");
             }
 
-            builder.BuildCall(dropFuncRef, new[] { valuePtr });
+            builder.BuildCall(dropFuncRef, new[] {valuePtr});
         }
 
 
@@ -697,6 +710,7 @@ public class LlvmBackend
         {
             case Variant variant:
             {
+                // Drop variants by checking type, and then calling inner type drop function
                 var noActionBlock = funcRef.AppendBasicBlock($"item_none");
                 builder.PositionAtEnd(noActionBlock);
                 builder.BuildRetVoid();
@@ -745,7 +759,7 @@ public class LlvmBackend
 
                     var itemValue = builder.BuildLoad(itemAddrCasted, $"item_{i}_value");
 
-                    builder.BuildCall(itemDropFunc, new[] { itemValue });
+                    builder.BuildCall(itemDropFunc, new[] {itemValue});
                     builder.BuildRetVoid();
                 }
 
@@ -762,16 +776,17 @@ public class LlvmBackend
                 );
                 var idValue = builder.BuildLoad(idAddr, "id_value");
 
-                var idSwitch = builder.BuildSwitch(idValue, noActionBlock, (uint)itemBlocks.Length);
+                var idSwitch = builder.BuildSwitch(idValue, noActionBlock, (uint) itemBlocks.Length);
                 for (var i = 0; i < itemBlocks.Length; i++)
                 {
-                    idSwitch.AddCase(LLVMValueRef.CreateConstInt(LLVMTypeRef.Int8, (ulong)i), itemBlocks[i]);
+                    idSwitch.AddCase(LLVMValueRef.CreateConstInt(LLVMTypeRef.Int8, (ulong) i), itemBlocks[i]);
                 }
 
                 break;
             }
             case Struct structDef:
             {
+                // Drop structs by dropping each field in turn
                 for (var i = 0; i < structDef.Fields.Count; i++)
                 {
                     var fieldDef = structDef.Fields[i];
@@ -787,13 +802,13 @@ public class LlvmBackend
                         new[]
                         {
                             LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0),
-                            LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong)i)
+                            LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong) i)
                         },
                         $"field_{i}_addr"
                     );
                     var fieldValue = builder.BuildLoad(fieldAddr, $"field_{i}_value");
 
-                    builder.BuildCall(fieldDropFunc, new[] { fieldValue });
+                    builder.BuildCall(fieldDropFunc, new[] {fieldValue});
                 }
 
                 builder.BuildRetVoid();
@@ -806,6 +821,9 @@ public class LlvmBackend
         return funcRef;
     }
 
+    /// <summary>
+    /// Return a pointer to a types runtime information
+    /// </summary>
     public LLVMValueRef GetTypeInfo(TypeRef typeRef)
     {
         if (_typeInfos.TryGetValue(typeRef, out var constant))
@@ -813,11 +831,13 @@ public class LlvmBackend
             return constant;
         }
 
+        // Define constant
         constant = Module.AddGlobalInAddressSpace(TypeInfoType, $"TypeInfo@{GenerateName(typeRef)}", 0);
         constant.IsGlobalConstant = true;
 
         var dropFuncRef = GetDropFunctionRef(typeRef);
 
+        // Add pointer to drop function
         var dropPtrFunc = Module.AddFunction($"DropPtr@{GenerateName(typeRef)}", DropPtrFuncType);
         {
             using var builder = Context.CreateBuilder();
@@ -828,7 +848,7 @@ public class LlvmBackend
             var resolvedType = ConvertType(new PointerTypeRef(typeRef, false));
             var casted = builder.BuildBitCast(dropPtrFunc.Params[0], resolvedType, "casted");
             var loaded = builder.BuildLoad(casted, "load");
-            builder.BuildCall(dropFuncRef, new[] { loaded });
+            builder.BuildCall(dropFuncRef, new[] {loaded});
             builder.BuildRetVoid();
         }
 

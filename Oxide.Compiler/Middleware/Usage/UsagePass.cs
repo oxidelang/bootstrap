@@ -9,6 +9,9 @@ using Oxide.Compiler.IR.Types;
 
 namespace Oxide.Compiler.Middleware.Usage;
 
+/// <summary>
+/// Discovers which Oxide objects are used
+/// </summary>
 public class UsagePass
 {
     private MiddlewareManager Manager { get; }

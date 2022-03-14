@@ -6,6 +6,9 @@ using Oxide.Compiler.IR.Types;
 
 namespace Oxide.Compiler.IR;
 
+/// <summary>
+/// Produces a readable representation of a given set of Oxide IR
+/// </summary>
 public class IrWriter
 {
     private int _indentLevel;

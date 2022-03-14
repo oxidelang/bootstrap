@@ -6,6 +6,9 @@ using Oxide.Compiler.Middleware.Usage;
 
 namespace Oxide.Compiler.Middleware;
 
+/// <summary>
+/// Manages running middleware passes on Oxide IR
+/// </summary>
 public class MiddlewareManager
 {
     public IrStore Store { get; }

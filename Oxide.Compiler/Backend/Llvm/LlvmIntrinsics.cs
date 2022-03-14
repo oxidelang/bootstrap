@@ -10,6 +10,9 @@ namespace Oxide.Compiler.Backend.Llvm;
 
 public static class LlvmIntrinsics
 {
+    /// <summary>
+    /// Generates a constant with the byte size of a type
+    /// </summary>
     public static void SizeOf(FunctionGenerator generator, StaticCallInst inst, FunctionRef key)
     {
         var targetType = key.TargetMethod.GenericParams[0];
@@ -31,6 +34,9 @@ public static class LlvmIntrinsics
         generator.StoreSlot(inst.ResultSlot.Value, casted, PrimitiveKind.USize.GetRef());
     }
 
+    /// <summary>
+    /// Performs a byte-wise copy
+    /// </summary>
     public static void Bitcopy(FunctionGenerator generator, StaticCallInst inst, FunctionRef key)
     {
         var targetType = key.TargetMethod.GenericParams.Single();
@@ -60,6 +66,9 @@ public static class LlvmIntrinsics
         generator.MarkActive(resultSlot);
     }
 
+    /// <summary>
+    /// Loads the type info pointer for a given type.
+    /// </summary>
     public static void TypeId(FunctionGenerator generator, StaticCallInst inst, FunctionRef key)
     {
         var targetType = key.TargetMethod.GenericParams[0];
@@ -73,6 +82,9 @@ public static class LlvmIntrinsics
         generator.StoreSlot(inst.ResultSlot.Value, casted, PrimitiveKind.USize.GetRef());
     }
 
+    /// <summary>
+    /// Call the drop function of a given type info.
+    /// </summary>
     public static void TypeDrop(FunctionGenerator generator, StaticCallInst inst, FunctionRef key)
     {
         if (inst.Arguments.Count != 2)
@@ -101,9 +113,12 @@ public static class LlvmIntrinsics
         );
         var dropFunc = generator.Builder.BuildLoad(dropPtr, $"inst_{inst.Id}_drop");
 
-        generator.Builder.BuildCall(dropFunc, new[] { valuePtr });
+        generator.Builder.BuildCall(dropFunc, new[] {valuePtr});
     }
 
+    /// <summary>
+    /// Generate an atomic swap instruction
+    /// </summary>
     public static void AtomicSwap(FunctionGenerator generator, StaticCallInst inst, FunctionRef key)
     {
         if (inst.Arguments.Count != 3)
@@ -143,7 +158,7 @@ public static class LlvmIntrinsics
             );
         }
 
-        var success = generator.Builder.BuildExtractValue(result, (uint)1, $"inst_{inst.Id}_success");
+        var success = generator.Builder.BuildExtractValue(result, (uint) 1, $"inst_{inst.Id}_success");
 
         generator.StoreSlot(resultSlot, success, PrimitiveKind.Bool.GetRef());
         generator.MarkActive(resultSlot);

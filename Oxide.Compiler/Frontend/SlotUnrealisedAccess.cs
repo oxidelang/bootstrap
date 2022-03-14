@@ -5,6 +5,9 @@ using Oxide.Compiler.IR.Types;
 
 namespace Oxide.Compiler.Frontend;
 
+/// <summary>
+/// An unrealised access to a slot
+/// </summary>
 public class SlotUnrealisedAccess : UnrealisedAccess
 {
     public SlotDeclaration Slot { get; }

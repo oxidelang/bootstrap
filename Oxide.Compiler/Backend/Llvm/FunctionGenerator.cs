@@ -12,6 +12,9 @@ using Oxide.Compiler.Middleware.Usage;
 
 namespace Oxide.Compiler.Backend.Llvm;
 
+/// <summary>
+/// Generate llvm ir for a oxide function body
+/// </summary>
 public partial class FunctionGenerator
 {
     public LlvmBackend Backend { get; }
@@ -286,6 +289,7 @@ public partial class FunctionGenerator
 
     private SlotDeclaration GetSlot(int slot)
     {
+        // Sanity check
         if (!CurrentBlock.Scope.CanAccessSlot(slot))
         {
             throw new Exception($"Slot is not accessible from {CurrentBlock.Id}");
@@ -296,6 +300,7 @@ public partial class FunctionGenerator
 
     public void StoreSlot(int slot, LLVMValueRef value, TypeRef type, bool ignoreChecks = false)
     {
+        // Sanity checks
         if (!ignoreChecks && !CurrentBlock.Scope.CanAccessSlot(slot))
         {
             throw new Exception($"Slot is not accessible from {CurrentBlock.Id}");
@@ -334,6 +339,9 @@ public partial class FunctionGenerator
         return FunctionLifetime.InstructionLifetimes[instruction.Id];
     }
 
+    /// <summary>
+    /// Mark slot as active by storing true to liveness stack alloc
+    /// </summary>
     public void MarkActive(int slot)
     {
         if (_slotLivenessMap.TryGetValue(slot, out var valRef))
@@ -342,6 +350,9 @@ public partial class FunctionGenerator
         }
     }
 
+    /// <summary>
+    /// Mark slot as not active by storing false to liveness stack alloc
+    /// </summary>
     private void MarkMoved(int slot)
     {
         if (_slotLivenessMap.TryGetValue(slot, out var valRef))
@@ -358,9 +369,12 @@ public partial class FunctionGenerator
             return;
         }
 
-        Builder.BuildCall(dropFunc, new[] { value });
+        Builder.BuildCall(dropFunc, new[] {value});
     }
 
+    /// <summary>
+    /// Check liveness value before calling drop function for slot
+    /// </summary>
     private void DropIfActive(int slotId, string name)
     {
         if (!_slotLivenessMap.TryGetValue(slotId, out var livePtr))
@@ -384,6 +398,9 @@ public partial class FunctionGenerator
         Builder.PositionAtEnd(finalBlock);
     }
 
+    /// <summary>
+    /// Copy value from one location to another
+    /// </summary>
     private LLVMValueRef GenerateCopy(TypeRef type, CopyProperties properties, LLVMValueRef pointer, string name)
     {
         if (!properties.CanCopy)
@@ -391,10 +408,13 @@ public partial class FunctionGenerator
             throw new ArgumentException("Invalid copy properties");
         }
 
+        // Use fast bitwise copy if possible
         if (properties.BitwiseCopy)
         {
             return Builder.BuildLoad(pointer, $"{name}_copy");
         }
+
+        // Otherwise use "Copyable" implementation
 
         var targetMethod = properties.CopyMethod.TargetMethod;
 
@@ -468,7 +488,7 @@ public partial class FunctionGenerator
             throw new Exception("Copy function does not return expected value");
         }
 
-        return Builder.BuildCall(funcRef, new[] { pointer }, $"{name}_copyfunc");
+        return Builder.BuildCall(funcRef, new[] {pointer}, $"{name}_copyfunc");
     }
 
     private (LLVMValueRef value, TypeRef ty) ConvertConstant(PrimitiveKind kind, object sourceValue)
@@ -478,11 +498,11 @@ public partial class FunctionGenerator
         switch (kind)
         {
             case PrimitiveKind.I32:
-                value = LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong)(int)sourceValue, true);
+                value = LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong) (int) sourceValue, true);
                 valType = PrimitiveKind.I32.GetRef();
                 break;
             case PrimitiveKind.Bool:
-                value = LLVMValueRef.CreateConstInt(LLVMTypeRef.Int1, (ulong)((bool)sourceValue ? 1 : 0), true);
+                value = LLVMValueRef.CreateConstInt(LLVMTypeRef.Int1, (ulong) ((bool) sourceValue ? 1 : 0), true);
                 valType = PrimitiveKind.Bool.GetRef();
                 break;
             default:

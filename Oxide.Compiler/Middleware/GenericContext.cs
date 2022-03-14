@@ -6,6 +6,9 @@ using Oxide.Compiler.IR.TypeRefs;
 
 namespace Oxide.Compiler.Middleware;
 
+/// <summary>
+/// Maps generic parameter names to their realised types
+/// </summary>
 public class GenericContext
 {
     public static GenericContext Default = new(null, ImmutableDictionary<string, TypeRef>.Empty, null);

@@ -11,6 +11,9 @@ using Oxide.Compiler.Parser;
 
 namespace Oxide.Compiler.Frontend;
 
+/// <summary>
+/// Parses an ANTLR function body ast and produces oxide IR
+/// </summary>
 public class BodyParser
 {
     private readonly IrStore _store;
@@ -82,6 +85,7 @@ public class BodyParser
         // TODO: Init context
         var finalOp = ParseBlock(ctx);
 
+        // Add implicit return to last block when an explicit return is missing
         if (!CurrentBlock.HasTerminated)
         {
             if (finalOp != null)

@@ -8,6 +8,9 @@ using Oxide.Compiler.Middleware;
 
 namespace Oxide.Compiler.IR;
 
+/// <summary>
+/// A collection of oxide objects. Usually from one source.
+/// </summary>
 public class IrUnit
 {
     public Dictionary<QualifiedName, OxObj> Objects { get; }

@@ -19,6 +19,7 @@ public class LlvmRunner
 
     public void Run()
     {
+        // Map external standard library functions to a csharp implementation
         unsafe
         {
             var options = new LLVMMCJITCompilerOptions { NoFramePointerElim = 1 };

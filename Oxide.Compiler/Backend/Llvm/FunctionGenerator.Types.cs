@@ -21,6 +21,7 @@ public partial class FunctionGenerator
             throw new Exception($"Invalid enum name {inst.EnumName}");
         }
 
+        // Enums are just primtives, so a constant load
         var constValue = ConvertConstant(oxEnum.UnderlyingType, enumValue);
 
         StoreSlot(inst.TargetSlot, constValue.value, ConcreteTypeRef.From(inst.EnumName));
@@ -37,7 +38,7 @@ public partial class FunctionGenerator
             new[]
             {
                 LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0),
-                LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong)index)
+                LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong) index)
             },
             name
         );
@@ -50,7 +51,7 @@ public partial class FunctionGenerator
 
         return Builder.BuildExtractValue(
             valueRef,
-            (uint)index,
+            (uint) index,
             name
         );
     }
@@ -58,7 +59,7 @@ public partial class FunctionGenerator
     private void CompileAllocVariantInst(AllocVariantInst inst)
     {
         var variant = Store.Lookup<Variant>(inst.VariantType.Name);
-        var variantTypeRef = (ConcreteTypeRef)FunctionContext.ResolveRef(inst.VariantType);
+        var variantTypeRef = (ConcreteTypeRef) FunctionContext.ResolveRef(inst.VariantType);
 
         var variantValue = ZeroInit(variantTypeRef);
         StoreSlot(inst.SlotId, variantValue, variantTypeRef);
@@ -77,8 +78,9 @@ public partial class FunctionGenerator
             $"inst_{inst.Id}_taddr"
         );
         var index = variant.Items.FindIndex(x => x.Name == inst.ItemName);
-        Builder.BuildStore(LLVMValueRef.CreateConstInt(LLVMTypeRef.Int8, (ulong)index), typeAddr);
+        Builder.BuildStore(LLVMValueRef.CreateConstInt(LLVMTypeRef.Int8, (ulong) index), typeAddr);
 
+        // Check if the variant item has a value
         if (inst.ItemSlot is not { } slotId) return;
 
         var variantItemRef = new ConcreteTypeRef(
@@ -151,6 +153,7 @@ public partial class FunctionGenerator
 
         if (type is DerivedRefTypeRef derivedRefTypeRef)
         {
+            // Derive from an existing derived reference
             var structType = ConcreteTypeRef.From(
                 QualifiedName.From("std", "DerivedBox"),
                 derivedRefTypeRef.InnerType
@@ -159,14 +162,15 @@ public partial class FunctionGenerator
             var structContext = new GenericContext(null, structDef.GenericParams, structType.GenericParams, null);
 
             var boxIndex = structDef.Fields.FindIndex(x => x.Name == "box_ptr");
-            boxPtr = Builder.BuildExtractValue(fromValue, (uint)boxIndex, $"inst_{inst.Id}_box_ptr");
+            boxPtr = Builder.BuildExtractValue(fromValue, (uint) boxIndex, $"inst_{inst.Id}_box_ptr");
 
             var valueIndex = structDef.Fields.FindIndex(x => x.Name == "value_ptr");
             ptrType = derivedRefTypeRef.InnerType;
-            ptrValue = Builder.BuildExtractValue(fromValue, (uint)valueIndex, $"inst_{inst.Id}_value");
+            ptrValue = Builder.BuildExtractValue(fromValue, (uint) valueIndex, $"inst_{inst.Id}_value");
         }
         else if (type is ReferenceTypeRef referenceTypeRef)
         {
+            // Produce a derived reference from a standard reference
             if (!referenceTypeRef.StrongRef)
             {
                 throw new Exception("Cannot derive weak reference");
@@ -181,9 +185,10 @@ public partial class FunctionGenerator
             throw new Exception("Source is not a reference");
         }
 
+        // Update borrow pointer to point to a given field
         if (inst.FieldName != null)
         {
-            var structType = (ConcreteTypeRef)ptrType;
+            var structType = (ConcreteTypeRef) ptrType;
             var structDef = Store.Lookup<Struct>(structType.Name);
             var index = structDef.Fields.FindIndex(x => x.Name == inst.FieldName);
             var fieldDef = structDef.Fields[index];
@@ -195,12 +200,13 @@ public partial class FunctionGenerator
                 new[]
                 {
                     LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0),
-                    LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong)index)
+                    LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong) index)
                 },
                 $"inst_{inst.Id}_faddr"
             );
         }
 
+        // Convert pointers into derived reference
         var targetMethod = ConcreteTypeRef.From(
             QualifiedName.From("std", "derived_create"),
             ptrType
@@ -223,7 +229,7 @@ public partial class FunctionGenerator
         );
         boxPtr = Builder.BuildBitCast(boxPtr, boxLlvmType, $"inst_{inst.Id}_cast_box");
 
-        var destValue = Builder.BuildCall(funcRef, new[] { boxPtr, ptrValue }, $"inst_{inst.Id}_derived");
+        var destValue = Builder.BuildCall(funcRef, new[] {boxPtr, ptrValue}, $"inst_{inst.Id}_derived");
         var returnType = new DerivedRefTypeRef(ptrType, true);
 
         StoreSlot(inst.ResultSlot, destValue, returnType);
@@ -271,10 +277,11 @@ public partial class FunctionGenerator
 
     private void CompileAllocStructInst(AllocStructInst inst)
     {
-        var structType = (ConcreteTypeRef)FunctionContext.ResolveRef(inst.StructType);
+        var structType = (ConcreteTypeRef) FunctionContext.ResolveRef(inst.StructType);
         var structDef = Store.Lookup<Struct>(structType.Name);
         var structContext = new GenericContext(null, structDef.GenericParams, structType.GenericParams, null);
 
+        // Load fields
         var targetValues = new Dictionary<string, LLVMValueRef>();
         foreach (var (fname, fvalue) in inst.FieldValues)
         {
@@ -308,15 +315,17 @@ public partial class FunctionGenerator
             targetValues.Add(fname, val);
         }
 
+        // Create empty copy of struct
         var finalValue = ZeroInit(structType);
 
+        // Fill in fields
         foreach (var (fname, fvalue) in inst.FieldValues)
         {
             var index = structDef.Fields.FindIndex(x => x.Name == fname);
             finalValue = Builder.BuildInsertValue(
                 finalValue,
                 targetValues[fname],
-                (uint)index,
+                (uint) index,
                 $"inst_{inst.Id}_field_{fname}_insert"
             );
         }

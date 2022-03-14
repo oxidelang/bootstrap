@@ -168,6 +168,7 @@ public partial class FunctionGenerator
         var structContext = new GenericContext(null, structDef.GenericParams, structType.GenericParams, null);
         var fieldType = structContext.ResolveRef(fieldDef.Type);
 
+        // Get field address
         var addr = Builder.BuildInBoundsGEP(
             baseAddr,
             new[]
@@ -191,6 +192,7 @@ public partial class FunctionGenerator
         }
         else
         {
+            // Field moves are not implemented yet
             throw new NotImplementedException("Field moves");
         }
 
@@ -263,6 +265,7 @@ public partial class FunctionGenerator
             _ => throw new ArgumentOutOfRangeException(nameof(slotType))
         };
 
+        // Get field address
         var addr = Builder.BuildInBoundsGEP(
             slotVal,
             new[]

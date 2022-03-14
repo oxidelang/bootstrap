@@ -9,6 +9,9 @@ using Oxide.Compiler.Middleware;
 
 namespace Oxide.Compiler;
 
+/// <summary>
+/// The driver handles executing the compiler pipeline from source to execution.
+/// </summary>
 public class OxideDriver
 {
     private readonly IrStore _store;

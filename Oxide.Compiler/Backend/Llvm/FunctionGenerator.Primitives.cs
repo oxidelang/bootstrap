@@ -18,6 +18,8 @@ public partial class FunctionGenerator
         var properties = Store.GetCopyProperties(type);
         var slotLifetime = GetLifetime(inst).GetSlot(inst.SrcSlot);
 
+        // Move instruction also acts as a copy instruction for copyable types
+        // For optimisation purposes, we move if possible, otherwise copy if possible
         LLVMValueRef destValue;
         if (slotLifetime.Status == SlotStatus.Moved)
         {
@@ -44,7 +46,6 @@ public partial class FunctionGenerator
         StoreSlot(inst.TargetSlot, constValue.value, constValue.ty);
         MarkActive(inst.TargetSlot);
     }
-
 
     private void CompileArithmeticInstruction(ArithmeticInst inst)
     {
@@ -209,6 +210,7 @@ public partial class FunctionGenerator
                 }
                 else if (PrimitiveType.IsPrimitiveInt(type) && PrimitiveType.IsPrimitiveInt(targetType))
                 {
+                    // Perform extension or truncation as needed
                     var fromKind = PrimitiveType.GetKind(type);
                     var fromWidth = PrimitiveType.GetWidth(fromKind);
                     var toKind = PrimitiveType.GetKind(targetType);
@@ -231,6 +233,7 @@ public partial class FunctionGenerator
                         converted = Builder.BuildZExt(value, targetLlvmType, $"inst_{inst.Id}_zext");
                     }
                 }
+                // Edge case to allow casting from std::DerivedBox to derived reference type in the std library
                 else if (
                     baseTypeRef is ConcreteTypeRef concreteTypeRef &&
                     targetType is DerivedRefTypeRef derivedRefTypeRef &&
@@ -278,6 +281,7 @@ public partial class FunctionGenerator
                             throw new Exception("Unsupported");
                         }
 
+                        // Casting a reference to a weak reference requires incrementing the weak count
                         var incFunc = Backend.GetFunctionRef(
                             new FunctionRef
                             {
@@ -287,7 +291,7 @@ public partial class FunctionGenerator
                                 )
                             }
                         );
-                        Builder.BuildCall(incFunc, new[] { value });
+                        Builder.BuildCall(incFunc, new[] {value});
 
                         converted = value;
                         ignoreMoved = true;

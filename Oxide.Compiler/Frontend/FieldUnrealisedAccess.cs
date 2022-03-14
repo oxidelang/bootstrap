@@ -5,6 +5,9 @@ using Oxide.Compiler.IR.Types;
 
 namespace Oxide.Compiler.Frontend;
 
+/// <summary>
+/// An unrealised access to a field
+/// </summary>
 public class FieldUnrealisedAccess : UnrealisedAccess
 {
     public UnrealisedAccess BaseAccess { get; }

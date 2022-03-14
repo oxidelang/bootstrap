@@ -14,6 +14,9 @@ using Oxide.Compiler.Utils;
 
 namespace Oxide.Compiler.Middleware.Lifetimes;
 
+/// <summary>
+/// Finds the lifetimes of each slot
+/// </summary>
 public class LifetimePass
 {
     private MiddlewareManager Manager { get; }

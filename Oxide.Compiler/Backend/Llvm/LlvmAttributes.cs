@@ -3,6 +3,9 @@ using LLVMSharp.Interop;
 
 namespace Oxide.Compiler.Backend.Llvm;
 
+/// <summary>
+/// Basic wrapper for missing llvm attributes in LLVMSharp
+/// </summary>
 public static class LlvmAttributes
 {
     public enum Target : uint

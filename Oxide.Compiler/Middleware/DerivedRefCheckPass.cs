@@ -9,6 +9,9 @@ using Oxide.Compiler.Middleware.Usage;
 
 namespace Oxide.Compiler.Middleware;
 
+/// <summary>
+/// Checks that derived references are not created from types that contain derived references
+/// </summary>
 public class DerivedRefCheckPass
 {
     private MiddlewareManager Manager { get; }

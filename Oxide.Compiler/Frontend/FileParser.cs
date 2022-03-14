@@ -9,6 +9,9 @@ using Oxide.Compiler.Parser;
 
 namespace Oxide.Compiler.Frontend;
 
+/// <summary>
+/// Loads an oxide file and splits into oxide objects
+/// </summary>
 public class FileParser
 {
     public QualifiedName Package { get; private set; }

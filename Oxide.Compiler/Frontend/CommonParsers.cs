@@ -8,6 +8,9 @@ namespace Oxide.Compiler.Frontend;
 
 public static class CommonParsers
 {
+    /// <summary>
+    /// Parses a qualified name
+    /// </summary>
     public static QualifiedName Parse(this OxideParser.Qualified_nameContext ctx, bool forceAbsolute = false)
     {
         var (isAbs, firstPart) = ctx switch
@@ -38,6 +41,9 @@ public static class CommonParsers
         output.Add(ctx.IDENTIFIER().GetText());
     }
 
+    /// <summary>
+    /// Parse visibility marker
+    /// </summary>
     public static Visibility Parse(this OxideParser.VisibilityContext ctx, Visibility @default = Visibility.Private)
     {
         return ctx switch
@@ -49,11 +55,17 @@ public static class CommonParsers
         };
     }
 
+    /// <summary>
+    /// Parse generic parameter markers to a list of strings
+    /// </summary>
     public static List<string> Parse(this OxideParser.Generic_defContext ctx)
     {
         return ctx == null ? new List<string>() : ctx.name().Select(x => x.GetText()).ToList();
     }
 
+    /// <summary>
+    /// Parse type flags
+    /// </summary>
     public static (TypeCategory category, bool mutable) Parse(this OxideParser.Type_flagsContext ctx)
     {
         TypeCategory category;

@@ -10,6 +10,9 @@ using Oxide.Compiler.Parser;
 
 namespace Oxide.Compiler.Frontend;
 
+/// <summary>
+/// Loads oxide source files and generates oxide IR
+/// </summary>
 public class OxideFrontend
 {
     private readonly IrStore _store;
