@@ -35,6 +35,8 @@ public class LlvmBackend
 
     private Dictionary<FunctionRef, LLVMValueRef> _functionRefs;
 
+    private Dictionary<FunctionRef, LLVMTypeRef> _functionTypes;
+
     private Dictionary<TypeRef, LLVMValueRef> _dropFuncs;
 
     private LLVMTargetDataRef DataLayout { get; set; }
@@ -54,6 +56,7 @@ public class LlvmBackend
         _typeSizeStore = new Dictionary<ConcreteTypeRef, uint>();
         _typeStore = new Dictionary<ConcreteTypeRef, LLVMTypeRef>();
         _functionRefs = new Dictionary<FunctionRef, LLVMValueRef>();
+        _functionTypes = new Dictionary<FunctionRef, LLVMTypeRef>();
         _intrinsics = new Dictionary<QualifiedName, IntrinsicMapper>();
         _dropFuncs = new Dictionary<TypeRef, LLVMValueRef>();
 
@@ -156,13 +159,13 @@ public class LlvmBackend
         if (key.TargetType != null)
         {
             funcSb.Append(GenerateName(key.TargetType));
-            funcSb.Append('#');
+            funcSb.Append("__INNER__");
         }
 
         if (key.TargetImplementation != null)
         {
             funcSb.Append(GenerateName(key.TargetType));
-            funcSb.Append('#');
+            funcSb.Append("__INNER__");
         }
 
         funcSb.Append(GenerateName(key.TargetMethod));
@@ -189,6 +192,7 @@ public class LlvmBackend
         }
 
         _functionRefs.Add(key, funcRef);
+        _functionTypes.Add(key, funcType);
     }
 
     private void CreateType(UsedType usedType)
@@ -478,7 +482,13 @@ public class LlvmBackend
         return size;
     }
 
+
     private string GenerateName(TypeRef typeRef)
+    {
+        return GenerateNameInner(typeRef).Replace(":", "__");
+    }
+
+    private string GenerateNameInner(TypeRef typeRef)
     {
         switch (typeRef)
         {
@@ -489,14 +499,14 @@ public class LlvmBackend
 
                 if (concreteTypeRef.GenericParams.Length > 0)
                 {
-                    sb.Append('<');
+                    sb.Append("__GSTART__");
 
                     var first = true;
                     foreach (var param in concreteTypeRef.GenericParams)
                     {
                         if (!first)
                         {
-                            sb.Append(", ");
+                            sb.Append("__GNEXT__");
                         }
 
                         first = false;
@@ -504,7 +514,7 @@ public class LlvmBackend
                         sb.Append(GenerateName(param));
                     }
 
-                    sb.Append('>');
+                    sb.Append("__GEND__");
                 }
 
                 return sb.ToString();
@@ -514,13 +524,17 @@ public class LlvmBackend
             case ThisTypeRef thisTypeRef:
                 throw new Exception("Unexpected");
             case BorrowTypeRef borrowTypeRef:
-                return (borrowTypeRef.MutableRef ? "&mut " : "&") + GenerateName(borrowTypeRef.InnerType);
+                return (borrowTypeRef.MutableRef ? "__BORROW_MUT__" : "__BORROW__") +
+                       GenerateName(borrowTypeRef.InnerType);
             case PointerTypeRef pointerTypeRef:
-                return (pointerTypeRef.MutableRef ? "*mut " : "*") + GenerateName(pointerTypeRef.InnerType);
+                return (pointerTypeRef.MutableRef ? "__POINTER_MUT__" : "__POINTER__") +
+                       GenerateName(pointerTypeRef.InnerType);
             case ReferenceTypeRef referenceTypeRef:
-                return (referenceTypeRef.StrongRef ? "ref " : "weak ") + GenerateName(referenceTypeRef.InnerType);
+                return (referenceTypeRef.StrongRef ? "__REF__" : "__WEAK__")
+                       + GenerateName(referenceTypeRef.InnerType);
             case DerivedRefTypeRef derivedRefTypeRef:
-                return (derivedRefTypeRef.StrongRef ? "~ref " : "~weak ") + GenerateName(derivedRefTypeRef.InnerType);
+                return (derivedRefTypeRef.StrongRef ? "__DER_REF__ " : "__DER_WEAK__") +
+                       GenerateName(derivedRefTypeRef.InnerType);
             default:
                 throw new ArgumentOutOfRangeException(nameof(typeRef));
         }
@@ -603,7 +617,7 @@ public class LlvmBackend
                 throw new ArgumentOutOfRangeException(nameof(baseType));
         }
 
-        var funcName = $"@drop#{GenerateName(typeRef)}";
+        var funcName = $"__INBUILT_DROP__{GenerateName(typeRef)}";
 
         // Define function signature
         var varType = ConvertType(typeRef);
@@ -893,6 +907,18 @@ public class LlvmBackend
         {
             Console.WriteLine("error writing bitcode to file");
         }
+
+        // Emit object file
+        var target = LLVMTargetRef.GetTargetFromTriple(LLVMTargetRef.DefaultTriple);
+        var machine = target.CreateTargetMachine(
+            LLVMTargetRef.DefaultTriple,
+            "generic",
+            "",
+            LLVMCodeGenOptLevel.LLVMCodeGenLevelDefault,
+            LLVMRelocMode.LLVMRelocPIC,
+            LLVMCodeModel.LLVMCodeModelDefault
+        );
+        machine.EmitToFile(Module, $"{path}/compiled.o", LLVMCodeGenFileType.LLVMObjectFile);
     }
 
     static LlvmBackend()
