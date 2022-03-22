@@ -331,8 +331,8 @@ public partial class FunctionGenerator
             var dropBlock = _funcRef.AppendBasicBlock($"{name}_drop_{sd.Id}");
             Builder.PositionAtEnd(dropBlock);
             var (_, valuePtr) = GetSlotRef(sd.Id, true);
-            var value = Builder.BuildLoad(valuePtr, $"{name}_drop_{sd.Id}_value");
-            Builder.BuildCall(dropFunc, new[] {value});
+            // var value = Builder.BuildLoad(valuePtr, $"{name}_drop_{sd.Id}_value");
+            Builder.BuildCall(dropFunc, new[] {valuePtr});
             MarkMoved(sd.Id);
             Builder.BuildBr(nextBlock);
 

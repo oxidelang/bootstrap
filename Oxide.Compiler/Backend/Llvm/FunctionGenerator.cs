@@ -390,8 +390,8 @@ public partial class FunctionGenerator
 
         Builder.PositionAtEnd(dropBlock);
         var (valueType, valuePtr) = GetSlotRef(slotId, true);
-        var value = Builder.BuildLoad(valuePtr, $"{name}_drop_value");
-        PerformDrop(value, valueType);
+        // var value = Builder.BuildLoad(valuePtr, $"{name}_drop_value");
+        PerformDrop(valuePtr, valueType);
         MarkMoved(slotId);
         Builder.BuildBr(finalBlock);
 

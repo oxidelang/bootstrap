@@ -317,7 +317,8 @@ public partial class FunctionGenerator
         {
             if (dropIfMoved)
             {
-                PerformDrop(value, type);
+                throw new NotImplementedException();
+                // PerformDrop(value, type);
             }
 
             MarkMoved(inst.SourceSlot);

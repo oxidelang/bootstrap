@@ -191,6 +191,15 @@ public class LlvmBackend
             );
         }
 
+        if (func.IsExported)
+        {
+        }
+        else if (!func.IsExtern)
+        {
+            // funcRef.FunctionCallConv = FunctionCall
+            funcRef.Linkage = LLVMLinkage.LLVMPrivateLinkage;
+        }
+
         _functionRefs.Add(key, funcRef);
         _functionTypes.Add(key, funcType);
     }
@@ -319,6 +328,7 @@ public class LlvmBackend
 
     private void CompileFunction(FunctionRef key, Function func, GenericContext context)
     {
+        Console.WriteLine($"   - Compiling func {key}");
         var funcGen = new FunctionGenerator(this);
         if (func.IsExtern)
         {
@@ -620,7 +630,7 @@ public class LlvmBackend
         var funcName = $"__INBUILT_DROP__{GenerateName(typeRef)}";
 
         // Define function signature
-        var varType = ConvertType(typeRef);
+        var varType = ConvertType(new PointerTypeRef(typeRef, true));
         var paramTypes = new[]
         {
             varType
@@ -642,8 +652,9 @@ public class LlvmBackend
         var entryBlock = funcRef.AppendBasicBlock("entry");
         builder.PositionAtEnd(entryBlock);
 
-        var valuePtr = builder.BuildAlloca(varType, "value");
-        builder.BuildStore(funcRef.Params[0], valuePtr);
+        var valuePtr = funcRef.Params[0];
+        // var valuePtr = builder.BuildAlloca(varType, "value");
+        // builder.BuildStore(funcRef.Params[0], valuePtr);
 
         // Call "Drop" implementation if exists
         if (dropFunc != null)
@@ -771,9 +782,9 @@ public class LlvmBackend
                         $"item_{i}_addr_cast"
                     );
 
-                    var itemValue = builder.BuildLoad(itemAddrCasted, $"item_{i}_value");
+                    // var itemValue = builder.BuildLoad(itemAddrCasted, $"item_{i}_value");
 
-                    builder.BuildCall(itemDropFunc, new[] {itemValue});
+                    builder.BuildCall(itemDropFunc, new[] {itemAddrCasted});
                     builder.BuildRetVoid();
                 }
 
@@ -820,9 +831,9 @@ public class LlvmBackend
                         },
                         $"field_{i}_addr"
                     );
-                    var fieldValue = builder.BuildLoad(fieldAddr, $"field_{i}_value");
+                    // var fieldValue = builder.BuildLoad(fieldAddr, $"field_{i}_value");
 
-                    builder.BuildCall(fieldDropFunc, new[] {fieldValue});
+                    builder.BuildCall(fieldDropFunc, new[] {fieldAddr});
                 }
 
                 builder.BuildRetVoid();
@@ -846,13 +857,13 @@ public class LlvmBackend
         }
 
         // Define constant
-        constant = Module.AddGlobalInAddressSpace(TypeInfoType, $"TypeInfo@{GenerateName(typeRef)}", 0);
+        constant = Module.AddGlobalInAddressSpace(TypeInfoType, $"INBUILT__TypeInfo__{GenerateName(typeRef)}", 0);
         constant.IsGlobalConstant = true;
 
         var dropFuncRef = GetDropFunctionRef(typeRef);
 
         // Add pointer to drop function
-        var dropPtrFunc = Module.AddFunction($"DropPtr@{GenerateName(typeRef)}", DropPtrFuncType);
+        var dropPtrFunc = Module.AddFunction($"INBUILT___DropPtr___{GenerateName(typeRef)}", DropPtrFuncType);
         {
             using var builder = Context.CreateBuilder();
 
@@ -861,8 +872,13 @@ public class LlvmBackend
 
             var resolvedType = ConvertType(new PointerTypeRef(typeRef, false));
             var casted = builder.BuildBitCast(dropPtrFunc.Params[0], resolvedType, "casted");
-            var loaded = builder.BuildLoad(casted, "load");
-            builder.BuildCall(dropFuncRef, new[] {loaded});
+            // var loaded = builder.BuildLoad(casted, "load");
+
+            if (dropFuncRef != null)
+            {
+                builder.BuildCall(dropFuncRef, new[] {casted});
+            }
+
             builder.BuildRetVoid();
         }
 
@@ -882,6 +898,7 @@ public class LlvmBackend
 
     public void Complete(string path)
     {
+        Console.WriteLine(" - Dumping reopt");
         var llvmIr = Module.PrintToString();
         File.WriteAllText($"{path}/compiled.preopt.llvm", llvmIr);
 
@@ -889,6 +906,7 @@ public class LlvmBackend
         {
             Console.WriteLine($"Error: {error}");
         }
+
 
         unsafe
         {

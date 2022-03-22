@@ -72,8 +72,7 @@ public partial class FunctionGenerator
 
         if (dropExisting)
         {
-            var value = Builder.BuildLoad(tgt, $"inst_{inst.Id}_existing_value");
-            PerformDrop(value, valType);
+            PerformDrop(tgt, valType);
         }
 
         Builder.BuildStore(val, tgt);
