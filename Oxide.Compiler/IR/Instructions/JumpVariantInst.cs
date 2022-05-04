@@ -27,11 +27,11 @@ public class JumpVariantInst : Instruction
         return new InstructionEffects(
             new[]
             {
-                InstructionEffects.ReadData.Access(VariantSlot, false)
+                InstructionEffects.ReadData.Access(VariantSlot, true)
             }.ToImmutableArray(),
             new[]
             {
-                InstructionEffects.WriteData.Borrow(ItemSlot, VariantSlot, false, TargetBlock)
+                InstructionEffects.WriteData.New(ItemSlot, targetBlock: TargetBlock, moveSource: VariantSlot)
             }.ToImmutableArray(),
             new[]
             {

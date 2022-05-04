@@ -216,15 +216,22 @@ public partial class FunctionGenerator
             case BaseTypeRef:
             {
                 var properties = Store.GetCopyProperties(variantItemTypeRef);
+                var slotLifetime = GetLifetime(inst).GetSlot(inst.VariantSlot);
 
                 LLVMValueRef destValue;
-                if (properties.CanCopy)
+                if (slotLifetime.Status == SlotStatus.Moved)
+                {
+                    destValue = Builder.BuildLoad(castedAddr, $"inst_{inst.Id}_move");
+                    // (_, destValue) = LoadSlot(inst.VariantSlot, $"inst_{inst.Id}_move");
+                    MarkMoved(inst.VariantSlot);
+                }
+                else if (properties.CanCopy)
                 {
                     destValue = GenerateCopy(variantItemTypeRef, properties, castedAddr, $"inst_{inst.Id}_copy");
                 }
                 else
                 {
-                    throw new NotImplementedException("Moves");
+                    throw new Exception("Value is not moveable");
                 }
 
                 StoreSlot(inst.ItemSlot, destValue, variantItemTypeRef, true);

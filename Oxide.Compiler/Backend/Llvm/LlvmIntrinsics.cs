@@ -100,8 +100,8 @@ public static class LlvmIntrinsics
             $"inst_{inst.Id}_type"
         );
 
-        // var (_, valuePtr) = generator.LoadSlot(inst.Arguments[1], $"inst_{inst.Id}_value");
-        var (_, valuePtr) = generator.GetSlotRef(inst.Arguments[1]);
+        var (_, valuePtr) = generator.LoadSlot(inst.Arguments[1], $"inst_{inst.Id}_value");
+        // var (_, valuePtr) = generator.GetSlotRef(inst.Arguments[1]);
 
         var dropPtr = generator.Builder.BuildInBoundsGEP(
             typePtr,

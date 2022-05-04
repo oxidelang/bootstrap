@@ -317,7 +317,7 @@ public class LifetimePass
                 if (slot.ParameterSource.HasValue)
                 {
                     var writeId = AllocateValue(slot.Id);
-                    slotState.AddValues(new HashSet<int> { writeId });
+                    slotState.AddValues(new HashSet<int> {writeId});
                     _functionLifetime.ValueSourceParameters.Add(writeId, slot.ParameterSource.Value);
                     lifetime.Set.Add(slot.Id);
                 }
@@ -340,7 +340,7 @@ public class LifetimePass
 
                 var slotState = targetLifetime.GetSlot(write.Slot);
                 var writeId = AllocateValue(write.Slot);
-                slotState.AddValues(new HashSet<int> { writeId });
+                slotState.AddValues(new HashSet<int> {writeId});
                 lifetime.ProducedValues.Add(writeId);
 
                 // if (write.ReferenceSource.HasValue)
@@ -596,7 +596,7 @@ public class LifetimePass
 
             foreach (var read in lifetime.Effects.Reads)
             {
-                if (!read.Moved)
+                if (!read.Moved || read.Field != null)
                 {
                     continue;
                 }
@@ -608,15 +608,31 @@ public class LifetimePass
                 }
 
                 var next = lifetime.Next;
-                if (next == null)
+                if (next != null)
                 {
-                    continue;
+                    var nextSlot = next.GetSlot(read.Slot);
+                    if (nextSlot.Status == SlotStatus.NoValue)
+                    {
+                        slot.Move();
+                    }
                 }
-
-                var nextSlot = next.GetSlot(read.Slot);
-                if (nextSlot.Status == SlotStatus.NoValue)
+                else
                 {
-                    slot.Move();
+                    var allNoValue = true;
+                    foreach (var dest in lifetime.Effects.Jumps)
+                    {
+                        var nextLft = GetLifetime(_blocks[dest].FirstInstruction);
+                        var nextSlot = nextLft.GetSlot(read.Slot);
+                        if (nextSlot.Status != SlotStatus.NoValue)
+                        {
+                            allNoValue = false;
+                        }
+                    }
+
+                    if (allNoValue)
+                    {
+                        slot.Move();
+                    }
                 }
             }
 
@@ -640,7 +656,7 @@ public class LifetimePass
                 }
 
                 var nextSlot = next.GetSlot(slotId);
-                if (nextSlot.Status == SlotStatus.NoValue)
+                if (nextSlot.Status == SlotStatus.NoValue && write.MoveField == null)
                 {
                     slot.Move();
                 }
@@ -841,7 +857,7 @@ public class LifetimePass
                     }
                 }
 
-                cluster.Nodes.RemoveAll(x => !used.Contains(((DotNode)x).Id));
+                cluster.Nodes.RemoveAll(x => !used.Contains(((DotNode) x).Id));
             });
 
             counter++;

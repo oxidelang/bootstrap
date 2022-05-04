@@ -138,10 +138,20 @@ public partial class FunctionGenerator
                 structType = concreteTypeRef;
                 break;
             }
-            case BaseTypeRef:
+            case BaseTypeRef baseType:
+            {
                 (_, baseAddr) = GetSlotRef(inst.BaseSlot);
                 isDirect = true;
-                throw new NotImplementedException("direct field moves");
+
+                if (baseType is not ConcreteTypeRef concreteTypeRef)
+                {
+                    throw new Exception("Cannot borrow field from non borrowed direct type");
+                }
+
+                structType = concreteTypeRef;
+                // throw new NotImplementedException("direct field moves");
+                break;
+            }
             case PointerTypeRef pointerTypeRef:
             {
                 (_, baseAddr) = LoadSlot(inst.BaseSlot, $"inst_{inst.Id}_base");
@@ -173,10 +183,13 @@ public partial class FunctionGenerator
             new[]
             {
                 LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0),
-                LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong)index)
+                LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong) index)
             },
             $"inst_{inst.Id}_faddr"
         );
+
+        var targetLlvmType = Backend.ConvertType(new PointerTypeRef(fieldType, false));
+        addr = Builder.BuildBitCast(addr, targetLlvmType, $"inst_{inst.Id}_expcast");
 
         var properties = Store.GetCopyProperties(fieldType);
 
@@ -270,7 +283,7 @@ public partial class FunctionGenerator
             new[]
             {
                 LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, 0),
-                LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong)index)
+                LLVMValueRef.CreateConstInt(LLVMTypeRef.Int32, (ulong) index)
             },
             $"inst_{inst.Id}_addr"
         );
