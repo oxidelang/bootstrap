@@ -206,7 +206,8 @@ public class JsBodyGenerator
             Writer.WriteLine($"if ({livePtr}) {{");
             Writer.Indent(1);
 
-            var (_, value) = LoadSlot(sd.Id, $"drop_{sd.Id}_value", true);
+            var (_, value) = GetSlotRef(sd.Id, true);
+            // var (_, value) = LoadSlot(sd.Id, $"drop_{sd.Id}_value", true);
             Writer.WriteLine($"{dropFunc}(heap, {value});");
             MarkMoved(sd.Id);
 
@@ -240,7 +241,8 @@ public class JsBodyGenerator
         Writer.WriteLine($"if ({livePtr}) {{");
         Writer.Indent(1);
 
-        var (valueType, value) = LoadSlot(slotId, $"{name}_value", true);
+        // var (valueType, value) = LoadSlot(slotId, $"{name}_value", true);
+        var (valueType, value) = GetSlotRef(slotId, true);
         PerformDrop(value, valueType);
         MarkMoved(slotId);
 
@@ -335,7 +337,7 @@ public class JsBodyGenerator
     private void CompileAllocVariantInst(AllocVariantInst inst)
     {
         var variant = Store.Lookup<Variant>(inst.VariantType.Name);
-        var variantTypeRef = (ConcreteTypeRef)FunctionContext.ResolveRef(inst.VariantType);
+        var variantTypeRef = (ConcreteTypeRef) FunctionContext.ResolveRef(inst.VariantType);
 
         if (!CurrentBlock.Scope.CanAccessSlot(inst.SlotId))
         {
@@ -386,7 +388,7 @@ public class JsBodyGenerator
 
     private void CompileAllocStructInst(AllocStructInst inst)
     {
-        var structType = (ConcreteTypeRef)FunctionContext.ResolveRef(inst.StructType);
+        var structType = (ConcreteTypeRef) FunctionContext.ResolveRef(inst.StructType);
         var structDef = Store.Lookup<Struct>(structType.Name);
         var structContext = new GenericContext(null, structDef.GenericParams, structType.GenericParams, null);
 
@@ -713,7 +715,7 @@ public class JsBodyGenerator
                     }
                     case BorrowTypeRef:
                     case PointerTypeRef:
-                        converted = $"{value} + {Backend.GetBoxValueOffset((ConcreteTypeRef)fromRef.InnerType)}";
+                        converted = $"{value} + {Backend.GetBoxValueOffset((ConcreteTypeRef) fromRef.InnerType)}";
                         break;
                     default:
                         throw new ArgumentOutOfRangeException(nameof(targetType));
@@ -729,7 +731,8 @@ public class JsBodyGenerator
         {
             if (dropIfMoved)
             {
-                PerformDrop(value, type);
+                throw new NotImplementedException();
+                // PerformDrop(value, type);
             }
 
             MarkMoved(inst.SourceSlot);
@@ -768,10 +771,10 @@ public class JsBodyGenerator
 
         if (type is DerivedRefTypeRef derivedRefTypeRef)
         {
-            var ptrOffset = Backend.GetDerivedBoxPtrFieldOffset((ConcreteTypeRef)derivedRefTypeRef.InnerType);
+            var ptrOffset = Backend.GetDerivedBoxPtrFieldOffset((ConcreteTypeRef) derivedRefTypeRef.InnerType);
             boxPtr = ExtractUSize(fromValue, ptrOffset, $"inst_{inst.Id}_box_ptr");
 
-            var valueOffset = Backend.GetDerivedBoxValueFieldOffset((ConcreteTypeRef)derivedRefTypeRef.InnerType);
+            var valueOffset = Backend.GetDerivedBoxValueFieldOffset((ConcreteTypeRef) derivedRefTypeRef.InnerType);
             ptrValue = ExtractUSize(fromValue, valueOffset, $"inst_{inst.Id}_value");
 
             ptrType = derivedRefTypeRef.InnerType;
@@ -784,7 +787,7 @@ public class JsBodyGenerator
             }
 
             boxPtr = fromValue;
-            var offset = Backend.GetBoxValueOffset((ConcreteTypeRef)referenceTypeRef.InnerType);
+            var offset = Backend.GetBoxValueOffset((ConcreteTypeRef) referenceTypeRef.InnerType);
             ptrValue = $"inst_{inst.Id}_box";
             Writer.WriteLine($"var {ptrValue} = {boxPtr} + {offset};");
             ptrType = referenceTypeRef.InnerType;
@@ -796,7 +799,7 @@ public class JsBodyGenerator
 
         if (inst.FieldName != null)
         {
-            var structType = (ConcreteTypeRef)ptrType;
+            var structType = (ConcreteTypeRef) ptrType;
             var structDef = Store.Lookup<Struct>(structType.Name);
             var index = structDef.Fields.FindIndex(x => x.Name == inst.FieldName);
             var fieldDef = structDef.Fields[index];
@@ -840,7 +843,7 @@ public class JsBodyGenerator
             }
 
             innerType = referenceTypeRef.InnerType;
-            var offset = Backend.GetBoxValueOffset((ConcreteTypeRef)referenceTypeRef.InnerType);
+            var offset = Backend.GetBoxValueOffset((ConcreteTypeRef) referenceTypeRef.InnerType);
             resultValue = $"{value} + {offset}";
         }
         else if (type is DerivedRefTypeRef derivedRefTypeRef)
@@ -851,7 +854,7 @@ public class JsBodyGenerator
             }
 
             innerType = derivedRefTypeRef.InnerType;
-            var offset = Backend.GetDerivedBoxValueFieldOffset((ConcreteTypeRef)derivedRefTypeRef.InnerType);
+            var offset = Backend.GetDerivedBoxValueFieldOffset((ConcreteTypeRef) derivedRefTypeRef.InnerType);
             resultValue = ExtractUSize(value, offset, $"inst_{inst.Id}_db");
         }
         else
@@ -934,9 +937,9 @@ public class JsBodyGenerator
 
         if (dropExisting)
         {
-            var value = $"inst_{inst.Id}_existing_value";
-            Writer.WriteLine($"var {value} = {Backend.BuildLoad(valType, tgt)};");
-            PerformDrop(value, valType);
+            // var value = $"inst_{inst.Id}_existing_value";
+            // Writer.WriteLine($"var {value} = {Backend.BuildLoad(valType, tgt)};");
+            PerformDrop(tgt, valType);
         }
 
         Writer.WriteLine(Backend.BuildStore(valType, tgt, val));
@@ -1022,7 +1025,7 @@ public class JsBodyGenerator
 
         if (inst.TargetType != null)
         {
-            var targetType = (ConcreteTypeRef)FunctionContext.ResolveRef(inst.TargetType);
+            var targetType = (ConcreteTypeRef) FunctionContext.ResolveRef(inst.TargetType);
 
             targetMethod = new ConcreteTypeRef(
                 inst.TargetMethod.Name,
@@ -1053,7 +1056,7 @@ public class JsBodyGenerator
         }
         else
         {
-            targetMethod = (ConcreteTypeRef)FunctionContext.ResolveRef(inst.TargetMethod);
+            targetMethod = (ConcreteTypeRef) FunctionContext.ResolveRef(inst.TargetMethod);
             key = new FunctionRef
             {
                 TargetMethod = targetMethod
@@ -1187,7 +1190,7 @@ public class JsBodyGenerator
 
     private void CompileJumpVariantInst(JumpVariantInst inst)
     {
-        var variantItemTypeRef = (ConcreteTypeRef)FunctionContext.ResolveRef(inst.VariantItemType);
+        var variantItemTypeRef = (ConcreteTypeRef) FunctionContext.ResolveRef(inst.VariantItemType);
         var (varType, rawVarRef) = GetSlotRef(inst.VariantSlot);
 
         string varRef;
@@ -1527,19 +1530,19 @@ public class JsBodyGenerator
         switch (kind)
         {
             case PrimitiveKind.I32:
-                bytes = BitConverter.GetBytes((int)value);
+                bytes = BitConverter.GetBytes((int) value);
                 valType = PrimitiveKind.I32.GetRef();
                 break;
             case PrimitiveKind.U32:
-                bytes = BitConverter.GetBytes((uint)value);
+                bytes = BitConverter.GetBytes((uint) value);
                 valType = PrimitiveKind.U32.GetRef();
                 break;
             case PrimitiveKind.USize:
-                bytes = BitConverter.GetBytes((uint)value);
+                bytes = BitConverter.GetBytes((uint) value);
                 valType = PrimitiveKind.USize.GetRef();
                 break;
             case PrimitiveKind.Bool:
-                bytes = new[] { (byte)((bool)value ? 255 : 0) };
+                bytes = new[] {(byte) ((bool) value ? 255 : 0)};
                 valType = PrimitiveKind.Bool.GetRef();
                 break;
             default:

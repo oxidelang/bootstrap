@@ -566,10 +566,10 @@ public class JsBackend
 
         var size = GetSize(typeRef);
 
-        Writer.WriteLine($"function {funcName}(heap, value) {{");
+        Writer.WriteLine($"function {funcName}(heap, valPtr) {{");
         Writer.Indent(1);
-        Writer.WriteLine($"var valPtr = heap.alloc({size});");
-        Writer.WriteLine(BuildStore(typeRef, "valPtr", "value"));
+        // Writer.WriteLine($"var valPtr = heap.alloc({size});");
+        // Writer.WriteLine(BuildStore(typeRef, "valPtr", "value"));
 
         if (dropFunc != null)
         {
@@ -683,9 +683,9 @@ public class JsBackend
                     Writer.Indent(1);
                     Writer.EndLine();
 
-
-                    Writer.WriteLine($"var item_{i}_value = {BuildLoad(itemRef, $"valPtr + 1")};");
-                    Writer.WriteLine($"{itemDropFunc}(heap, item_{i}_value);");
+                    Writer.WriteLine($"{itemDropFunc}(heap, valPtr + 1);");
+                    // Writer.WriteLine($"var item_{i}_value = {BuildLoad(itemRef, $"valPtr + 1")};");
+                    // Writer.WriteLine($"{itemDropFunc}(heap, item_{i}_value);");
 
                     Writer.Indent(-1);
                     Writer.BeginLine();
@@ -710,8 +710,9 @@ public class JsBackend
 
                     var offset = GetFieldOffset(typeRef, fieldDef.Name);
 
-                    Writer.WriteLine($"var field_{i}_value = {BuildLoad(fieldType, $"valPtr + {offset}")};");
-                    Writer.WriteLine($"{fieldDropFunc}(heap, field_{i}_value);");
+                    Writer.WriteLine($"{fieldDropFunc}(heap, valPtr + {offset});");
+                    // Writer.WriteLine($"var field_{i}_value = {BuildLoad(fieldType, $"valPtr + {offset}")};");
+                    // Writer.WriteLine($"{fieldDropFunc}(heap, field_{i}_value);");
                 }
 
                 break;
